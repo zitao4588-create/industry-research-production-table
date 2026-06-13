@@ -1,0 +1,234 @@
+{
+  "name": "industry-research-database-builder",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "templateId",
+              "value": "ecommerce_competitor_research"
+            },
+            {
+              "name": "industry",
+              "value": "宠物健康电商"
+            },
+            {
+              "name": "category",
+              "value": "宠物肠胃益生菌"
+            },
+            {
+              "name": "market",
+              "value": "美国 DTC 电商"
+            },
+            {
+              "name": "goal",
+              "value": "自动建立行业数据库，再生成竞品研究报告。"
+            }
+          ]
+        }
+      },
+      "id": "create-research-project",
+      "name": "Create Research Project",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "sourceDiscoveryPlan",
+              "value": "Discover public search results, competitor sites, Shopify collection/product/blog pages, sitemap, RSS, and user-exported CSV. Do not bypass login, CAPTCHA, paywalls, robots, or private data boundaries."
+            }
+          ]
+        }
+      },
+      "id": "generate-source-discovery-plan",
+      "name": "Generate Source Discovery Plan",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "crawlPlan",
+              "value": "Plan public search, homepage, Shopify collection, blog RSS, sitemap, and CSV parsing targets. First MVP runs mock only."
+            },
+            {
+              "name": "futureAdapters",
+              "value": "Candidates: Crawlee, Hermes XCrawl, OpenClaw Scrapling, RSS MCP, sitemap parser, n8n Readability node."
+            }
+          ]
+        }
+      },
+      "id": "generate-crawl-plan",
+      "name": "Generate Crawl Plan",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [780, 0]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "mockCrawlerResult",
+              "value": "Create mock crawl_jobs, crawl_runs, raw_documents, and extraction_jobs without real HTTP requests."
+            }
+          ]
+        }
+      },
+      "id": "mock-crawl-sources",
+      "name": "Mock Crawl Sources",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [1040, 0]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "databaseViews",
+              "value": "Build source_database, competitor_database, website_structure_database, product_database, keyword_database, pain_point_database, content_database, opportunity_database, and weekly_intelligence_reports."
+            }
+          ]
+        }
+      },
+      "id": "build-database-views",
+      "name": "Build Database Views",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [1300, 0]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "humanReview",
+              "value": "Review sources, evidence quality, competitor validity, opportunity scores, and compliance boundaries before report generation."
+            }
+          ]
+        }
+      },
+      "id": "human-review-queue",
+      "name": "Human Review Queue",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [1560, 0]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "markdownReport",
+              "value": "Generate Markdown competitor research report and weekly intelligence report from reviewed database views."
+            }
+          ]
+        }
+      },
+      "id": "generate-markdown-report",
+      "name": "Generate Markdown Report",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [1820, 0]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Create Research Project",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Research Project": {
+      "main": [
+        [
+          {
+            "node": "Generate Source Discovery Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Source Discovery Plan": {
+      "main": [
+        [
+          {
+            "node": "Generate Crawl Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Crawl Plan": {
+      "main": [
+        [
+          {
+            "node": "Mock Crawl Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mock Crawl Sources": {
+      "main": [
+        [
+          {
+            "node": "Build Database Views",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Database Views": {
+      "main": [
+        [
+          {
+            "node": "Human Review Queue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Human Review Queue": {
+      "main": [
+        [
+          {
+            "node": "Generate Markdown Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

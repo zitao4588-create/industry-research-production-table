@@ -1,0 +1,35 @@
+const ecommerceCompetitorResearchConfig = {
+  id: "ecommerce-competitor-research",
+  templateId: "ecommerce_competitor_research",
+  name: "电商竞品研究 Agent",
+  type: "行业研究",
+  stage: "mvp",
+  owner: "industry-research-production-table",
+  inputs: [
+    "projectName",
+    "industry",
+    "category",
+    "market",
+    "researchGoal",
+    "urls",
+    "csvText",
+    "manualText",
+  ],
+  outputs: [
+    "sourceDiscoveryPlans",
+    "crawlPlans",
+    "crawlJobs",
+    "rawDocuments",
+    "extractionJobs",
+    "databaseViews",
+    "competitors",
+    "productSignals",
+    "painPoints",
+    "contentSignals",
+    "opportunities",
+    "reviewItems",
+    "markdownReport",
+  ],
+};
+
+export default ecommerceCompetitorResearchConfig;

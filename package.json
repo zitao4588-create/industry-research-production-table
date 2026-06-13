@@ -1,0 +1,21 @@
+{
+  "name": "industry-research-production-table",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.0.0",
+  "scripts": {
+    "dev": "pnpm dev:studio",
+    "dev:studio": "pnpm --filter @industry-research/studio dev",
+    "build": "pnpm --filter @industry-research/studio build",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "check": "pnpm typecheck && pnpm test && biome check .",
+    "verify:9router": "tsx scripts/verify-9router-industry-research.ts"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.16",
+    "tsx": "^4.22.4",
+    "vitest": "^4.1.8"
+  }
+}
