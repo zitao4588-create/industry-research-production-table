@@ -53,7 +53,7 @@
 ## 要求
 
 - 第一版采集和建库允许使用 mock 输出，但结构必须稳定。
-- Markdown 报告节点可以使用服务端 9router 生成，但必须说明数据库和 raw documents 仍是 mock/待验证。
+- Markdown 报告节点可以使用服务端 DeepSeek v4 flash 生成，但必须说明数据库和 raw documents 仍需人工复核。
 - 每个结论都尽量关联 evidence。
 - 不编造真实抓取结果；无法确认时标记为待验证。
 - 不把补充 URL、CSV、手动文本当成唯一数据来源。

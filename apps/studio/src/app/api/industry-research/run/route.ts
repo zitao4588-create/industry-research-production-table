@@ -1,12 +1,15 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
 import {
   type ResearchWorkflowInput,
-  run9RouterIndustryResearchWorkflow,
-  runPublic9RouterIndustryResearchWorkflow,
+  runDeepSeekIndustryResearchWorkflow,
+  runPublicDeepSeekIndustryResearchWorkflow,
   runPublicIndustryResearchWorkflow,
 } from "@industry-research/core";
 import { NextResponse } from "next/server";
+import { persistIndustryResearchDeliveryPackage } from "../_lib/delivery-package-writer";
+import {
+  authorizeIndustryResearchRequest,
+  loadServerEnv,
+} from "../_lib/server-env";
 
 type IndustryResearchRunMode =
   | "9router"
@@ -16,9 +19,6 @@ type IndustryResearchRunMode =
   | "public_web_deepseek"
   | "glm"
   | "public_web_glm";
-
-// audit P0-2: shared-secret auth gate
-const INTERNAL_KEY_ENV = "AGENT_FACTORY_INTERNAL_API_KEY";
 
 // audit P0-2: input size caps — guard against unbounded LLM / crawl cost
 const INPUT_LIMITS = {
@@ -43,87 +43,6 @@ function assertMaxLength(label: string, value: string, max: number) {
   if (value.length > max) {
     throw new RequestValidationError(`${label} 超过长度上限（${max} 字符）。`);
   }
-}
-
-function parseEnvFile(filePath: string) {
-  if (!existsSync(filePath)) {
-    return {};
-  }
-
-  return readFileSync(filePath, "utf8")
-    .split(/\r?\n/)
-    .reduce<Record<string, string>>((env, line) => {
-      const trimmed = line.trim();
-
-      if (!trimmed || trimmed.startsWith("#")) {
-        return env;
-      }
-
-      const separatorIndex = trimmed.indexOf("=");
-
-      if (separatorIndex <= 0) {
-        return env;
-      }
-
-      const key = trimmed.slice(0, separatorIndex).trim();
-      const rawValue = trimmed.slice(separatorIndex + 1).trim();
-      env[key] = rawValue.replace(/^["']|["']$/g, "");
-
-      return env;
-    }, {});
-}
-
-function loadServerEnv() {
-  // NOTE: root `.env.local` (two levels up) is intentional — the 9router /
-  // provider keys live at the monorepo root, not in apps/studio. Keep this.
-  const cwd = process.cwd();
-  const candidates = [
-    resolve(cwd, ".env.local"),
-    resolve(cwd, "../..", ".env.local"),
-    join(cwd, "apps/studio/.env.local"),
-  ];
-  const fileEnv = candidates.reduce<Record<string, string>>((env, filePath) => {
-    Object.assign(env, parseEnvFile(filePath));
-    return env;
-  }, {});
-
-  return {
-    ...fileEnv,
-    ...process.env,
-  };
-}
-
-// audit P0-2: require a shared secret. In production an unconfigured key
-// refuses to run (no open endpoint); in development it stays frictionless.
-function authorizeRequest(
-  request: Request,
-  env: Record<string, string | undefined>,
-): { ok: true } | { ok: false; status: number; message: string } {
-  const configuredKey = env[INTERNAL_KEY_ENV]?.trim();
-  const isProduction = env.NODE_ENV === "production";
-
-  if (!configuredKey) {
-    if (isProduction) {
-      return {
-        ok: false,
-        status: 503,
-        message: `行业研究 API 未配置 ${INTERNAL_KEY_ENV}，生产环境拒绝在无鉴权下运行。`,
-      };
-    }
-    return { ok: true };
-  }
-
-  const provided = request.headers.get("x-internal-key");
-
-  if (!provided || provided !== configuredKey) {
-    return {
-      ok: false,
-      status: 401,
-      message: "未授权：缺少或不匹配的 x-internal-key 请求头。",
-    };
-  }
-
-  return { ok: true };
 }
 
 function parseResearchWorkflowInput(value: unknown): ResearchWorkflowInput {
@@ -192,13 +111,13 @@ function parseRunMode(value: unknown): IndustryResearchRunMode {
     return value;
   }
 
-  return "9router";
+  return "deepseek";
 }
 
 function parseRunRequest(value: unknown) {
   if (!value || typeof value !== "object") {
     return {
-      mode: "9router" as const,
+      mode: "deepseek" as const,
       input: parseResearchWorkflowInput(value),
     };
   }
@@ -213,36 +132,53 @@ function parseRunRequest(value: unknown) {
   }
 
   return {
-    mode: "9router" as const,
+    mode: "deepseek" as const,
     input: parseResearchWorkflowInput(value),
   };
+}
+
+function shouldPersistDeliveryPackage(env: Record<string, string | undefined>) {
+  return env.AGENT_FACTORY_PERSIST_INDUSTRY_RESEARCH_RUNS !== "false";
 }
 
 export async function POST(request: Request) {
   const env = loadServerEnv();
 
-  const auth = authorizeRequest(request, env);
+  const auth = authorizeIndustryResearchRequest(request, env);
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
 
   try {
+    const startedAt = new Date().toISOString();
     const { input, mode } = parseRunRequest(await request.json());
     const normalizedMode =
-      mode === "glm" || mode === "deepseek"
-        ? "9router"
-        : mode === "public_web_glm" || mode === "public_web_deepseek"
-          ? "public_web_9router"
+      mode === "glm" || mode === "9router" || mode === "deepseek"
+        ? "deepseek"
+        : mode === "public_web_glm" ||
+            mode === "public_web_9router" ||
+            mode === "public_web_deepseek"
+          ? "public_web_deepseek"
           : mode;
     const result =
       normalizedMode === "public_web"
         ? await runPublicIndustryResearchWorkflow(input)
-        : normalizedMode === "public_web_9router"
-          ? await runPublic9RouterIndustryResearchWorkflow(input, { env })
-          : await run9RouterIndustryResearchWorkflow(input, { env });
+        : normalizedMode === "public_web_deepseek"
+          ? await runPublicDeepSeekIndustryResearchWorkflow(input, { env })
+          : await runDeepSeekIndustryResearchWorkflow(input, { env });
+    const finishedAt = new Date().toISOString();
+    const deliveryPackage = shouldPersistDeliveryPackage(env)
+      ? await persistIndustryResearchDeliveryPackage({
+          input,
+          result,
+          startedAt,
+          finishedAt,
+        })
+      : null;
 
     return NextResponse.json({
       result,
+      deliveryPackage,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

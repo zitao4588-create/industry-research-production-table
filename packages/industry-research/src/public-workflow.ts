@@ -31,7 +31,9 @@ type PublicWorkflowOptions = {
   fetcher?: PublicCrawlerFetch;
   now?: string;
   maxDiscoveredTargets?: number;
+  maxProbeUrls?: number;
   maxSitemapUrls?: number;
+  requestTimeoutMs?: number;
 };
 
 function normalizeUrls(urls: string[]) {
@@ -152,19 +154,23 @@ function createPublicCrawlPlan(
   input: ResearchWorkflowInput,
   basePlan: CrawlPlan,
 ): CrawlPlan {
+  const userProvidedPublicTargets = createSupplementalPublicTargets(
+    projectId,
+    input,
+    [],
+  );
+
   return {
     ...basePlan,
     mode: "public_web",
     guardrails: [
       "public_web 模式只处理公开 http/https URL。",
       "不绕过登录、验证码、付费墙，不采集私人数据、支付信息或联系方式。",
-      "mock:// 搜索、CSV 和手动文本会保留为补充链路，不由 public_web adapter 抓取。",
+      "mock:// 搜索、CSV 和手动文本会保留为补充链路，不进入真实 public_web crawl plan。",
+      "未验证的 Shopify、RSS 和产品 JSON 猜测路径不会直接进入真实抓取；只有用户明确输入或从首页、robots、sitemap 发现的公开 URL 才会抓取。",
       "公开网页抽取出的结构化结论必须人工复核。",
     ],
-    targets: [
-      ...basePlan.targets,
-      ...createSupplementalPublicTargets(projectId, input, basePlan.targets),
-    ],
+    targets: userProvidedPublicTargets,
   };
 }
 
@@ -191,7 +197,9 @@ export async function runPublicIndustryResearchWorkflow(
     {
       fetcher: options.fetcher,
       maxDiscoveredTargets: options.maxDiscoveredTargets,
+      maxProbeUrls: options.maxProbeUrls,
       maxSitemapUrls: options.maxSitemapUrls,
+      requestTimeoutMs: options.requestTimeoutMs,
     },
   );
   const enhancedSourceDiscoveryPlan = {
@@ -207,7 +215,7 @@ export async function runPublicIndustryResearchWorkflow(
     targets: [...publicCrawlPlan.targets, ...publicSourceDiscovery.targets],
     guardrails: [
       ...publicCrawlPlan.guardrails,
-      "public_source_discovery 会自动探测 robots、sitemap、RSS/Atom 和 Shopify 公开路径。",
+      "public_source_discovery 会保守探测公开首页、robots 和 sitemap；RSS/Atom、collection、product、blog 只从真实页面链接或 sitemap 进入采集。",
     ],
   };
   const sources = createResearchSourcesFromPlan(
@@ -218,6 +226,7 @@ export async function runPublicIndustryResearchWorkflow(
   );
   const crawlerResult = await runPublicCrawler(project.id, crawlPlan, sources, {
     fetcher: options.fetcher,
+    input,
     now: options.now,
   });
   const researchDocuments = createResearchDocumentsFromRawDocuments(

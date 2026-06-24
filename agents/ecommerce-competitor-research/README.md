@@ -12,7 +12,7 @@
 
 ## 当前状态
 
-MVP 开发中。第一版已支持 mock crawler、公开 URL 轻量采集、mock 数据库建设流程；Markdown 报告和公开资料结构化抽取节点已支持服务端调用本机 9router。当前不接真实 OpenAI、Supabase、n8n 或复杂爬虫工具。
+MVP 开发中。第一版已支持 mock crawler、公开 URL 轻量采集、mock 数据库建设流程；Markdown 报告和公开资料结构化抽取节点已支持服务端调用 DeepSeek v4 flash。当前不接真实 OpenAI、Supabase、n8n 或复杂爬虫工具。
 
 ## 工作流
 
@@ -27,13 +27,13 @@ MVP 开发中。第一版已支持 mock crawler、公开 URL 轻量采集、mock
 9. 人工审核。
 10. 生成 Markdown 报告。
 
-## 9router 接入
+## DeepSeek 接入
 
-- Studio 页面支持“用 9router 生成报告”和“公开采集 + 9router 抽取”。
+- Studio 页面支持“用 DeepSeek 生成报告”和“公开采集 + DeepSeek 抽取”。
 - 真实模型用于报告生成和 public_web raw documents 的结构化抽取；所有结论仍标记为待人工验证。
-- 环境变量优先读取 `AGENT_FACTORY_9ROUTER_API_KEY` / `NINE_ROUTER_API_KEY`，也兼容 documents 项目的 `HORIZON_AI_BASE_URL` + `OPENAI_API_KEY` 形态。
-- 默认 base url：`http://localhost:20128/v1`。
-- 默认文本模型：`kr/claude-sonnet-4.5`，可用 `AGENT_FACTORY_9ROUTER_MODEL` 覆盖。
+- 环境变量优先读取 `AGENT_FACTORY_DEEPSEEK_API_KEY` / `DEEPSEEK_API_KEY`，也可用 `AGENT_FACTORY_LLM_API_KEY` 指向自付费 OpenAI-compatible provider。
+- 默认 base url：`https://api.deepseek.com`。
+- 默认文本模型：`deepseek-v4-flash`，可用 `AGENT_FACTORY_DEEPSEEK_MODEL` 覆盖。
 
 ## 自动采集入口
 
@@ -53,6 +53,49 @@ MVP 开发中。第一版已支持 mock crawler、公开 URL 轻量采集、mock
 - `opportunity_database` 机会库
 - `weekly_intelligence_reports` 行业情报周报库
 
+## 客户交付模板：行业竞品研究轻量版
+
+定位：用于 1 个行业 / 品类 / 市场的轻量竞品研究交付，适合在销售前调研、内容选题、产品切入判断阶段使用。
+
+输入字段：
+- 项目名称
+- 行业
+- 品类
+- 市场
+- 研究目标
+- 可选公开 URL
+- 可选 CSV
+- 可选人工线索
+
+输出文件：
+- `input.json`：本次研究输入。
+- `raw_documents.json`：公开采集到的原始资料和 source quality。
+- `databases.json`：九类数据库快照。
+- `review_items.json`：交付前人工审核清单。
+- `report.md`：原始交付报告。
+- `reviewed_report.md`：已审核版报告。
+- `run_log.json`：运行日志、DeepSeek 状态、采集失败、抽取待复核和 sourceQualitySummary。
+
+人工审核规则：
+- 每条主要结论必须追溯到 evidenceId、raw document URL/title/excerpt。
+- 数据源 `sourceRelevance=low` 或 `sourceConfidence=low` 的结论不能进入“已确认发现”。
+- `robots`、`sitemap` 只用于发现和边界判断，不能单独支撑业务结论。
+- DeepSeek 抽取结果默认需要人工复核，审核状态只能是 `confirmed`、`needs_review` 或 `rejected`。
+- 已审核版报告只把人工确认且 `acceptedForReport=true` 的证据支撑结论放入“已确认发现”。
+
+不承诺：
+- 不承诺 100% 自动事实判断。
+- 不承诺销量、市场份额、广告投放、转化率等无法从公开页面直接证明的结论。
+- 不绕过登录、验证码、付费墙，不抓私人数据。
+
+交付前验收清单：
+- `run_log.json` 中 `llmStatus` 为 `deepseek`，不是 `fallback`。
+- `raw_documents.json` 至少包含 3 条可复核公开资料。
+- `sourceQualitySummary.acceptedForReport` 大于 0。
+- `report.md` 包含已确认发现、证据不足但可能成立的发现、阻塞项、剩余不确定性和证据索引。
+- `reviewed_report.md` 已生成，并明确区分 confirmed / needs_review / rejected。
+- 所有客户可见结论均保留 evidenceId 和 URL/title/excerpt。
+
 ## 暂不做
 
 - 登录
@@ -60,6 +103,6 @@ MVP 开发中。第一版已支持 mock crawler、公开 URL 轻量采集、mock
 - SaaS 对外开放
 - 复杂多租户
 - 真实爬虫代理池
-- 把 9router 抽取结果跳过人工审核直接作为最终事实
+- 把 DeepSeek 抽取结果跳过人工审核直接作为最终事实
 - 绕过登录、验证码或付费墙
 - 抓取私人数据

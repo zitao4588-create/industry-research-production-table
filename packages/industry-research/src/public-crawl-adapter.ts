@@ -1,3 +1,4 @@
+import { assessSourceQuality } from "./source-quality";
 import type {
   CrawlJob,
   CrawlPlan,
@@ -6,6 +7,7 @@ import type {
   ExtractionJob,
   RawDocument,
   ResearchSource,
+  ResearchWorkflowInput,
 } from "./types";
 
 export type PublicCrawlerResponse = {
@@ -24,6 +26,7 @@ export type PublicCrawlerFetch = (
 
 export type PublicCrawlAdapterOptions = {
   fetcher?: PublicCrawlerFetch;
+  input?: ResearchWorkflowInput;
   now?: string;
   maxTextLength?: number;
 };
@@ -37,6 +40,17 @@ export type PublicCrawlAdapterResult = {
 
 const defaultNow = "2026-06-06T00:00:00.000Z";
 const defaultMaxTextLength = 12_000;
+const fallbackQualityInput: ResearchWorkflowInput = {
+  projectName: "未命名行业研究",
+  industry: "",
+  category: "",
+  market: "",
+  researchGoal: "",
+  templateId: "ecommerce_competitor_research",
+  urls: [],
+  csvText: "",
+  manualText: "",
+};
 
 function defaultFetcher(): PublicCrawlerFetch {
   return (input, init) => fetch(input, init);
@@ -241,7 +255,7 @@ export async function runPublicCrawler(
       targetId: target.id,
       status: "running",
       plannedAction: `Fetch public ${target.kind} target: ${target.target}`,
-      toolCandidateId: "industry-research-public-crawl-adapter",
+      toolCandidateId: "agent-factory-public-crawl-adapter",
     });
 
     if (!canUsePublicCrawlerTarget(target)) {
@@ -259,7 +273,7 @@ export async function runPublicCrawler(
         finishedAt: now,
         documentsCreated: 0,
         summary:
-          "public_web adapter 只处理公开 http/https URL；搜索、CSV 和 mock URL 需要专用 adapter。",
+          "UNSUPPORTED_PUBLIC_TARGET: public_web adapter 只处理公开 http/https URL；搜索、CSV 和 mock URL 需要专用 adapter。",
       });
       continue;
     }
@@ -275,7 +289,7 @@ export async function runPublicCrawler(
         startedAt: now,
         finishedAt: now,
         documentsCreated: 0,
-        summary: `Missing source for public crawl target: ${target.id}`,
+        summary: `MISSING_SOURCE: Missing source for public crawl target ${target.id}.`,
       });
       continue;
     }
@@ -298,7 +312,7 @@ export async function runPublicCrawler(
           startedAt: now,
           finishedAt: now,
           documentsCreated: 0,
-          summary: `HTTP ${response.status} while fetching ${target.target}`,
+          summary: `HTTP_ERROR: HTTP ${response.status} while fetching ${target.target}`,
         });
         continue;
       }
@@ -307,6 +321,7 @@ export async function runPublicCrawler(
       const contentType = response.headers?.get("content-type") ?? "";
       const extracted = extractPublicText(target, body, contentType);
       const extractedText = extracted.text.slice(0, maxTextLength);
+      const qualityInput = options.input ?? fallbackQualityInput;
       const rawDocument: RawDocument = {
         id: `public-raw-document-${index + 1}`,
         projectId,
@@ -318,6 +333,13 @@ export async function runPublicCrawler(
         excerpt: extractedText.slice(0, 160),
         extractedText,
         databaseTargets: target.databaseTargets,
+        sourceQuality: assessSourceQuality({
+          target,
+          input: qualityInput,
+          title: extracted.title,
+          url: target.target,
+          extractedText,
+        }),
       };
 
       jobs[index] = { ...jobs[index], status: "done" };
@@ -331,10 +353,11 @@ export async function runPublicCrawler(
         startedAt: now,
         finishedAt: now,
         documentsCreated: 1,
-        summary: `public_web adapter 已抽取 1 条 ${extracted.contentType} raw document。`,
+        summary: `public_web adapter 已抽取 1 条 ${extracted.contentType} raw document；sourceQuality=${rawDocument.sourceQuality.sourceType}/${rawDocument.sourceQuality.sourceRelevance}/${rawDocument.sourceQuality.sourceConfidence}；acceptedForReport=${rawDocument.sourceQuality.acceptedForReport}。`,
       });
     } catch (error) {
       jobs[index] = { ...jobs[index], status: "failed" };
+      const message = error instanceof Error ? error.message : String(error);
       runs.push({
         id: runId,
         projectId,
@@ -343,10 +366,7 @@ export async function runPublicCrawler(
         startedAt: now,
         finishedAt: now,
         documentsCreated: 0,
-        summary:
-          error instanceof Error
-            ? error.message
-            : "Unknown public_web adapter error.",
+        summary: `FETCH_ERROR: ${message || "Unknown public_web adapter error."}`,
       });
     }
   }

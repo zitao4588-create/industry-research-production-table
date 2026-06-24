@@ -33,7 +33,7 @@ export default function StudioHomePage() {
           </div>
           <div className="stat">
             <span>运行方式</span>
-            <strong>9router</strong>
+            <strong>DeepSeek</strong>
           </div>
           <div className="stat">
             <span>采集方向</span>

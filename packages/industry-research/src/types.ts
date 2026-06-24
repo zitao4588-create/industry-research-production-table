@@ -43,6 +43,29 @@ export type CrawlJobStatus = "queued" | "running" | "done" | "failed";
 
 export type ResearchReviewStatus = "approved" | "needs_review" | "rejected";
 
+export type SourceQualityLevel = "high" | "medium" | "low";
+
+export type SourceQualityType =
+  | "official_site"
+  | "product_page"
+  | "collection_page"
+  | "blog"
+  | "sitemap"
+  | "robots"
+  | "search_candidate"
+  | "manual_text"
+  | "csv"
+  | "rss"
+  | "unknown";
+
+export type SourceQuality = {
+  sourceType: SourceQualityType;
+  sourceRelevance: SourceQualityLevel;
+  sourceConfidence: SourceQualityLevel;
+  needsReviewReason: string;
+  acceptedForReport: boolean;
+};
+
 export type ResearchWorkflowStepStatus =
   | "pending"
   | "running"
@@ -166,6 +189,7 @@ export type RawDocument = {
   excerpt: string;
   extractedText: string;
   databaseTargets: IndustryResearchDatabaseName[];
+  sourceQuality: SourceQuality;
 };
 
 export type ExtractionJob = {

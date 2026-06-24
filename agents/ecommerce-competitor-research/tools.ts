@@ -28,10 +28,10 @@ export const ecommerceCompetitorResearchTools = [
     status: "mock",
   },
   {
-    id: "9router-report-generator",
-    name: "9router 报告生成",
+    id: "deepseek-report-generator",
+    name: "DeepSeek 抽取与报告生成",
     description:
-      "服务端通过本机 9router，把已建好的数据库视图生成 Markdown 行业研究报告。",
+      "服务端通过 DeepSeek v4 flash，把 public_web raw documents 抽取成结构化结果，并生成 Markdown 行业研究报告。",
     status: "enabled",
   },
   {

@@ -1,3 +1,4 @@
+import { assessSourceQuality } from "./source-quality";
 import type {
   CrawlJob,
   CrawlPlan,
@@ -160,7 +161,7 @@ export function runMockCrawler(
       target.kind === "rss"
         ? "github-rss-mcp"
         : target.kind === "review_csv"
-          ? "industry-research-mock-workflow"
+          ? "agent-factory-mock-workflow"
           : "github-apify-crawlee",
   }));
 
@@ -200,6 +201,13 @@ export function runMockCrawler(
       excerpt: extractedText.slice(0, 160),
       extractedText,
       databaseTargets: target.databaseTargets,
+      sourceQuality: assessSourceQuality({
+        target,
+        input,
+        title: `${target.kind} mock document`,
+        url: target.target,
+        extractedText,
+      }),
     };
   });
 

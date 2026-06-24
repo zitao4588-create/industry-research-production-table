@@ -3,7 +3,7 @@ import type { ReusableCapabilityAssessment } from "./types";
 export const researchAutomationCapabilityAssessments: ReusableCapabilityAssessment[] =
   [
     {
-      id: "industry-research-mock-workflow",
+      id: "agent-factory-mock-workflow",
       name: "Agent Factory mock workflow",
       source: "agent_factory",
       status: "reusable_now",
@@ -13,13 +13,13 @@ export const researchAutomationCapabilityAssessments: ReusableCapabilityAssessme
       reason: "符合第一版不接真实 API、不写密钥、不抓真实网页的约束。",
     },
     {
-      id: "9router-local",
-      name: "9router local OpenAI-compatible router",
+      id: "deepseek-v4-flash",
+      name: "DeepSeek v4 flash OpenAI-compatible provider",
       source: "future_plugin",
       status: "reusable_now",
       license: "provider-api",
       maintenanceSignal:
-        "本机 documents 项目已配置 9router，本项目通过 OpenAI-compatible chat/completions 复用。",
+        "本项目通过 DeepSeek 官方 OpenAI-compatible chat/completions 调用结构化抽取和报告节点。",
       useCase:
         "把公开采集 raw documents 和行业研究数据库视图抽取成结构化结果，并生成 Markdown 报告。",
       reason:

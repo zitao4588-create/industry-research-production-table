@@ -4,7 +4,7 @@ const ecommerceCompetitorResearchConfig = {
   name: "电商竞品研究 Agent",
   type: "行业研究",
   stage: "mvp",
-  owner: "industry-research-production-table",
+  owner: "agent-factory",
   inputs: [
     "projectName",
     "industry",

@@ -2,6 +2,7 @@ import type { ResearchWorkflowDataset } from "./types";
 
 export type GlmRuntimeEnv = Record<string, string | undefined>;
 export type NineRouterRuntimeEnv = GlmRuntimeEnv;
+export type DeepSeekRuntimeEnv = GlmRuntimeEnv;
 
 export type GlmConfig = {
   apiKey: string;
@@ -9,6 +10,7 @@ export type GlmConfig = {
   model: string;
 };
 export type NineRouterConfig = GlmConfig;
+export type DeepSeekConfig = GlmConfig;
 
 export type GlmChatMessage = {
   role: "system" | "user" | "assistant";
@@ -29,6 +31,7 @@ export type GlmFetch = (
   text: () => Promise<string>;
 }>;
 export type NineRouterFetch = GlmFetch;
+export type DeepSeekFetch = GlmFetch;
 
 type GlmChatCompletionResponse = {
   choices?: Array<{
@@ -42,50 +45,42 @@ type GlmChatCompletionResponse = {
   message?: string;
 };
 
-function pick9RouterBaseUrl(env: GlmRuntimeEnv) {
+function pickDeepSeekBaseUrl(env: GlmRuntimeEnv) {
   return (
     env.AGENT_FACTORY_LLM_BASE_URL ||
-    env.AGENT_FACTORY_9ROUTER_BASE_URL ||
-    env.NINE_ROUTER_BASE_URL ||
-    env.HORIZON_AI_BASE_URL ||
-    "http://localhost:20128/v1"
+    env.AGENT_FACTORY_DEEPSEEK_BASE_URL ||
+    env.DEEPSEEK_BASE_URL ||
+    "https://api.deepseek.com"
   ).replace(/\/$/, "");
 }
 
-function pick9RouterModel(env: GlmRuntimeEnv) {
+function pickDeepSeekModel(env: GlmRuntimeEnv) {
   return (
     env.AGENT_FACTORY_LLM_MODEL ||
-    env.AGENT_FACTORY_9ROUTER_MODEL ||
-    env.NINE_ROUTER_MODEL ||
-    env.HORIZON_AI_MODEL ||
-    "kr/claude-sonnet-4.5"
+    env.AGENT_FACTORY_DEEPSEEK_MODEL ||
+    env.DEEPSEEK_MODEL ||
+    "deepseek-v4-flash"
   );
 }
 
-export function resolve9RouterConfig(env: GlmRuntimeEnv): GlmConfig {
+export function resolveDeepSeekConfig(env: GlmRuntimeEnv): GlmConfig {
   const apiKey =
     env.AGENT_FACTORY_LLM_API_KEY ||
-    env.AGENT_FACTORY_9ROUTER_API_KEY ||
-    env.NINE_ROUTER_API_KEY ||
-    ((env.HORIZON_AI_BASE_URL ||
-      env.AGENT_FACTORY_9ROUTER_BASE_URL ||
-      env.NINE_ROUTER_BASE_URL) &&
-      env.OPENAI_API_KEY) ||
     env.AGENT_FACTORY_DEEPSEEK_API_KEY ||
+    env.DEEPSEEK_API_KEY ||
     "";
 
   if (!apiKey) {
     throw new Error(
-      "未配置 LLM API Key：生产请设置 AGENT_FACTORY_LLM_API_KEY（自付费 provider）；本地 9router 可用 AGENT_FACTORY_9ROUTER_API_KEY。",
+      "未配置 DeepSeek API Key：请设置 AGENT_FACTORY_DEEPSEEK_API_KEY，或用 AGENT_FACTORY_LLM_API_KEY 指向自付费 OpenAI-compatible provider。",
     );
   }
 
-  const baseUrl = pick9RouterBaseUrl(env);
-  const model = pick9RouterModel(env);
+  const baseUrl = pickDeepSeekBaseUrl(env);
+  const model = pickDeepSeekModel(env);
 
-  // audit P1-5 / P3-2: 生产环境不要静默跑在本地 / 免费 9router 默认地址上。
-  // 需显式配置自付费 provider；如确需在生产用本地路由，设
-  // AGENT_FACTORY_ALLOW_LOCAL_LLM_IN_PROD=1 作为逃生阀。
+  // audit P1-5 / P3-2: 生产环境不要静默跑在本地 provider 默认地址上。
+  // 需显式配置自付费 provider；如确需在生产用本地路由，设逃生阀。
   const isProduction = env.NODE_ENV === "production";
   const isLocalBaseUrl = /^https?:\/\/(localhost|127\.0\.0\.1)/i.test(baseUrl);
   const allowLocalInProd =
@@ -94,7 +89,7 @@ export function resolve9RouterConfig(env: GlmRuntimeEnv): GlmConfig {
 
   if (isProduction && isLocalBaseUrl && !allowLocalInProd) {
     throw new Error(
-      "生产环境检测到本地 9router base URL（localhost）。请配置 AGENT_FACTORY_LLM_BASE_URL / _MODEL / _API_KEY 指向自付费 provider；如确需在生产使用本地路由，设 AGENT_FACTORY_ALLOW_LOCAL_LLM_IN_PROD=1。",
+      "生产环境检测到本地 LLM base URL（localhost）。请配置 AGENT_FACTORY_LLM_BASE_URL / _MODEL / _API_KEY 指向自付费 provider；如确需在生产使用本地路由，设 AGENT_FACTORY_ALLOW_LOCAL_LLM_IN_PROD=1。",
     );
   }
 
@@ -105,13 +100,20 @@ export function resolve9RouterConfig(env: GlmRuntimeEnv): GlmConfig {
   };
 }
 
-export function has9RouterConfig(env: GlmRuntimeEnv) {
+export function resolve9RouterConfig(env: GlmRuntimeEnv): GlmConfig {
+  return resolveDeepSeekConfig(env);
+}
+
+export function hasDeepSeekConfig(env: GlmRuntimeEnv) {
   return Boolean(
     env.AGENT_FACTORY_LLM_API_KEY ||
-      env.AGENT_FACTORY_9ROUTER_API_KEY ||
-      env.NINE_ROUTER_API_KEY ||
-      env.AGENT_FACTORY_DEEPSEEK_API_KEY,
+      env.AGENT_FACTORY_DEEPSEEK_API_KEY ||
+      env.DEEPSEEK_API_KEY,
   );
+}
+
+export function has9RouterConfig(env: GlmRuntimeEnv) {
+  return hasDeepSeekConfig(env);
 }
 
 function parseGlmResponse(rawText: string): GlmChatCompletionResponse {
@@ -124,7 +126,7 @@ function parseGlmResponse(rawText: string): GlmChatCompletionResponse {
   }
 }
 
-function extract9RouterSseText(rawText: string) {
+function extractOpenAICompatibleSseText(rawText: string) {
   if (!rawText.trimStart().startsWith("data:")) {
     return "";
   }
@@ -167,12 +169,13 @@ export function extractGlmText(data: GlmChatCompletionResponse) {
   return data.choices?.[0]?.message?.content?.trim() ?? "";
 }
 
-export async function call9RouterChatCompletion({
+export async function callDeepSeekChatCompletion({
   env,
   messages,
   fetcher = fetch,
   temperature = 0.2,
   maxTokens = 4000,
+  responseFormat,
   timeoutMs = 30_000,
 }: {
   env: GlmRuntimeEnv;
@@ -180,9 +183,10 @@ export async function call9RouterChatCompletion({
   fetcher?: GlmFetch;
   temperature?: number;
   maxTokens?: number;
+  responseFormat?: "json_object";
   timeoutMs?: number;
 }) {
-  const config = resolve9RouterConfig(env);
+  const config = resolveDeepSeekConfig(env);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let response: Awaited<ReturnType<GlmFetch>>;
@@ -200,12 +204,15 @@ export async function call9RouterChatCompletion({
         temperature,
         max_tokens: maxTokens,
         stream: false,
+        ...(responseFormat
+          ? { response_format: { type: responseFormat } }
+          : {}),
       }),
       signal: controller.signal,
     });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`9router API 请求超时（${timeoutMs}ms）。`);
+      throw new Error(`DeepSeek API 请求超时（${timeoutMs}ms）。`);
     }
 
     throw error;
@@ -214,7 +221,7 @@ export async function call9RouterChatCompletion({
   }
 
   const rawText = await response.text();
-  const sseContent = extract9RouterSseText(rawText);
+  const sseContent = extractOpenAICompatibleSseText(rawText);
   const data = sseContent
     ? ({
         choices: [{ message: { content: sseContent } }],
@@ -225,7 +232,7 @@ export async function call9RouterChatCompletion({
     const message =
       data.error?.message ||
       data.message ||
-      `9router API 请求失败，HTTP ${response.status}`;
+      `DeepSeek API 请求失败，HTTP ${response.status}`;
 
     throw new Error(sanitizeProviderErrorMessage(message));
   }
@@ -233,7 +240,7 @@ export async function call9RouterChatCompletion({
   const content = extractGlmText(data);
 
   if (!content) {
-    throw new Error("9router API 没有返回可用文本。");
+    throw new Error("DeepSeek API 没有返回可用文本。");
   }
 
   return {
@@ -242,12 +249,14 @@ export async function call9RouterChatCompletion({
   };
 }
 
+export const call9RouterChatCompletion = callDeepSeekChatCompletion;
+
 function createReportInput(dataset: ResearchWorkflowDataset) {
   const project = dataset.research_projects[0];
 
   if (!project) {
     throw new Error(
-      "Cannot generate 9router report without a research project.",
+      "Cannot generate DeepSeek report without a research project.",
     );
   }
 
@@ -284,7 +293,7 @@ function createReportInput(dataset: ResearchWorkflowDataset) {
   };
 }
 
-export function create9RouterReportMessages(dataset: ResearchWorkflowDataset) {
+export function createDeepSeekReportMessages(dataset: ResearchWorkflowDataset) {
   const reportInput = createReportInput(dataset);
 
   return [
@@ -318,7 +327,9 @@ export function create9RouterReportMessages(dataset: ResearchWorkflowDataset) {
   ] satisfies GlmChatMessage[];
 }
 
-export async function generate9RouterResearchMarkdownReport({
+export const create9RouterReportMessages = createDeepSeekReportMessages;
+
+export async function generateDeepSeekResearchMarkdownReport({
   dataset,
   env,
   fetcher,
@@ -327,10 +338,13 @@ export async function generate9RouterResearchMarkdownReport({
   env: GlmRuntimeEnv;
   fetcher?: GlmFetch;
 }) {
-  return call9RouterChatCompletion({
+  return callDeepSeekChatCompletion({
     env,
     fetcher,
-    messages: create9RouterReportMessages(dataset),
+    messages: createDeepSeekReportMessages(dataset),
     timeoutMs: 180_000,
   });
 }
+
+export const generate9RouterResearchMarkdownReport =
+  generateDeepSeekResearchMarkdownReport;

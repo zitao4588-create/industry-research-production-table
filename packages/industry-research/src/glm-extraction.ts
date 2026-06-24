@@ -1,5 +1,5 @@
 import {
-  call9RouterChatCompletion,
+  callDeepSeekChatCompletion,
   type GlmFetch,
   type GlmRuntimeEnv,
 } from "./glm-client";
@@ -154,7 +154,7 @@ export function parseGlmStructuredExtraction(
   try {
     return normalizeExtraction(JSON.parse(jsonText));
   } catch {
-    throw new Error("9router 结构化抽取没有返回可解析 JSON。");
+    throw new Error("DeepSeek 结构化抽取没有返回可解析 JSON。");
   }
 }
 
@@ -276,43 +276,95 @@ export async function generateGlmStructuredExtraction({
   env: GlmRuntimeEnv;
   fetcher?: GlmFetch;
 }) {
-  const response = await call9RouterChatCompletion({
+  const messages = createGlmStructuredExtractionMessages(dataset);
+  const response = await callDeepSeekChatCompletion({
     env,
     fetcher,
-    messages: createGlmStructuredExtractionMessages(dataset),
+    messages,
     temperature: 0.1,
-    maxTokens: 4000,
+    maxTokens: 6000,
+    responseFormat: "json_object",
     timeoutMs: 120_000,
   });
 
-  return parseGlmStructuredExtraction(response.content);
+  try {
+    return parseGlmStructuredExtraction(response.content);
+  } catch {
+    const retryResponse = await callDeepSeekChatCompletion({
+      env,
+      fetcher,
+      messages: [
+        ...messages,
+        {
+          role: "assistant",
+          content: response.content.slice(0, 4000),
+        },
+        {
+          role: "user",
+          content:
+            "上一次输出不是可解析 JSON。请只输出一个合法 JSON object，键名必须是 competitors、productSignals、painPoints、contentSignals、opportunities；不要输出 Markdown、解释、注释或多余文本。",
+        },
+      ],
+      temperature: 0,
+      maxTokens: 6000,
+      responseFormat: "json_object",
+      timeoutMs: 120_000,
+    });
+
+    return parseGlmStructuredExtraction(retryResponse.content);
+  }
 }
 
 function createEvidenceBuilder(result: ResearchWorkflowResult) {
   let index = 0;
   const project = result.research_projects[0];
-  const rawDocument = result.raw_documents[0];
-  const sourceId =
-    rawDocument?.sourceId ?? result.research_sources[0]?.id ?? "source-unknown";
+  const fallbackRawDocument = result.raw_documents[0];
 
   if (!project) {
     throw new Error("Cannot build GLM extraction evidence without project.");
   }
+
+  const findRawDocumentForQuote = (quote: string) => {
+    const normalizedQuote = quote.trim().toLowerCase();
+
+    if (!normalizedQuote) {
+      return fallbackRawDocument;
+    }
+
+    return (
+      result.raw_documents.find((document) => {
+        const haystack = [
+          document.title,
+          document.excerpt,
+          document.extractedText.slice(0, 8000),
+        ]
+          .join("\n")
+          .toLowerCase();
+
+        return haystack.includes(normalizedQuote);
+      }) ?? fallbackRawDocument
+    );
+  };
 
   return (quotes: string[], note: string) => {
     const normalizedQuotes =
       quotes.length > 0
         ? quotes
         : [
-            rawDocument?.excerpt ??
-              "9router 抽取结果缺少直接引用，需人工复核。",
+            fallbackRawDocument?.excerpt ??
+              "DeepSeek 抽取结果缺少直接引用，需人工复核。",
           ];
 
     return normalizedQuotes.map((quote) => {
       index += 1;
+      const rawDocument = findRawDocumentForQuote(quote);
+      const sourceId =
+        rawDocument?.sourceId ??
+        result.research_sources[0]?.id ??
+        "source-unknown";
 
       return {
-        id: `evidence-glm-${index}`,
+        id: `evidence-deepseek-${index}`,
         projectId: project.id,
         sourceId,
         rawDocumentId: rawDocument?.id,
@@ -368,7 +420,7 @@ export function applyGlmStructuredExtraction(
 
   const competitors: Competitor[] = extraction.competitors.map(
     (competitor, index) => ({
-      id: `glm-competitor-${index + 1}`,
+      id: `deepseek-competitor-${index + 1}`,
       projectId: project.id,
       name: asString(competitor.name, `${project.category} 竞品 ${index + 1}`),
       channel: asString(competitor.channel, project.market),
@@ -376,11 +428,11 @@ export function applyGlmStructuredExtraction(
       collectionSignals: asStringArray(competitor.collectionSignals),
       positioning: asString(
         competitor.positioning,
-        "9router 从公开资料抽取，等待人工复核。",
+        "DeepSeek 从公开资料抽取，等待人工复核。",
       ),
       evidenceIds: evidenceIdsFor(
         asStringArray(competitor.evidenceQuotes),
-        "9router 竞品抽取证据。",
+        "DeepSeek 竞品抽取证据。",
       ),
     }),
   );
@@ -396,39 +448,39 @@ export function applyGlmStructuredExtraction(
       const competitorName = asString(signal.competitorName).toLowerCase();
 
       return {
-        id: `glm-product-signal-${index + 1}`,
+        id: `deepseek-product-signal-${index + 1}`,
         projectId: project.id,
         competitorId:
           competitorIdsByName.get(competitorName) ??
           fallbackCompetitor?.id ??
-          "glm-competitor-1",
+          "deepseek-competitor-1",
         category: asString(signal.category, project.category),
         signal: asString(
           signal.signal,
-          "9router 抽取到产品信号，等待人工复核。",
+          "DeepSeek 抽取到产品信号，等待人工复核。",
         ),
         tags: asStringArray(signal.tags),
         evidenceIds: evidenceIdsFor(
           asStringArray(signal.evidenceQuotes),
-          "9router 产品信号抽取证据。",
+          "DeepSeek 产品信号抽取证据。",
         ),
       };
     },
   );
   const painPoints: PainPoint[] = extraction.painPoints.map((point, index) => ({
-    id: `glm-pain-point-${index + 1}`,
+    id: `deepseek-pain-point-${index + 1}`,
     projectId: project.id,
     theme: asString(point.theme, `用户痛点 ${index + 1}`),
     userNeed: asString(point.userNeed, "需要人工补充用户需求解释。"),
     frequency: normalizeFrequency(point.frequency),
     evidenceIds: evidenceIdsFor(
       asStringArray(point.evidenceQuotes),
-      "9router 用户痛点抽取证据。",
+      "DeepSeek 用户痛点抽取证据。",
     ),
   }));
   const contentSignals: ContentSignal[] = extraction.contentSignals.map(
     (signal, index) => ({
-      id: `glm-content-signal-${index + 1}`,
+      id: `deepseek-content-signal-${index + 1}`,
       projectId: project.id,
       platform: asString(signal.platform, "Public Web"),
       topic: asString(signal.topic, `内容信号 ${index + 1}`),
@@ -436,13 +488,13 @@ export function applyGlmStructuredExtraction(
       whyItWorks: asString(signal.whyItWorks, "等待人工复核内容价值。"),
       evidenceIds: evidenceIdsFor(
         asStringArray(signal.evidenceQuotes),
-        "9router 内容信号抽取证据。",
+        "DeepSeek 内容信号抽取证据。",
       ),
     }),
   );
   const opportunities: Opportunity[] = extraction.opportunities.map(
     (opportunity, index) => ({
-      id: `glm-opportunity-${index + 1}`,
+      id: `deepseek-opportunity-${index + 1}`,
       projectId: project.id,
       title: asString(opportunity.title, `机会 ${index + 1}`),
       summary: asString(opportunity.summary, "等待人工补充机会说明。"),
@@ -455,11 +507,11 @@ export function applyGlmStructuredExtraction(
       reviewStatus: normalizeReviewStatus(opportunity.reviewStatus),
       reviewNote: asString(
         opportunity.reviewNote,
-        "9router 抽取，需人工复核。",
+        "DeepSeek 抽取，需人工复核。",
       ),
       evidenceIds: evidenceIdsFor(
         asStringArray(opportunity.evidenceQuotes),
-        "9router 机会评分抽取证据。",
+        "DeepSeek 机会评分抽取证据。",
       ),
     }),
   );
@@ -506,11 +558,11 @@ export function applyGlmStructuredExtraction(
   ]);
   const keywordDatabase: KeywordDatabaseEntry[] = keywordValues.map(
     (keyword, index) => ({
-      id: `keyword-db-glm-${index + 1}`,
+      id: `keyword-db-deepseek-${index + 1}`,
       projectId: project.id,
       keyword,
       intent: index % 2 === 0 ? "research" : "purchase",
-      source: "glm_structured_extraction",
+      source: "deepseek_structured_extraction",
       evidenceIds: evidence.slice(0, 3).map((item) => item.id),
     }),
   );
@@ -550,11 +602,11 @@ export function applyGlmStructuredExtraction(
   );
   const weeklyIntelligenceReports: WeeklyIntelligenceReportEntry[] = [
     {
-      id: "weekly-intel-glm-1",
+      id: "weekly-intel-deepseek-1",
       projectId: project.id,
       weekOf: "2026-06-01",
       title: `${project.category} 公开资料结构化周报种子`,
-      summary: "基于 public_web raw documents 的 9router 结构化抽取结果。",
+      summary: "基于 public_web raw documents 的 DeepSeek 结构化抽取结果。",
       newSignals: [
         ...productSignals.slice(0, 3).map((signal) => signal.signal),
         ...contentSignals.slice(0, 2).map((signal) => signal.topic),

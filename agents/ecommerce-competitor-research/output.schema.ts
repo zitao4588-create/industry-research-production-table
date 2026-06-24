@@ -1,5 +1,20 @@
 export type ResearchReviewStatus = "approved" | "needs_review" | "rejected";
 
+export type SourceQualityLevel = "high" | "medium" | "low";
+
+export type SourceQualityType =
+  | "official_site"
+  | "product_page"
+  | "collection_page"
+  | "blog"
+  | "sitemap"
+  | "robots"
+  | "search_candidate"
+  | "manual_text"
+  | "csv"
+  | "rss"
+  | "unknown";
+
 export type EcommerceCompetitorResearchOutput = {
   research_projects: Array<{
     id: string;
@@ -34,7 +49,7 @@ export type EcommerceCompetitorResearchOutput = {
   }>;
   crawl_plans: Array<{
     id: string;
-    mode: "mock";
+    mode: "mock" | "public_web";
     targets: Array<{
       id: string;
       kind:
@@ -72,6 +87,13 @@ export type EcommerceCompetitorResearchOutput = {
     contentType: "html" | "rss" | "csv" | "text";
     excerpt: string;
     databaseTargets: string[];
+    sourceQuality: {
+      sourceType: SourceQualityType;
+      sourceRelevance: SourceQualityLevel;
+      sourceConfidence: SourceQualityLevel;
+      needsReviewReason: string;
+      acceptedForReport: boolean;
+    };
   }>;
   extraction_jobs: Array<{
     id: string;
@@ -133,6 +155,7 @@ export type EcommerceCompetitorResearchOutput = {
   evidence: Array<{
     id: string;
     sourceId: string;
+    rawDocumentId?: string;
     quote: string;
     note: string;
   }>;
@@ -195,4 +218,18 @@ export type EcommerceCompetitorResearchOutput = {
     format: "markdown";
     content: string;
   }>;
+  delivery_artifacts?: {
+    reportPath: "report.md";
+    reviewedReportPath: "reviewed_report.md";
+    runLogPath: "run_log.json";
+    sourceQualitySummary: {
+      total: number;
+      acceptedForReport: number;
+      rejectedForReport: number;
+      bySourceType: Record<SourceQualityType, number>;
+      byRelevance: Record<SourceQualityLevel, number>;
+      byConfidence: Record<SourceQualityLevel, number>;
+      lowQualityDocumentIds: string[];
+    };
+  };
 };

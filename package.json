@@ -11,7 +11,9 @@
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
     "check": "pnpm typecheck && pnpm test && biome check .",
-    "verify:9router": "tsx scripts/verify-9router-industry-research.ts"
+    "sample:public-web": "tsx scripts/run-industry-research-public-web-smoke.ts",
+    "sample:deepseek": "tsx scripts/run-industry-research-delivery-sample.ts",
+    "verify:deepseek": "tsx scripts/verify-deepseek-industry-research.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.16",

@@ -6,7 +6,15 @@
     "useIgnoreFile": true
   },
   "files": {
-    "ignoreUnknown": true
+    "ignoreUnknown": true,
+    "includes": [
+      "**",
+      "!docs/design_handoff_research_console/prototype",
+      "!docs/design_handoff_research_console 2/porting",
+      "!apps/studio/src/app/globals.css",
+      "!apps/studio/src/app/industry-research/IndustryResearchWorkbench.tsx",
+      "!apps/studio/src/app/industry-research/components"
+    ]
   },
   "formatter": {
     "enabled": true,

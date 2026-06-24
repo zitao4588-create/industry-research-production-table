@@ -1,7 +1,7 @@
 import {
   type GlmFetch,
   type GlmRuntimeEnv,
-  generate9RouterResearchMarkdownReport,
+  generateDeepSeekResearchMarkdownReport,
 } from "./glm-client";
 import {
   applyGlmStructuredExtraction,
@@ -16,7 +16,7 @@ import { runPublicIndustryResearchWorkflow } from "./public-workflow";
 import { generateResearchMarkdownReport } from "./report";
 import type { ResearchWorkflowInput, ResearchWorkflowResult } from "./types";
 
-async function replaceReportWithGlm(
+async function replaceReportWithDeepSeek(
   baseResult: ResearchWorkflowResult,
   options: {
     env: GlmRuntimeEnv;
@@ -27,13 +27,15 @@ async function replaceReportWithGlm(
   const project = baseResult.research_projects[0];
 
   if (!project) {
-    throw new Error("9router workflow must create a research project.");
+    throw new Error("DeepSeek workflow must create a research project.");
   }
 
-  let report: Awaited<ReturnType<typeof generate9RouterResearchMarkdownReport>>;
+  let report: Awaited<
+    ReturnType<typeof generateDeepSeekResearchMarkdownReport>
+  >;
 
   try {
-    report = await generate9RouterResearchMarkdownReport({
+    report = await generateDeepSeekResearchMarkdownReport({
       dataset: baseResult,
       env: options.env,
       fetcher: options.fetcher,
@@ -49,12 +51,12 @@ async function replaceReportWithGlm(
       ...baseResult,
       research_reports: [
         {
-          id: "report-glm-fallback-1",
+          id: "report-deepseek-fallback-1",
           projectId: project.id,
           format: "markdown",
           title: `${project.name} Markdown 报告（本地回退）`,
           content: [
-            "> 9router 报告节点暂时失败，下面先展示本地 Markdown 报告，公开采集和结构化数据库结果已保留。",
+            "> DeepSeek 报告节点暂时失败，下面先展示本地 Markdown 报告，公开采集和结构化数据库结果已保留。",
             "",
             `> 失败原因：${message}`,
             "",
@@ -70,10 +72,10 @@ async function replaceReportWithGlm(
     ...baseResult,
     research_reports: [
       {
-        id: "report-glm-1",
+        id: "report-deepseek-1",
         projectId: project.id,
         format: "markdown",
-        title: `${project.name} 9router Markdown 报告（${report.model}）`,
+        title: `${project.name} DeepSeek Markdown 报告（${report.model}）`,
         content: report.content,
         createdAt: new Date().toISOString(),
       },
@@ -81,27 +83,34 @@ async function replaceReportWithGlm(
   };
 }
 
-export async function run9RouterIndustryResearchWorkflow(
+export async function runDeepSeekIndustryResearchWorkflow(
   input: ResearchWorkflowInput,
   options: {
     env: GlmRuntimeEnv;
     fetcher?: GlmFetch;
   },
 ): Promise<ResearchWorkflowResult> {
-  return replaceReportWithGlm(runMockIndustryResearchWorkflow(input), options);
+  return replaceReportWithDeepSeek(
+    runMockIndustryResearchWorkflow(input),
+    options,
+  );
 }
 
-export async function runPublic9RouterIndustryResearchWorkflow(
+export async function runPublicDeepSeekIndustryResearchWorkflow(
   input: ResearchWorkflowInput,
   options: {
     env: GlmRuntimeEnv;
     fetcher?: GlmFetch;
     publicFetcher?: PublicCrawlerFetch;
+    maxDiscoveredTargets?: number;
+    maxSitemapUrls?: number;
     now?: string;
   },
 ): Promise<ResearchWorkflowResult> {
   const publicResult = await runPublicIndustryResearchWorkflow(input, {
     fetcher: options.publicFetcher,
+    maxDiscoveredTargets: options.maxDiscoveredTargets,
+    maxSitemapUrls: options.maxSitemapUrls,
     now: options.now,
   });
   let structuredResult = publicResult;
@@ -123,7 +132,7 @@ export async function runPublic9RouterIndustryResearchWorkflow(
         extraction_jobs: publicResult.extraction_jobs.map((job) => ({
           ...job,
           status: "needs_review",
-          summary: `${job.summary} 9router 结构化抽取失败，已保留 public_web 原始资料：${message}`,
+          summary: `${job.summary} DeepSeek 结构化抽取失败，已保留 public_web 原始资料：${message}`,
         })),
       };
     }
@@ -134,8 +143,13 @@ export async function runPublic9RouterIndustryResearchWorkflow(
     reviewItems: createResearchReviewItems(structuredResult),
   };
 
-  return replaceReportWithGlm(reviewedResult, {
+  return replaceReportWithDeepSeek(reviewedResult, {
     ...options,
     fallbackToLocalReport: true,
   });
 }
+
+export const run9RouterIndustryResearchWorkflow =
+  runDeepSeekIndustryResearchWorkflow;
+export const runPublic9RouterIndustryResearchWorkflow =
+  runPublicDeepSeekIndustryResearchWorkflow;

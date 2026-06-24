@@ -41,6 +41,16 @@ const defaultMaxSearchQueries = 1;
 const defaultMaxSearchResultsPerQuery = 3;
 const defaultRequestTimeoutMs = 8_000;
 const defaultSearchEndpoint = "https://duckduckgo.com/html/";
+const trackingSearchParams = new Set([
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_term",
+  "utm_content",
+  "fbclid",
+  "gclid",
+  "msclkid",
+]);
 const ignoredSearchHostnames = new Set([
   "duckduckgo.com",
   "www.duckduckgo.com",
@@ -52,6 +62,24 @@ const ignoredSearchHostnames = new Set([
   "yahoo.com",
   "www.yahoo.com",
 ]);
+const ignoredCandidateHostnameParts = [
+  "facebook.",
+  "instagram.",
+  "tiktok.",
+  "youtube.",
+  "youtu.be",
+  "linkedin.",
+  "pinterest.",
+  "reddit.",
+  "twitter.",
+  "x.com",
+  "amazon.",
+  "ebay.",
+  "walmart.",
+  "target.",
+];
+const ignoredPathExtensionPattern =
+  /\.(avif|bmp|css|gif|ico|jpeg|jpg|js|mp3|mp4|pdf|png|svg|webp|zip)(?:$|\?)/i;
 
 function defaultFetcher(): PublicCrawlerFetch {
   return (input, init) => fetch(input, init);
@@ -118,6 +146,41 @@ function hostnameFor(value: string) {
   }
 }
 
+function normalizeDiscoveredUrl(value: string) {
+  try {
+    const url = new URL(value);
+    url.hash = "";
+
+    for (const param of trackingSearchParams) {
+      url.searchParams.delete(param);
+    }
+
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
+function isIgnoredCandidateHostname(hostname: string) {
+  return ignoredCandidateHostnameParts.some((part) => hostname.includes(part));
+}
+
+function isUsefulPublicCandidateUrl(value: string) {
+  const normalized = normalizeDiscoveredUrl(value);
+
+  if (!normalized || !isPublicHttpUrl(normalized)) {
+    return false;
+  }
+
+  const hostname = hostnameFor(normalized);
+
+  return (
+    !ignoredSearchHostnames.has(hostname) &&
+    !isIgnoredCandidateHostname(hostname) &&
+    !ignoredPathExtensionPattern.test(normalized)
+  );
+}
+
 function decodeSearchResultHref(value: string, baseUrl: string) {
   const absolute = absoluteUrl(cleanText(value), baseUrl);
 
@@ -139,8 +202,8 @@ function extractSearchResultUrls(body: string, baseUrl: string) {
   return unique(
     [...body.matchAll(/<a[^>]+href=["']([^"']+)["'][^>]*>/gi)]
       .map((match) => decodeSearchResultHref(match[1] ?? "", baseUrl))
-      .filter(isPublicHttpUrl)
-      .filter((url) => !ignoredSearchHostnames.has(hostnameFor(url))),
+      .map(normalizeDiscoveredUrl)
+      .filter(isUsefulPublicCandidateUrl),
   );
 }
 
@@ -309,16 +372,6 @@ function commonProbeUrls(seedUrl: string) {
     absoluteUrl("/robots.txt", origin),
     absoluteUrl("/sitemap.xml", origin),
     absoluteUrl("/sitemap_index.xml", origin),
-    absoluteUrl("/feed.xml", origin),
-    absoluteUrl("/rss.xml", origin),
-    absoluteUrl("/atom.xml", origin),
-    absoluteUrl("/blogs/news.atom", origin),
-    absoluteUrl("/blogs/news.rss", origin),
-    absoluteUrl("/collections", origin),
-    absoluteUrl("/collections/all", origin),
-    absoluteUrl("/collections/best-sellers", origin),
-    absoluteUrl("/products.json?limit=20", origin),
-    absoluteUrl("/blogs", origin),
   ];
 }
 
@@ -333,14 +386,16 @@ function extractRobotsSitemaps(body: string, baseUrl: string) {
 function extractXmlLocUrls(body: string) {
   return [...body.matchAll(/<loc[^>]*>([\s\S]*?)<\/loc>/gi)]
     .map((match) => cleanText(match[1] ?? ""))
-    .filter(isPublicHttpUrl);
+    .map(normalizeDiscoveredUrl)
+    .filter(isUsefulPublicCandidateUrl);
 }
 
 function extractFeedLinks(body: string, baseUrl: string) {
   return [...body.matchAll(/<link[^>]*>([\s\S]*?)<\/link>/gi)]
     .map((match) => cleanText(match[1] ?? ""))
     .map((url) => absoluteUrl(url, baseUrl))
-    .filter(isPublicHttpUrl);
+    .map(normalizeDiscoveredUrl)
+    .filter(isUsefulPublicCandidateUrl);
 }
 
 function extractHtmlDiscoveryLinks(body: string, baseUrl: string) {
@@ -354,7 +409,8 @@ function extractHtmlDiscoveryLinks(body: string, baseUrl: string) {
   return links
     .map((match) => match[1] ?? match[2] ?? "")
     .map((url) => absoluteUrl(url, baseUrl))
-    .filter(isPublicHttpUrl)
+    .map(normalizeDiscoveredUrl)
+    .filter(isUsefulPublicCandidateUrl)
     .filter((url) => {
       const normalizedUrl = url.toLowerCase();
 
@@ -368,6 +424,49 @@ function extractHtmlDiscoveryLinks(body: string, baseUrl: string) {
         normalizedUrl.includes("/blog")
       );
     });
+}
+
+function discoveryRank(url: string) {
+  switch (inferTargetKind(url)) {
+    case "homepage":
+      return 0;
+    case "robots":
+      return 1;
+    case "sitemap":
+      return 2;
+    case "product":
+      return 3;
+    case "collection":
+      return 4;
+    case "blog":
+      return 5;
+    case "rss":
+      return 6;
+    default:
+      return 7;
+  }
+}
+
+function formatKindMix(urls: string[]) {
+  const counts = urls.reduce<Partial<Record<CrawlTargetKind, number>>>(
+    (summary, url) => {
+      const kind = inferTargetKind(url);
+      summary[kind] = (summary[kind] ?? 0) + 1;
+      return summary;
+    },
+    {},
+  );
+  const orderedKinds: CrawlTargetKind[] = [
+    "homepage",
+    "robots",
+    "sitemap",
+    "product",
+    "collection",
+    "blog",
+    "rss",
+  ];
+
+  return orderedKinds.map((kind) => `${kind}:${counts[kind] ?? 0}`).join(" / ");
 }
 
 async function fetchPublicUrl(
@@ -452,7 +551,7 @@ async function discoverSearchResultUrls(
 
   notes.push(
     uniqueDiscoveredUrls.length > 0
-      ? `public_search_discovery 自动发现 ${uniqueDiscoveredUrls.length} 个候选公开 URL，后续会探测 robots、sitemap、RSS 和 Shopify 公开路径。`
+      ? `public_search_discovery 自动发现 ${uniqueDiscoveredUrls.length} 个候选公开 URL，后续只保守探测公开首页、robots 和 sitemap；RSS、collection、product、blog 仅从页面或 sitemap 真实链接进入采集。`
       : "public_search_discovery 未发现可用候选 URL；需要补充种子 URL 或接入更稳定的搜索 API。",
   );
 
@@ -523,7 +622,9 @@ export async function discoverPublicSources(
     options,
   );
   const existingTargets = new Set(
-    crawlPlan.targets.map((target) => target.target),
+    crawlPlan.targets
+      .map((target) => normalizeDiscoveredUrl(target.target) || target.target)
+      .filter(Boolean),
   );
   const seedUrls = unique(
     [
@@ -531,8 +632,10 @@ export async function discoverPublicSources(
       ...searchDiscovery.urls,
       ...crawlPlan.targets
         .map((target) => target.target)
-        .filter(isPublicHttpUrl),
-    ].filter(isPublicHttpUrl),
+        .filter(isUsefulPublicCandidateUrl),
+    ]
+      .map(normalizeDiscoveredUrl)
+      .filter(isUsefulPublicCandidateUrl),
   );
   const probeUrls = unique(seedUrls.flatMap(commonProbeUrls)).slice(
     0,
@@ -540,15 +643,19 @@ export async function discoverPublicSources(
   );
   const discoveredUrls: string[] = [];
   const notes: string[] = [];
+  let reachableProbeCount = 0;
+  let failedProbeCount = 0;
 
   for (const url of probeUrls) {
     const result = await fetchPublicUrl(url, fetcher, requestTimeoutMs);
 
     if (!result.ok) {
+      failedProbeCount += 1;
       continue;
     }
 
-    discoveredUrls.push(result.url);
+    reachableProbeCount += 1;
+    discoveredUrls.push(normalizeDiscoveredUrl(result.url));
 
     if (result.url.endsWith("/robots.txt")) {
       discoveredUrls.push(...extractRobotsSitemaps(result.body, result.url));
@@ -579,9 +686,17 @@ export async function discoverPublicSources(
     }
   }
 
-  const normalizedDiscoveredUrls = unique(discoveredUrls)
-    .filter(isPublicHttpUrl)
+  const normalizedDiscoveredUrls = unique(
+    discoveredUrls.map(normalizeDiscoveredUrl),
+  )
+    .filter(isUsefulPublicCandidateUrl)
     .filter((url) => !existingTargets.has(url))
+    .sort(
+      (left, right) =>
+        discoveryRank(left) - discoveryRank(right) ||
+        left.length - right.length ||
+        left.localeCompare(right),
+    )
     .slice(0, maxDiscoveredTargets);
   const candidates: SourceDiscoveryCandidate[] = [];
   const targets: CrawlPlanTarget[] = [];
@@ -604,8 +719,8 @@ export async function discoverPublicSources(
 
   notes.push(
     normalizedDiscoveredUrls.length > 0
-      ? `public_source_discovery 自动发现 ${normalizedDiscoveredUrls.length} 个公开 URL，已合并到 public_web crawl plan。`
-      : "public_source_discovery 未发现额外公开 URL，仅保留用户种子 URL 和基础采集计划。",
+      ? `public_source_discovery 探测 ${probeUrls.length} 个保守入口，可访问 ${reachableProbeCount} 个，失败 ${failedProbeCount} 个；自动发现 ${normalizedDiscoveredUrls.length} 个公开 URL 并按质量优先级合并到 crawl plan（${formatKindMix(normalizedDiscoveredUrls)}）。`
+      : `public_source_discovery 探测 ${probeUrls.length} 个保守入口，可访问 ${reachableProbeCount} 个，失败 ${failedProbeCount} 个；未发现额外公开 URL，仅保留用户种子 URL；未把未验证的 RSS、Shopify collection 或产品 JSON 猜测路径加入 crawl plan。`,
   );
 
   return {

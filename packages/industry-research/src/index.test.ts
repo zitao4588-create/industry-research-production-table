@@ -1,20 +1,22 @@
 import { describe, expect, it } from "vitest";
 import type {
-  NineRouterFetch,
+  DeepSeekFetch,
   PublicCrawlerFetch,
   ResearchWorkflowInput,
 } from "./index";
 import {
-  call9RouterChatCompletion,
+  callDeepSeekChatCompletion,
   canUsePublicCrawlerTarget,
+  createIndustryResearchDeliveryArtifacts,
+  createIndustryResearchLocalJsonRepository,
   discoverPublicSources,
   ecommerceCompetitorResearchTemplate,
   generateResearchMarkdownReport,
-  resolve9RouterConfig,
-  run9RouterIndustryResearchWorkflow,
+  resolveDeepSeekConfig,
+  runDeepSeekIndustryResearchWorkflow,
   runMockIndustryResearchWorkflow,
-  runPublic9RouterIndustryResearchWorkflow,
   runPublicCrawler,
+  runPublicDeepSeekIndustryResearchWorkflow,
   runPublicIndustryResearchWorkflow,
 } from "./index";
 
@@ -92,28 +94,128 @@ describe("industry research mock workflow", () => {
     expect(report).toContain("总分");
     expect(result.research_reports[0]?.content).toContain("## Mock 采集结果");
   });
+
+  it("packages a run into delivery artifacts with evidence-backed sections", () => {
+    const result = runMockIndustryResearchWorkflow(input);
+    const artifacts = createIndustryResearchDeliveryArtifacts({
+      input,
+      result,
+      runId: "delivery-test-run",
+      startedAt: "2026-06-17T00:00:00.000Z",
+      finishedAt: "2026-06-17T00:00:01.500Z",
+    });
+
+    expect(artifacts.raw_documents.length).toBeGreaterThan(0);
+    expect(artifacts.databases.source_database.length).toBeGreaterThan(0);
+    expect(artifacts.databases.evidence.length).toBeGreaterThan(0);
+    expect(artifacts.review_items.summary.needs_review).toBeGreaterThan(0);
+    expect(artifacts.run_log.durationMs).toBe(1500);
+    expect(artifacts.run_log.counts.rawDocuments).toBe(
+      result.raw_documents.length,
+    );
+    expect(artifacts.run_log.crawlFailureSummary.total).toBe(0);
+    expect(artifacts.manifest.packageVersion).toBe("v0.3");
+    expect(artifacts.manifest.runId).toBe("delivery-test-run");
+    expect(artifacts.manifest.files.map((file) => file.fileName)).toEqual([
+      "input.json",
+      "raw_documents.json",
+      "databases.json",
+      "review_items.json",
+      "report.md",
+      "reviewed_report.md",
+      "run_log.json",
+      "manifest.json",
+    ]);
+    expect(artifacts.manifest.runDetailApiPath).toBe(
+      "/api/industry-research/runs/delivery-test-run",
+    );
+    expect(artifacts.manifest.downloadPackageApiPath).toBe(
+      "/api/industry-research/runs/delivery-test-run/download",
+    );
+    expect(artifacts.reportMarkdown).toContain("## 已确认发现");
+    expect(artifacts.reportMarkdown).toContain("## 证据不足但可能成立的发现");
+    expect(artifacts.reportMarkdown).toContain("## 阻塞项");
+    expect(artifacts.reportMarkdown).toContain("## 剩余不确定性");
+    expect(artifacts.reportMarkdown).toContain("## 证据索引");
+    expect(artifacts.reportMarkdown).toContain("URL：");
+    expect(artifacts.reportMarkdown).toContain("needs_review");
+  });
+
+  it("stores the minimum v0.3 persistence boundary in a local JSON repository", async () => {
+    const result = runMockIndustryResearchWorkflow(input);
+    const artifacts = createIndustryResearchDeliveryArtifacts({
+      input,
+      result,
+      runId: "repository-test-run",
+      startedAt: "2026-06-17T00:00:00.000Z",
+      finishedAt: "2026-06-17T00:00:02.000Z",
+    });
+    const repository = createIndustryResearchLocalJsonRepository();
+
+    await repository.upsertRun({
+      runId: artifacts.run_log.runId,
+      status: "ready_for_review",
+      createdAt: artifacts.run_log.startedAt,
+      updatedAt: artifacts.run_log.finishedAt,
+      input,
+      manifest: artifacts.manifest,
+    });
+    await repository.saveRawDocuments(
+      artifacts.run_log.runId,
+      artifacts.raw_documents,
+    );
+    await repository.saveReviewItems(
+      artifacts.run_log.runId,
+      artifacts.review_items.items,
+    );
+    await repository.saveReports({
+      runId: artifacts.run_log.runId,
+      reportMarkdown: artifacts.reportMarkdown,
+      reviewedReportMarkdown: artifacts.reviewedReportMarkdown,
+      updatedAt: artifacts.run_log.finishedAt,
+    });
+    await repository.saveRunLog(artifacts.run_log.runId, artifacts.run_log);
+
+    const snapshot = await repository.snapshot();
+
+    expect(await repository.getRun("repository-test-run")).toMatchObject({
+      runId: "repository-test-run",
+      status: "ready_for_review",
+    });
+    expect(snapshot.runs).toHaveLength(1);
+    expect(snapshot.rawDocuments[0]?.documents.length).toBe(
+      artifacts.raw_documents.length,
+    );
+    expect(snapshot.reviewItems[0]?.items.length).toBe(
+      artifacts.review_items.items.length,
+    );
+    expect(snapshot.reports[0]?.reviewedReportMarkdown).toContain(
+      "已审核版行业竞品研究轻量版报告",
+    );
+    expect(snapshot.runLogs[0]?.runLog.runId).toBe("repository-test-run");
+  });
 });
 
-describe("industry research 9router workflow", () => {
-  it("resolves 9router config from the Horizon documents env shape", () => {
-    const config = resolve9RouterConfig({
-      OPENAI_API_KEY: "test-key",
-      HORIZON_AI_BASE_URL: "http://localhost:20128/v1",
+describe("industry research DeepSeek workflow", () => {
+  it("resolves DeepSeek config from the DeepSeek env shape", () => {
+    const config = resolveDeepSeekConfig({
+      AGENT_FACTORY_DEEPSEEK_API_KEY: "test-key",
+      AGENT_FACTORY_DEEPSEEK_BASE_URL: "https://api.deepseek.com",
     });
 
     expect(config).toEqual({
       apiKey: "test-key",
-      baseUrl: "http://localhost:20128/v1",
-      model: "kr/claude-sonnet-4.5",
+      baseUrl: "https://api.deepseek.com",
+      model: "deepseek-v4-flash",
     });
   });
 
-  it("calls 9router chat completions without leaking the API key into the body", async () => {
+  it("calls DeepSeek chat completions without leaking the API key into the body", async () => {
     const calls: Array<{
       input: string;
-      init: Parameters<NineRouterFetch>[1];
+      init: Parameters<DeepSeekFetch>[1];
     }> = [];
-    const fakeFetch: NineRouterFetch = async (input, init) => {
+    const fakeFetch: DeepSeekFetch = async (input, init) => {
       calls.push({ input, init });
 
       return {
@@ -121,61 +223,61 @@ describe("industry research 9router workflow", () => {
         status: 200,
         text: async () =>
           JSON.stringify({
-            choices: [{ message: { content: "# 9router 报告" } }],
+            choices: [{ message: { content: "# DeepSeek 报告" } }],
           }),
       };
     };
 
-    const result = await call9RouterChatCompletion({
+    const result = await callDeepSeekChatCompletion({
       env: {
-        AGENT_FACTORY_9ROUTER_API_KEY: "secret-key",
-        AGENT_FACTORY_9ROUTER_BASE_URL: "https://example.test/v1",
-        AGENT_FACTORY_9ROUTER_MODEL: "kr/claude-sonnet-4.5",
+        AGENT_FACTORY_DEEPSEEK_API_KEY: "secret-key",
+        AGENT_FACTORY_DEEPSEEK_BASE_URL: "https://example.test",
+        AGENT_FACTORY_DEEPSEEK_MODEL: "deepseek-v4-flash",
       },
       fetcher: fakeFetch,
       messages: [{ role: "user", content: "生成报告" }],
     });
 
     expect(result).toEqual({
-      content: "# 9router 报告",
-      model: "kr/claude-sonnet-4.5",
+      content: "# DeepSeek 报告",
+      model: "deepseek-v4-flash",
     });
-    expect(calls[0]?.input).toBe("https://example.test/v1/chat/completions");
+    expect(calls[0]?.input).toBe("https://example.test/chat/completions");
     expect(calls[0]?.init.headers.Authorization).toBe("Bearer secret-key");
     expect(calls[0]?.init.body).not.toContain("secret-key");
-    expect(calls[0]?.init.body).toContain('"model":"kr/claude-sonnet-4.5"');
+    expect(calls[0]?.init.body).toContain('"model":"deepseek-v4-flash"');
     expect(calls[0]?.init.body).not.toContain("thinking");
   });
 
-  it("parses 9router SSE chat completion chunks", async () => {
-    const fakeFetch: NineRouterFetch = async () => ({
+  it("parses OpenAI-compatible SSE chat completion chunks", async () => {
+    const fakeFetch: DeepSeekFetch = async () => ({
       ok: true,
       status: 200,
       text: async () =>
         [
           'data: {"choices":[{"delta":{"role":"assistant","content":"# 报告"}}]}',
-          'data: {"choices":[{"delta":{"content":"\\n\\nKiro 路由可用。"}}]}',
+          'data: {"choices":[{"delta":{"content":"\\n\\nDeepSeek 路由可用。"}}]}',
           "data: [DONE]",
         ].join("\n\n"),
     });
 
-    const result = await call9RouterChatCompletion({
+    const result = await callDeepSeekChatCompletion({
       env: {
-        AGENT_FACTORY_9ROUTER_API_KEY: "secret-key",
-        AGENT_FACTORY_9ROUTER_MODEL: "kr/claude-sonnet-4.5",
+        AGENT_FACTORY_DEEPSEEK_API_KEY: "secret-key",
+        AGENT_FACTORY_DEEPSEEK_MODEL: "deepseek-v4-flash",
       },
       fetcher: fakeFetch,
       messages: [{ role: "user", content: "生成报告" }],
     });
 
     expect(result).toEqual({
-      content: "# 报告\n\nKiro 路由可用。",
-      model: "kr/claude-sonnet-4.5",
+      content: "# 报告\n\nDeepSeek 路由可用。",
+      model: "deepseek-v4-flash",
     });
   });
 
   it("redacts provider error messages before surfacing them", async () => {
-    const fakeFetch: NineRouterFetch = async () => ({
+    const fakeFetch: DeepSeekFetch = async () => ({
       ok: false,
       status: 401,
       text: async () =>
@@ -186,9 +288,9 @@ describe("industry research 9router workflow", () => {
         }),
     });
     await expect(
-      call9RouterChatCompletion({
+      callDeepSeekChatCompletion({
         env: {
-          AGENT_FACTORY_9ROUTER_API_KEY: "secret-key",
+          AGENT_FACTORY_DEEPSEEK_API_KEY: "secret-key",
         },
         fetcher: fakeFetch,
         messages: [{ role: "user", content: "生成报告" }],
@@ -196,8 +298,8 @@ describe("industry research 9router workflow", () => {
     ).rejects.toThrow("api key: [redacted]");
   });
 
-  it("uses 9router to replace only the markdown report while keeping database outputs", async () => {
-    const fakeFetch: NineRouterFetch = async () => ({
+  it("uses DeepSeek to replace only the markdown report while keeping database outputs", async () => {
+    const fakeFetch: DeepSeekFetch = async () => ({
       ok: true,
       status: 200,
       text: async () =>
@@ -205,17 +307,17 @@ describe("industry research 9router workflow", () => {
           choices: [
             {
               message: {
-                content: "# 9router 行业研究报告\n\n## 数据库建设结果",
+                content: "# DeepSeek 行业研究报告\n\n## 数据库建设结果",
               },
             },
           ],
         }),
     });
 
-    const result = await run9RouterIndustryResearchWorkflow(input, {
+    const result = await runDeepSeekIndustryResearchWorkflow(input, {
       env: {
-        AGENT_FACTORY_9ROUTER_API_KEY: "test-key",
-        AGENT_FACTORY_9ROUTER_MODEL: "kr/claude-sonnet-4.5",
+        AGENT_FACTORY_DEEPSEEK_API_KEY: "test-key",
+        AGENT_FACTORY_DEEPSEEK_MODEL: "deepseek-v4-flash",
       },
       fetcher: fakeFetch,
     });
@@ -223,15 +325,15 @@ describe("industry research 9router workflow", () => {
     expect(result.source_database.length).toBeGreaterThan(0);
     expect(result.raw_documents.length).toBeGreaterThan(0);
     expect(result.research_reports[0]?.title).toContain(
-      "9router Markdown 报告",
+      "DeepSeek Markdown 报告",
     );
     expect(result.research_reports[0]?.content).toContain(
-      "9router 行业研究报告",
+      "DeepSeek 行业研究报告",
     );
   });
 
-  it("uses 9router to extract structured data from public raw documents before report generation", async () => {
-    let nineRouterCallCount = 0;
+  it("uses DeepSeek to extract structured data from public raw documents before report generation", async () => {
+    let deepSeekCallCount = 0;
     const fakePublicFetch: PublicCrawlerFetch = async () => ({
       ok: true,
       status: 200,
@@ -250,8 +352,8 @@ describe("industry research 9router workflow", () => {
           name.toLowerCase() === "content-type" ? "text/html" : null,
       },
     });
-    const fakeNineRouterFetch: NineRouterFetch = async () => {
-      nineRouterCallCount += 1;
+    const fakeDeepSeekFetch: DeepSeekFetch = async () => {
+      deepSeekCallCount += 1;
 
       return {
         ok: true,
@@ -262,7 +364,7 @@ describe("industry research 9router workflow", () => {
               {
                 message: {
                   content:
-                    nineRouterCallCount === 1
+                    deepSeekCallCount === 1
                       ? JSON.stringify({
                           competitors: [
                             {
@@ -324,7 +426,7 @@ describe("industry research 9router workflow", () => {
                             },
                           ],
                         })
-                      : "# 9router 公开采集结构化报告\n\n## 竞品拆解",
+                      : "# DeepSeek 公开采集结构化报告\n\n## 竞品拆解",
                 },
               },
             ],
@@ -332,35 +434,35 @@ describe("industry research 9router workflow", () => {
       };
     };
 
-    const result = await runPublic9RouterIndustryResearchWorkflow(
+    const result = await runPublicDeepSeekIndustryResearchWorkflow(
       {
         ...input,
         urls: ["https://brand.example"],
       },
       {
         env: {
-          AGENT_FACTORY_9ROUTER_API_KEY: "test-key",
-          AGENT_FACTORY_9ROUTER_MODEL: "kr/claude-sonnet-4.5",
+          AGENT_FACTORY_DEEPSEEK_API_KEY: "test-key",
+          AGENT_FACTORY_DEEPSEEK_MODEL: "deepseek-v4-flash",
         },
-        fetcher: fakeNineRouterFetch,
+        fetcher: fakeDeepSeekFetch,
         publicFetcher: fakePublicFetch,
       },
     );
 
-    expect(nineRouterCallCount).toBe(2);
+    expect(deepSeekCallCount).toBe(2);
     expect(result.crawl_plans[0]?.mode).toBe("public_web");
     expect(result.competitors[0]?.name).toBe("GutPet Labs");
     expect(result.product_signals[0]?.signal).toContain("订阅型益生菌套装");
     expect(result.pain_points[0]?.theme).toBe("肠胃敏感");
     expect(result.opportunities[0]?.title).toBe("敏感肠胃入门套装");
-    expect(result.reviewItems[0]?.targetId).toBe("glm-competitor-1");
+    expect(result.reviewItems[0]?.targetId).toBe("deepseek-competitor-1");
     expect(result.research_reports[0]?.content).toContain(
-      "9router 公开采集结构化报告",
+      "DeepSeek 公开采集结构化报告",
     );
   });
 
-  it("keeps public crawl results when 9router report generation fails", async () => {
-    let nineRouterCallCount = 0;
+  it("keeps public crawl results when DeepSeek report generation fails", async () => {
+    let deepSeekCallCount = 0;
     const fakePublicFetch: PublicCrawlerFetch = async () => ({
       ok: true,
       status: 200,
@@ -378,8 +480,8 @@ describe("industry research 9router workflow", () => {
           name.toLowerCase() === "content-type" ? "text/html" : null,
       },
     });
-    const fakeNineRouterFetch: NineRouterFetch = async () => {
-      nineRouterCallCount += 1;
+    const fakeDeepSeekFetch: DeepSeekFetch = async () => {
+      deepSeekCallCount += 1;
 
       return {
         ok: true,
@@ -390,7 +492,7 @@ describe("industry research 9router workflow", () => {
               {
                 message: {
                   content:
-                    nineRouterCallCount === 1
+                    deepSeekCallCount === 1
                       ? JSON.stringify({
                           competitors: [
                             {
@@ -417,27 +519,27 @@ describe("industry research 9router workflow", () => {
       };
     };
 
-    const result = await runPublic9RouterIndustryResearchWorkflow(
+    const result = await runPublicDeepSeekIndustryResearchWorkflow(
       {
         ...input,
         urls: ["https://brand.example"],
       },
       {
         env: {
-          AGENT_FACTORY_9ROUTER_API_KEY: "test-key",
-          AGENT_FACTORY_9ROUTER_MODEL: "kr/claude-sonnet-4.5",
+          AGENT_FACTORY_DEEPSEEK_API_KEY: "test-key",
+          AGENT_FACTORY_DEEPSEEK_MODEL: "deepseek-v4-flash",
         },
-        fetcher: fakeNineRouterFetch,
+        fetcher: fakeDeepSeekFetch,
         publicFetcher: fakePublicFetch,
       },
     );
 
-    expect(nineRouterCallCount).toBe(2);
+    expect(deepSeekCallCount).toBe(2);
     expect(result.raw_documents.length).toBeGreaterThan(0);
     expect(result.competitors[0]?.name).toBe("GutPet Labs");
     expect(result.research_reports[0]?.title).toContain("本地回退");
     expect(result.research_reports[0]?.content).toContain(
-      "9router 报告节点暂时失败",
+      "DeepSeek 报告节点暂时失败",
     );
     expect(result.research_reports[0]?.content).toContain("## 公开采集结果");
   });
@@ -570,6 +672,7 @@ describe("industry research public crawl adapter", () => {
 
     const result = await runPublicCrawler(projectId, crawlPlan, sources, {
       fetcher: fakeFetch,
+      input,
     });
 
     expect(result.crawl_jobs.every((job) => job.status === "done")).toBe(true);
@@ -585,6 +688,11 @@ describe("industry research public crawl adapter", () => {
     expect(result.raw_documents[2]?.extractedText).toContain(
       "https://brand.example/products/a",
     );
+    expect(result.raw_documents[0]?.sourceQuality.sourceType).toBe(
+      "official_site",
+    );
+    expect(result.raw_documents[0]?.sourceQuality.acceptedForReport).toBe(true);
+    expect(result.raw_documents[2]?.sourceQuality.sourceType).toBe("sitemap");
     expect(result.extraction_jobs).toHaveLength(3);
   });
 
@@ -617,6 +725,9 @@ describe("industry research public crawl adapter", () => {
     expect(fetchCalls).toHaveLength(0);
     expect(result.crawl_jobs[0]?.status).toBe("failed");
     expect(result.crawl_runs[0]?.documentsCreated).toBe(0);
+    expect(result.crawl_runs[0]?.summary).toContain(
+      "UNSUPPORTED_PUBLIC_TARGET",
+    );
     expect(result.raw_documents).toHaveLength(0);
   });
 });
@@ -642,7 +753,9 @@ describe("industry research public source discovery", () => {
         },
       ],
     };
+    const fetchCalls: string[] = [];
     const fakeFetch: PublicCrawlerFetch = async (url) => {
+      fetchCalls.push(String(url));
       const fixtures: Record<string, { body: string; contentType: string }> = {
         "https://brand.example/": {
           body: `
@@ -701,12 +814,24 @@ describe("industry research public source discovery", () => {
           };
     };
 
-    const result = await discoverPublicSources(projectId, input, crawlPlan, {
-      fetcher: fakeFetch,
-    });
+    const result = await discoverPublicSources(
+      projectId,
+      { ...input, urls: ["https://brand.example/"] },
+      crawlPlan,
+      {
+        fetcher: fakeFetch,
+      },
+    );
     const kinds = result.targets.map((target) => target.kind);
     const targetUrls = result.targets.map((target) => target.target);
 
+    expect(fetchCalls).not.toContain("https://brand.example/rss.xml");
+    expect(fetchCalls).not.toContain(
+      "https://brand.example/products.json?limit=20",
+    );
+    expect(fetchCalls).not.toContain(
+      "https://brand.example/collections/best-sellers",
+    );
     expect(result.candidates.every((candidate) => candidate.status)).toBe(true);
     expect(kinds).toContain("robots");
     expect(kinds).toContain("sitemap");
@@ -770,6 +895,13 @@ describe("industry research public workflow", () => {
           `,
           contentType: "text/html",
         },
+        "https://gutpet.example/blogs/guides/probiotic-guide": {
+          body: `
+            <html><head><title>Probiotic Guide</title></head>
+            <body><h1>Probiotic Guide</h1><p>Education content for sensitive stomach support.</p></body></html>
+          `,
+          contentType: "text/html",
+        },
       };
       const fixture = bodyByUrl[urlText];
 
@@ -819,6 +951,11 @@ describe("industry research public workflow", () => {
     expect(targets).toContain("https://gutpet.example/");
     expect(targets).toContain("https://gutpet.example/sitemap.xml");
     expect(targets).toContain("https://gutpet.example/products/starter-kit");
+    expect(targets?.some((target) => target.startsWith("mock://"))).toBe(false);
+    expect(targets).not.toContain(
+      "https://gutpet.example/collections/best-sellers",
+    );
+    expect(result.crawl_runs.every((run) => run.status === "done")).toBe(true);
     expect(
       result.raw_documents.some((document) =>
         document.extractedText.includes("GutPet Labs"),
@@ -852,6 +989,20 @@ describe("industry research public workflow", () => {
             </urlset>
           `,
           contentType: "application/xml",
+        },
+        "https://brand.example/products/starter-kit": {
+          body: `
+            <html><head><title>Starter Kit</title></head>
+            <body><h1>Starter Kit</h1><p>Subscription starter kit and bundle.</p></body></html>
+          `,
+          contentType: "text/html",
+        },
+        "https://brand.example/blog/comparison-guide": {
+          body: `
+            <html><head><title>Comparison Guide</title></head>
+            <body><h1>Comparison Guide</h1><p>Guide content for buyer education.</p></body></html>
+          `,
+          contentType: "text/html",
         },
       };
       const fixture = bodyByUrl[String(url)];
@@ -890,6 +1041,7 @@ describe("industry research public workflow", () => {
 
     expect(result.crawl_plans[0]?.mode).toBe("public_web");
     expect(result.raw_documents.length).toBeGreaterThanOrEqual(3);
+    expect(result.crawl_runs.every((run) => run.status === "done")).toBe(true);
     expect(result.raw_documents[0]?.extractedText).toContain("Best Sellers");
     expect(
       result.source_discovery_plans[0]?.candidates.some(

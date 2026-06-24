@@ -6,6 +6,26 @@ export {
 } from "./collection-plan";
 export { buildIndustryResearchDatabases } from "./database-builder";
 export type {
+  IndustryResearchCrawlFailureReason,
+  IndustryResearchDeliveryArtifacts,
+  IndustryResearchDeliveryDatabases,
+  IndustryResearchDeliveryPackageFile,
+  IndustryResearchDeliveryPackageFileKind,
+  IndustryResearchDeliveryPackageManifest,
+  IndustryResearchDeliveryRunMode,
+  IndustryResearchRunLog,
+} from "./delivery-run";
+export {
+  createIndustryResearchDeliveryArtifacts,
+  createIndustryResearchDeliveryManifest,
+  createIndustryResearchDeliveryReport,
+  createReviewedIndustryResearchReport,
+  industryResearchDeliveryPackageFiles,
+} from "./delivery-run";
+export type {
+  DeepSeekConfig,
+  DeepSeekFetch,
+  DeepSeekRuntimeEnv,
   GlmChatMessage,
   NineRouterConfig,
   NineRouterFetch,
@@ -13,11 +33,16 @@ export type {
 } from "./glm-client";
 export {
   call9RouterChatCompletion,
+  callDeepSeekChatCompletion,
   create9RouterReportMessages,
+  createDeepSeekReportMessages,
   extractGlmText,
   generate9RouterResearchMarkdownReport,
+  generateDeepSeekResearchMarkdownReport,
   has9RouterConfig,
+  hasDeepSeekConfig,
   resolve9RouterConfig,
+  resolveDeepSeekConfig,
 } from "./glm-client";
 export type { GlmStructuredExtraction } from "./glm-extraction";
 export {
@@ -28,7 +53,9 @@ export {
 } from "./glm-extraction";
 export {
   run9RouterIndustryResearchWorkflow,
+  runDeepSeekIndustryResearchWorkflow,
   runPublic9RouterIndustryResearchWorkflow,
+  runPublicDeepSeekIndustryResearchWorkflow,
 } from "./glm-workflow";
 export {
   createResearchDocumentsFromRawDocuments,
@@ -42,6 +69,13 @@ export {
   createResearchReviewItems,
   runMockIndustryResearchWorkflow,
 } from "./mock-workflow";
+export type {
+  IndustryResearchReportRecord,
+  IndustryResearchRepository,
+  IndustryResearchRepositorySnapshot,
+  IndustryResearchRunRecord,
+} from "./persistence";
+export { createIndustryResearchLocalJsonRepository } from "./persistence";
 export type {
   PublicCrawlAdapterOptions,
   PublicCrawlAdapterResult,
@@ -59,6 +93,11 @@ export type {
 export { discoverPublicSources } from "./public-source-discovery";
 export { runPublicIndustryResearchWorkflow } from "./public-workflow";
 export { generateResearchMarkdownReport } from "./report";
+export {
+  assessSourceQuality,
+  type SourceQualitySummary,
+  summarizeSourceQuality,
+} from "./source-quality";
 export {
   ecommerceCompetitorResearchTemplate,
   findIndustryResearchTemplate,
@@ -105,6 +144,9 @@ export type {
   SourceDiscoveryCandidate,
   SourceDiscoveryMethod,
   SourceDiscoveryPlan,
+  SourceQuality,
+  SourceQualityLevel,
+  SourceQualityType,
   WebsiteStructureDatabaseEntry,
   WeeklyIntelligenceReportEntry,
 } from "./types";
