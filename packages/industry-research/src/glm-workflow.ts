@@ -12,7 +12,10 @@ import {
   runMockIndustryResearchWorkflow,
 } from "./mock-workflow";
 import type { PublicCrawlerFetch } from "./public-crawl-adapter";
-import { runPublicIndustryResearchWorkflow } from "./public-workflow";
+import {
+  runPublicIndustryResearchWorkflow,
+  type WorkflowProgressHandler,
+} from "./public-workflow";
 import { generateResearchMarkdownReport } from "./report";
 import type { ResearchWorkflowInput, ResearchWorkflowResult } from "./types";
 
@@ -88,12 +91,22 @@ export async function runDeepSeekIndustryResearchWorkflow(
   options: {
     env: GlmRuntimeEnv;
     fetcher?: GlmFetch;
+    onProgress?: WorkflowProgressHandler;
   },
 ): Promise<ResearchWorkflowResult> {
-  return replaceReportWithDeepSeek(
-    runMockIndustryResearchWorkflow(input),
-    options,
-  );
+  // 纯 deepseek = 本地 mock 数据集(同步) + LLM 报告。mock 部分瞬时,逐阶段标 done;
+  // 报告阶段包住真实 LLM 调用,把唯一的耗时段映射成进度。
+  const emit = options.onProgress ?? (() => {});
+  const ts = () => new Date().toISOString();
+  emit({ type: "phase", phase: "discover", status: "start", at: ts() });
+  const base = runMockIndustryResearchWorkflow(input);
+  emit({ type: "phase", phase: "discover", status: "done", at: ts() });
+  emit({ type: "phase", phase: "crawl", status: "done", at: ts() });
+  emit({ type: "phase", phase: "build", status: "done", at: ts() });
+  emit({ type: "phase", phase: "report", status: "start", at: ts() });
+  const result = await replaceReportWithDeepSeek(base, options);
+  emit({ type: "phase", phase: "report", status: "done", at: ts() });
+  return result;
 }
 
 export async function runPublicDeepSeekIndustryResearchWorkflow(
@@ -105,14 +118,26 @@ export async function runPublicDeepSeekIndustryResearchWorkflow(
     maxDiscoveredTargets?: number;
     maxSitemapUrls?: number;
     now?: string;
+    onProgress?: WorkflowProgressHandler;
   },
 ): Promise<ResearchWorkflowResult> {
+  const emit = options.onProgress ?? (() => {});
+  const ts = () => new Date().toISOString();
   const publicResult = await runPublicIndustryResearchWorkflow(input, {
     fetcher: options.publicFetcher,
     maxDiscoveredTargets: options.maxDiscoveredTargets,
     maxSitemapUrls: options.maxSitemapUrls,
     now: options.now,
+    // 内层 public 的 discover/crawl/build 直接透传;report 阶段抑制掉,
+    // 因为 public+deepseek 的真正报告由下面的 LLM 抽取 + 生成承担。
+    onProgress: options.onProgress
+      ? (event) => {
+          if (event.type === "phase" && event.phase === "report") return;
+          emit(event);
+        }
+      : undefined,
   });
+  emit({ type: "phase", phase: "report", status: "start", at: ts() });
   let structuredResult = publicResult;
 
   if (publicResult.raw_documents.length > 0) {
@@ -143,10 +168,12 @@ export async function runPublicDeepSeekIndustryResearchWorkflow(
     reviewItems: createResearchReviewItems(structuredResult),
   };
 
-  return replaceReportWithDeepSeek(reviewedResult, {
+  const finalResult = await replaceReportWithDeepSeek(reviewedResult, {
     ...options,
     fallbackToLocalReport: true,
   });
+  emit({ type: "phase", phase: "report", status: "done", at: ts() });
+  return finalResult;
 }
 
 export const run9RouterIndustryResearchWorkflow =

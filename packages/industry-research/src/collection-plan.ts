@@ -168,6 +168,43 @@ export function generateSourceDiscoveryPlan(
       },
       projectId,
     ),
+    candidate(
+      {
+        id: "discovery-marketplace-reviews",
+        sourceType: "crawler",
+        method: "search_query",
+        title: "公开 marketplace 评论与榜单",
+        seed: `${input.category} amazon best sellers reviews`,
+        priority: "medium",
+        expectedDatabases: [
+          "competitor_database",
+          "product_database",
+          "pain_point_database",
+          "opportunity_database",
+        ],
+        complianceBoundary:
+          "只读公开榜单与评论摘要，不抓私人数据、不绕过登录或速率限制。",
+      },
+      projectId,
+    ),
+    candidate(
+      {
+        id: "discovery-community-signal",
+        sourceType: "crawler",
+        method: "search_query",
+        title: "公开社区与短视频话题信号",
+        seed: `${input.category} reddit tiktok pain points trends`,
+        priority: "low",
+        expectedDatabases: [
+          "pain_point_database",
+          "content_database",
+          "keyword_database",
+        ],
+        complianceBoundary:
+          "只读公开话题与互动信号，不抓个人身份信息，不绕过平台条款。",
+      },
+      projectId,
+    ),
   ];
 
   return {
@@ -298,6 +335,55 @@ export function generateCrawlPlan(
             "keyword_database",
             "pain_point_database",
             "opportunity_database",
+          ],
+        },
+        projectId,
+      ),
+      target(
+        {
+          id: "crawl-target-marketplace-reviews",
+          candidateId: "discovery-marketplace-reviews",
+          kind: "search_results",
+          target: `mock://marketplace?q=${encodeURIComponent(input.category)}`,
+          reason: "读取公开榜单与评论摘要，沉淀竞品、产品和痛点信号。",
+          maxPages: 5,
+          databaseTargets: [
+            "competitor_database",
+            "product_database",
+            "pain_point_database",
+            "opportunity_database",
+          ],
+        },
+        projectId,
+      ),
+      target(
+        {
+          id: "crawl-target-product-page",
+          candidateId: "discovery-shopify-structure",
+          kind: "product",
+          target: `${firstSeedUrl.replace(/\/$/, "")}/products/starter-kit`,
+          reason: "拆解爆品产品页的剂型、价格信号和卖点标签。",
+          maxPages: 3,
+          databaseTargets: [
+            "product_database",
+            "keyword_database",
+            "opportunity_database",
+          ],
+        },
+        projectId,
+      ),
+      target(
+        {
+          id: "crawl-target-blog-guide",
+          candidateId: "discovery-sitemap-rss",
+          kind: "blog",
+          target: `${firstSeedUrl.replace(/\/$/, "")}/blogs/guides`,
+          reason: "采集购买指南与科普内容，沉淀内容库、关键词和痛点。",
+          maxPages: 5,
+          databaseTargets: [
+            "content_database",
+            "keyword_database",
+            "pain_point_database",
           ],
         },
         projectId,

@@ -91,6 +91,10 @@ export type {
   PublicSourceDiscoveryResult,
 } from "./public-source-discovery";
 export { discoverPublicSources } from "./public-source-discovery";
+export type {
+  WorkflowProgressEvent,
+  WorkflowProgressHandler,
+} from "./public-workflow";
 export { runPublicIndustryResearchWorkflow } from "./public-workflow";
 export { generateResearchMarkdownReport } from "./report";
 export {

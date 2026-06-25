@@ -24,6 +24,8 @@ import { Icon, Logo, StatusPill, Score, TotalPill, FreqBars, useCountUp, type Re
 import { KnowledgeGraph } from "./components/KnowledgeGraph";
 import { DbMicro, StatSpark, Radar, InlineBar, PriceScale } from "./components/micro";
 import { CommandPalette, Toaster, showToast, renderMarkdown, type NavTarget } from "./components/extras";
+import { EvidenceCell } from "./components/EvidencePopover";
+import { EmptyTable } from "./components/states";
 import {
   adaptRun,
   createModelFromInput,
@@ -38,13 +40,21 @@ import {
 } from "./adapters/research";
 import {
   createMockRunEventTimeline,
+  createRunStartedEvents,
   deriveRunState,
   type RunEvent,
 } from "./adapters/run-events";
 import {
   runMockIndustryResearchWorkflow,
+  type ResearchReviewItem,
   type ResearchWorkflowInput,
+  type ResearchWorkflowResult,
 } from "@industry-research/core";
+import {
+  downloadDeliveryPackageAction,
+  reviewReportAction,
+  runIndustryResearchAction,
+} from "./actions";
 
 type CSSVars = CSSProperties & Record<string, string | number>;
 type Phase = "setup" | "running" | "done";
@@ -71,9 +81,142 @@ const DEFAULT_INPUT: ResearchWorkflowInput = {
   researchGoal: "找到适合小团队切入的产品和内容机会",
   templateId: "ecommerce_competitor_research",
   urls: [],
-  csvText: "",
-  manualText: "",
+  csvText: "product,price,tag\nDaily Gut Chews,29.99,digestion",
+  manualText: "用户反复提到狗狗软便、换粮后肠胃不适、希望成分天然。",
 };
+
+/** UI 运行模式 → 真实 API 模式（Mock 留本地，不走 API）。 */
+type UiRealMode = "deepseek" | "public_web" | "public_web_deepseek";
+const REAL_RUN_MODE: Record<Exclude<RunMode, "Mock">, UiRealMode> = {
+  DeepSeek: "deepseek",
+  "Public Web": "public_web",
+  "Public + DeepSeek": "public_web_deepseek",
+};
+
+const REQUIRED_FIELDS: [keyof ResearchWorkflowInput, string][] = [
+  ["projectName", "项目名称"],
+  ["industry", "目标行业"],
+  ["category", "目标品类"],
+  ["market", "目标市场"],
+  ["researchGoal", "研究目标"],
+];
+
+function parseUrlLines(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+/** 表单校验：必填项 + URL 行 http/https 轻校验（呼应 public_web 采集边界）。 */
+function validateResearchInput(input: ResearchWorkflowInput, urlText: string) {
+  const missing = REQUIRED_FIELDS.filter(
+    ([key]) => !String(input[key] ?? "").trim(),
+  ).map(([key]) => key);
+  const urls = parseUrlLines(urlText);
+  const invalidUrls = urls.filter((url) => !/^https?:\/\//i.test(url));
+  return {
+    missing,
+    missingSet: new Set<keyof ResearchWorkflowInput>(missing),
+    urls,
+    invalidUrls,
+    ok: missing.length === 0 && invalidUrls.length === 0,
+  };
+}
+
+const ERR_STYLE: CSSProperties = {
+  color: "var(--bad)",
+  fontSize: 11.5,
+  marginTop: 5,
+  fontFamily: "var(--font-mono)",
+};
+
+/** 无障碍(P1-F):给 div/span 等非按钮可点元素加 Enter/Space 键盘激活。 */
+function keyActivate(handler: () => void) {
+  return (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      handler();
+    }
+  };
+}
+
+/** 浏览器侧把字符串内容存成文件(交付包 JSON / CSV 导出共用)。 */
+function downloadBlob(filename: string, content: string, mime: string) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function csvCell(value: string | number): string {
+  const s = String(value ?? "");
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+/** 客户端导出机会表为 CSV(不依赖后端);BOM 让 Excel 正确识别中文。 */
+function exportOpportunitiesCsv(model: UIResearchModel) {
+  const header = ["机会", "需求", "竞争", "内容缺口", "商业价值", "证据质量", "总分", "审核", "摘要"];
+  const rows = [...model.opportunities]
+    .sort((a, b) => b.total - a.total)
+    .map((o) => [o.title, o.demand, o.competition, o.gap, o.value, o.evidence, o.total, o.status, o.summary]);
+  const body = [header, ...rows].map((r) => r.map(csvCell).join(",")).join("\n");
+  // ﻿ BOM 前缀，让 Excel 正确识别 UTF-8 中文
+  const csv = `﻿${body}\n`;
+  downloadBlob(
+    `${model.project.name || "opportunities"}-机会评分.csv`,
+    csv,
+    "text/csv;charset=utf-8",
+  );
+  showToast("已导出机会 CSV", "copy");
+}
+
+/* ===================== 刷新持久化(P1-G) ===================== */
+const STORAGE_KEY = "irp.workbench.v1";
+type PersistedSnapshot = {
+  v: 1;
+  runMode: RunMode;
+  view: string;
+  resultTab: string;
+  input: ResearchWorkflowInput;
+  urlText: string;
+  isMockResult: boolean;
+  deliveryRunId: string | null;
+  resultModel: UIResearchModel;
+  rawResult: ResearchWorkflowResult | null;
+};
+function loadSnapshot(): PersistedSnapshot | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PersistedSnapshot;
+    return parsed?.v === 1 && parsed.resultModel ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+function saveSnapshot(snapshot: PersistedSnapshot) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
+  } catch {
+    /* localStorage 不可用 / 超额时静默跳过 */
+  }
+}
+function clearSnapshot() {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
 
 /* =============================== App ================================= */
 export default function IndustryResearchWorkbench({
@@ -88,16 +231,27 @@ export default function IndustryResearchWorkbench({
   const [runMode, setRunMode] = useState<RunMode>("Mock");
   const [supOpen, setSupOpen] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
+  const [navOpen, setNavOpen] = useState(false); // 移动端抽屉侧栏(P2-H)
   const [resultTab, setResultTab] = useState("opportunity");
 
   // 表单(即 ResearchWorkflowInput)
   const [input, setInput] = useState<ResearchWorkflowInput>(DEFAULT_INPUT);
+  // URL textarea 原文(运行时按行 split 进 input.urls)
+  const [urlText, setUrlText] = useState("");
 
   // 两份模型:运行期的"目标模型"(知道全部步骤/最终值)+ 完成后的"结果模型"
   const [targetModel, setTargetModel] = useState<UIResearchModel | null>(initialModel ?? null);
   const [resultModel, setResultModel] = useState<UIResearchModel | null>(initialModel ?? null);
   const [events, setEvents] = useState<RunEvent[]>([]);
   const timers = useRef<number[]>([]);
+
+  // 真实 run 接入:保留 raw 结果(给审核报告)、runId(给下载)、失败信息与状态标记
+  const [rawResult, setRawResult] = useState<ResearchWorkflowResult | null>(null);
+  const [deliveryRunId, setDeliveryRunId] = useState<string | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
+  const [isMockResult, setIsMockResult] = useState(false);
+  const [indeterminate, setIndeterminate] = useState(false);
+  const runSeq = useRef(0);
 
   // 主题挂到 <html>;主色可改成读你设计系统
   useEffect(() => {
@@ -117,90 +271,266 @@ export default function IndustryResearchWorkbench({
 
   useEffect(() => () => { timers.current.forEach((id) => clearTimeout(id)); }, []);
 
+  // 刷新持久化(P1-G):首帧用默认值(匹配 SSR),挂载后从 localStorage 恢复 done 态,
+  // 避免 hydration mismatch;真实 run 等采集 + LLM,刷新丢结果代价大。
+  const restored = useRef(false);
+  useEffect(() => {
+    if (restored.current || initialModel) return;
+    restored.current = true;
+    const snap = loadSnapshot();
+    if (!snap) return;
+    setRunMode(snap.runMode);
+    setView(snap.view);
+    setResultTab(snap.resultTab);
+    setInput(snap.input);
+    setUrlText(snap.urlText);
+    setIsMockResult(snap.isMockResult);
+    setDeliveryRunId(snap.deliveryRunId);
+    setResultModel(snap.resultModel);
+    setTargetModel(snap.resultModel);
+    setRawResult(snap.rawResult);
+    setPhase("done");
+  }, [initialModel]);
+
+  // done 态时把结果快照写入 localStorage(切视图 / tab 也同步)。
+  useEffect(() => {
+    if (phase === "done" && resultModel) {
+      saveSnapshot({
+        v: 1,
+        runMode,
+        view,
+        resultTab,
+        input,
+        urlText,
+        isMockResult,
+        deliveryRunId,
+        resultModel,
+        rawResult,
+      });
+    }
+  }, [phase, resultModel, runMode, view, resultTab, input, urlText, isMockResult, deliveryRunId, rawResult]);
+
   /* ============================ §RUN ============================= */
-  const startRun = useCallback(async () => {
+  const clearTimers = useCallback(() => {
+    timers.current.forEach((id) => clearTimeout(id));
+    timers.current = [];
+  }, []);
+
+  // Mock 模式:本地 mock 结果 + setTimeout 回放编排好的事件时间线(演示数据)。
+  const runMockTimeline = useCallback(
+    (skeleton: UIResearchModel) => {
+      const raw = runMockIndustryResearchWorkflow(input);
+      const full = adaptRun(raw);
+      setTargetModel(full);
+      setRawResult(raw);
+      setDeliveryRunId(null);
+      setIsMockResult(true);
+      setIndeterminate(false);
+
+      const timeline = createMockRunEventTimeline(full);
+      clearTimers();
+      timeline.forEach((ev) => {
+        const id = window.setTimeout(() => {
+          setEvents((xs) => [...xs, ev]);
+          if (ev.type === "run.done") {
+            setResultModel(full);
+            timers.current.push(window.setTimeout(() => setPhase("done"), 420));
+          }
+        }, ev.delayMs);
+        timers.current.push(id);
+      });
+    },
+    [input, clearTimers],
+  );
+
+  // 真实模式:优先订阅 SSE 流式逐步进度(public_web 细粒度,deriveRunState 直接吃);
+  // 流式不可用 / 失败时回退到非流式 server action 的不确定态。失败注入 run.error(P0-B)。
+  const runReal = useCallback(
+    async (finalInput: ResearchWorkflowInput, mode: UiRealMode, seq: number) => {
+      const skeleton = createModelFromInput(finalInput);
+      setIsMockResult(false);
+      setEvents(createRunStartedEvents(skeleton));
+
+      const applySuccess = (
+        result: ResearchWorkflowResult,
+        runId: string | null,
+      ) => {
+        const full = adaptRun(result);
+        setRawResult(result);
+        setDeliveryRunId(runId);
+        setTargetModel(full);
+        setResultModel(full);
+        setIndeterminate(false);
+        setEvents((xs) => [...xs, { type: "run.done", at: new Date().toISOString() }]);
+        timers.current.push(window.setTimeout(() => setPhase("done"), 200));
+      };
+      const applyError = (message: string) => {
+        setIndeterminate(false);
+        setRunError(message);
+        setEvents((xs) => [
+          ...xs,
+          { type: "run.error", at: new Date().toISOString(), message },
+        ]);
+      };
+
+      // ---- 完整版:流式订阅 ----
+      try {
+        setIndeterminate(false);
+        const response = await fetch("/api/industry-research/run/stream", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode, input: finalInput }),
+        });
+        if (!response.ok || !response.body) {
+          throw new Error(`stream ${response.status}`);
+        }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let settled = false;
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split("\n\n");
+          buffer = parts.pop() ?? "";
+          for (const part of parts) {
+            const payload = part.replace(/^data: ?/, "").trim();
+            if (!payload) continue;
+            let frame: { control?: string; result?: ResearchWorkflowResult; deliveryPackage?: { runId?: string } | null; message?: string };
+            try {
+              frame = JSON.parse(payload);
+            } catch {
+              continue;
+            }
+            if (runSeq.current !== seq) return;
+            if (frame.control === "result" && frame.result) {
+              applySuccess(frame.result, frame.deliveryPackage?.runId ?? null);
+              settled = true;
+            } else if (frame.control === "error") {
+              applyError(frame.message ?? "运行失败");
+              settled = true;
+            } else if (!frame.control) {
+              setEvents((xs) => [...xs, frame as unknown as RunEvent]);
+            }
+          }
+        }
+        if (runSeq.current !== seq) return;
+        if (settled) return;
+        throw new Error("stream ended without result");
+      } catch {
+        if (runSeq.current !== seq) return;
+      }
+
+      // ---- 回退:非流式 server action(不确定态)----
+      setIndeterminate(true);
+      const res = await runIndustryResearchAction(finalInput, mode);
+      if (runSeq.current !== seq) return;
+      if (!res.ok) {
+        applyError(res.error);
+        return;
+      }
+      applySuccess(res.result, res.deliveryPackage?.runId ?? null);
+    },
+    [],
+  );
+
+  const startRun = useCallback(() => {
+    const finalInput: ResearchWorkflowInput = {
+      ...input,
+      urls: parseUrlLines(urlText),
+    };
+    const check = validateResearchInput(input, urlText);
+    if (!check.ok) {
+      showToast(
+        check.missing.length
+          ? "请先填写所有必填项"
+          : "URL 必须是公开 http/https 链接",
+        "spark",
+      );
+      return;
+    }
+
+    const seq = ++runSeq.current;
+    clearTimers();
+    setRunError(null);
+    setEvents([]);
     setView("workbench");
     setPhase("running");
-    setEvents([]);
     document.querySelector(".main")?.scrollTo({ top: 0 });
 
-    // 1) 先用输入建出"骨架模型"(步骤已知、数据为空),驱动 running 态布局
-    const skeleton = createModelFromInput(input);
-    setTargetModel(skeleton);
+    // 先用输入建出"骨架模型"(步骤已知、数据为空),驱动 running 态布局
+    setTargetModel(createModelFromInput(finalInput));
 
-    // 2) 跑工作流拿到真实结果(Mock 模式调本地 mock;真实模式换成你的 API)
-    //    runMockIndustryResearchWorkflow 是同步/快速的;真实采集应走 /api/industry-research/run
-    const raw = await Promise.resolve(runMockIndustryResearchWorkflow(input));
-    const full = adaptRun(raw);
-    setTargetModel(full);
-    setResultModel(full);
+    if (runMode === "Mock") {
+      runMockTimeline(createModelFromInput(finalInput));
+      return;
+    }
+    void runReal(finalInput, REAL_RUN_MODE[runMode], seq);
+  }, [input, urlText, runMode, clearTimers, runMockTimeline, runReal]);
 
-    // 3) 回放事件时间线驱动可视化。
-    //    —— TODO: 真实事件流 ——
-    //    把下面这段换成订阅后端 SSE/WebSocket:
-    //      const es = new EventSource(`/api/industry-research/run?...`);
-    //      es.onmessage = (m) => setEvents((xs) => [...xs, JSON.parse(m.data) as RunEvent]);
-    //      es.addEventListener("done", () => { es.close(); setPhase("done"); });
-    //    deriveRunState 同时吃 mock 与真实事件,渲染层无需改动。
-    const timeline = createMockRunEventTimeline(full);
-    timers.current.forEach((id) => clearTimeout(id));
-    timers.current = [];
-    timeline.forEach((ev) => {
-      const id = window.setTimeout(() => {
-        setEvents((xs) => [...xs, ev]);
-        if (ev.type === "run.done") {
-          setResultModel(full);
-          setTimeout(() => setPhase("done"), 420);
-        }
-      }, ev.delayMs);
-      timers.current.push(id);
-    });
-  }, [input]);
+  // 失败后从失败态原地重试当前模式。
+  const retryRun = useCallback(() => {
+    setRunError(null);
+    startRun();
+  }, [startRun]);
 
   const reset = useCallback(() => {
-    timers.current.forEach((id) => clearTimeout(id));
-    timers.current = [];
+    runSeq.current++; // 让任何在途真实 run 的回调作废
+    clearTimers();
+    clearSnapshot();
+    setRunError(null); setIndeterminate(false);
     setPhase("setup"); setView("workbench"); setEvents([]);
-  }, []);
+  }, [clearTimers]);
 
   const onNavigate = useCallback((target: NavTarget) => {
     if (!target) return;
-    if (target.done) setPhase("done");
-    if (target.tab) setResultTab(target.tab);
+    // P2-J:只有已有结果且不在运行中时,命令面板才允许跳到结果态;
+    // 否则跑到一半搜一下不会被强行甩出运行态。
+    const canShowResult = Boolean(resultModel) && phase !== "running";
+    if (target.done && canShowResult) setPhase("done");
+    if (target.tab && canShowResult) setResultTab(target.tab);
     setView(target.view || "workbench");
     setTimeout(() => {
-      if (target.tab) document.querySelector(".deep")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (target.tab && canShowResult) document.querySelector(".deep")?.scrollIntoView({ behavior: "smooth", block: "start" });
       else document.querySelector(".main")?.scrollTo({ top: 0, behavior: "smooth" });
     }, 60);
-  }, []);
+  }, [resultModel, phase]);
 
-  const setField = (k: keyof ResearchWorkflowInput) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    setInput((f) => ({ ...f, [k]: e.target.value }));
+  const setField =
+    (k: keyof ResearchWorkflowInput) =>
+    (
+      e: React.ChangeEvent<
+        HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+      >,
+    ) =>
+      setInput((f) => ({ ...f, [k]: e.target.value }));
 
   const searchModel = resultModel ?? targetModel ?? createModelFromInput(input);
 
   return (
     <div className="app">
-      <Sidebar view={view} setView={(v) => { setView(v); }} runMode={runMode} phase={phase} />
+      <Sidebar view={view} setView={(v) => { setView(v); setNavOpen(false); }} runMode={runMode} phase={phase} open={navOpen} />
+      <div className={"nav-backdrop" + (navOpen ? " open" : "")} onClick={() => setNavOpen(false)} aria-hidden="true" />
       <main className="main scroll">
-        <Topbar theme={theme} toggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))} phase={phase} projectName={input.projectName} reset={reset} view={view} onOpenCmd={() => setCmdOpen(true)} />
+        <Topbar theme={theme} toggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))} phase={phase} projectName={input.projectName} reset={reset} view={view} onOpenCmd={() => setCmdOpen(true)} onToggleNav={() => setNavOpen((o) => !o)} />
 
         {phase === "setup" && view === "workbench" && (
-          <Setup input={input} setField={setField} runMode={runMode} setRunMode={setRunMode} supOpen={supOpen} setSupOpen={setSupOpen} startRun={startRun} skeletonDatabases={createModelFromInput(input).databases} />
+          <Setup input={input} setField={setField} urlText={urlText} setUrlText={setUrlText} runMode={runMode} setRunMode={setRunMode} supOpen={supOpen} setSupOpen={setSupOpen} startRun={startRun} skeletonDatabases={createModelFromInput(input).databases} />
         )}
         {phase === "running" && view === "workbench" && targetModel && (
-          <Running model={targetModel} events={events} input={input} runMode={runMode} />
+          <Running model={targetModel} events={events} input={input} runMode={runMode} indeterminate={indeterminate} runError={runError} onRetry={retryRun} onBack={reset} isMock={isMockResult} />
         )}
         {phase === "done" && view === "workbench" && resultModel && (
-          <Results model={resultModel} runMode={runMode} tab={resultTab} setTab={setResultTab} run />
+          <Results model={resultModel} runMode={runMode} tab={resultTab} setTab={setResultTab} result={rawResult} runId={deliveryRunId} isMock={isMockResult} run />
         )}
 
         {view === "databases" && (phase === "done" && resultModel
-          ? <Results model={resultModel} runMode={runMode} tab={resultTab} setTab={setResultTab} jumpDb />
-          : <NeedRun reset={startRun} label="数据库视图" />)}
+          ? <Results model={resultModel} runMode={runMode} tab={resultTab} setTab={setResultTab} result={rawResult} runId={deliveryRunId} isMock={isMockResult} jumpDb />
+          : <NeedRun reset={() => setView("workbench")} label="数据库视图" />)}
         {view === "weekly" && (phase === "done" && resultModel
           ? <WeeklyView wk={resultModel.weekly} />
-          : <NeedRun reset={startRun} label="情报周报" />)}
+          : <NeedRun reset={() => setView("workbench")} label="情报周报" />)}
         {view === "projects" && resultModel && <ProjectsView model={resultModel} setView={setView} />}
         {view === "projects" && !resultModel && <ProjectsView model={createModelFromInput(input)} setView={setView} />}
         {view === "capability" && <CapabilityView />}
@@ -214,10 +544,10 @@ export default function IndustryResearchWorkbench({
 }
 
 /* ============================= Sidebar ============================== */
-function Sidebar({ view, setView, runMode, phase }: { view: string; setView: (v: string) => void; runMode: string; phase: Phase }) {
+function Sidebar({ view, setView, runMode, phase, open }: { view: string; setView: (v: string) => void; runMode: string; phase: Phase; open?: boolean }) {
   const groups = [...new Set(NAV.map((n) => n.group))];
   return (
-    <aside className="sidebar">
+    <aside className={"sidebar" + (open ? " open" : "")}>
       <div className="brand">
         <div className="brand-mark"><Logo /></div>
         <div>
@@ -229,7 +559,7 @@ function Sidebar({ view, setView, runMode, phase }: { view: string; setView: (v:
         <div key={g}>
           <div className="nav-group-label">{g}</div>
           {NAV.filter((n) => n.group === g).map((n) => (
-            <div key={n.id} className={"nav-item" + (view === n.id ? " active" : "")} onClick={() => setView(n.id)}>
+            <div key={n.id} className={"nav-item" + (view === n.id ? " active" : "")} onClick={() => setView(n.id)} role="button" tabIndex={0} onKeyDown={keyActivate(() => setView(n.id))} aria-current={view === n.id ? "page" : undefined} aria-label={n.label}>
               <Icon name={n.icon} size={16} />
               <span>{n.label}</span>
               {"count" in n && n.count != null && <span className="count">{n.count}</span>}
@@ -253,18 +583,19 @@ function Sidebar({ view, setView, runMode, phase }: { view: string; setView: (v:
 }
 
 /* ============================= Topbar =============================== */
-function Topbar({ theme, toggleTheme, phase, projectName, reset, view, onOpenCmd }: {
-  theme: "dark" | "light"; toggleTheme: () => void; phase: Phase; projectName: string; reset: () => void; view: string; onOpenCmd: () => void;
+function Topbar({ theme, toggleTheme, phase, projectName, reset, view, onOpenCmd, onToggleNav }: {
+  theme: "dark" | "light"; toggleTheme: () => void; phase: Phase; projectName: string; reset: () => void; view: string; onOpenCmd: () => void; onToggleNav: () => void;
 }) {
   const viewLabel = NAV.find((n) => n.id === view)?.label || "研究台";
   return (
     <div className="topbar">
+      <button className="chip nav-burger" onClick={onToggleNav} aria-label="打开导航菜单" title="导航"><Icon name="workbench" size={15} /></button>
       <div className="crumb">行业研究 / <b>{viewLabel}</b></div>
       {view === "workbench" && phase !== "setup" && (
         <div className="crumb" style={{ color: "var(--accent)" }}>· {projectName}</div>
       )}
       <div className="spacer" />
-      <div className="search-pill" onClick={onOpenCmd} title="命令面板">
+      <div className="search-pill" onClick={onOpenCmd} title="命令面板" role="button" tabIndex={0} onKeyDown={keyActivate(onOpenCmd)} aria-label="打开命令面板，检索数据库与证据">
         <Icon name="search" size={14} /><span className="lbl">检索数据库 · 证据</span><span className="k">⌘K</span>
       </div>
       <span className="topbar-div" />
@@ -279,13 +610,17 @@ function Topbar({ theme, toggleTheme, phase, projectName, reset, view, onOpenCmd
 }
 
 /* ============================== Setup ============================== */
-function Setup({ input, setField, runMode, setRunMode, supOpen, setSupOpen, startRun, skeletonDatabases }: {
+function Setup({ input, setField, urlText, setUrlText, runMode, setRunMode, supOpen, setSupOpen, startRun, skeletonDatabases }: {
   input: ResearchWorkflowInput;
-  setField: (k: keyof ResearchWorkflowInput) => (e: React.ChangeEvent<HTMLInputElement>) => void;
+  setField: (k: keyof ResearchWorkflowInput) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => void;
+  urlText: string; setUrlText: (v: string) => void;
   runMode: RunMode; setRunMode: (m: RunMode) => void;
   supOpen: boolean; setSupOpen: (v: boolean) => void; startRun: () => void;
   skeletonDatabases: { label: string; count: number }[];
 }) {
+  const v = validateResearchInput(input, urlText);
+  const reqHint = (key: keyof ResearchWorkflowInput) =>
+    v.missingSet.has(key) ? <span style={ERR_STYLE}>必填项不能为空</span> : null;
   return (
     <>
       <div className="hero-split">
@@ -314,25 +649,30 @@ function Setup({ input, setField, runMode, setRunMode, supOpen, setSupOpen, star
             <div className="field wide">
               <label>项目名称 <span className="req">*</span></label>
               <input value={input.projectName} onChange={setField("projectName")} placeholder="例如：宠物益生菌竞品研究" />
+              {reqHint("projectName")}
             </div>
-            <div className="field"><label>目标行业 <span className="req">*</span></label><input value={input.industry} onChange={setField("industry")} /></div>
-            <div className="field"><label>目标品类 <span className="req">*</span></label><input value={input.category} onChange={setField("category")} /></div>
-            <div className="field"><label>目标市场 <span className="req">*</span></label><input value={input.market} onChange={setField("market")} /></div>
+            <div className="field"><label>目标行业 <span className="req">*</span></label><input value={input.industry} onChange={setField("industry")} />{reqHint("industry")}</div>
+            <div className="field"><label>目标品类 <span className="req">*</span></label><input value={input.category} onChange={setField("category")} />{reqHint("category")}</div>
+            <div className="field"><label>目标市场 <span className="req">*</span></label><input value={input.market} onChange={setField("market")} />{reqHint("market")}</div>
             <div className="field">
               <label>研究模板</label>
-              <select defaultValue="e"><option value="e">电商竞品研究</option></select>
+              <select value={input.templateId} onChange={setField("templateId")}><option value="ecommerce_competitor_research">电商竞品研究</option></select>
             </div>
-            <div className="field wide"><label>研究目标 <span className="req">*</span></label><input value={input.researchGoal} onChange={setField("researchGoal")} /></div>
+            <div className="field wide"><label>研究目标 <span className="req">*</span></label><input value={input.researchGoal} onChange={setField("researchGoal")} />{reqHint("researchGoal")}</div>
           </div>
 
-          <div className={"supplement-toggle" + (supOpen ? " open" : "")} onClick={() => setSupOpen(!supOpen)}>
+          <div className={"supplement-toggle" + (supOpen ? " open" : "")} onClick={() => setSupOpen(!supOpen)} role="button" tabIndex={0} onKeyDown={keyActivate(() => setSupOpen(!supOpen))} aria-expanded={supOpen}>
             <Icon name="chevron" size={15} />补充资料（可选）— URL 留空时先用公开搜索发现竞品官网
           </div>
           {supOpen && (
             <div className="supplement-grid fade-in">
-              <div className="field"><label>URL</label><textarea placeholder={"每行一个公开 URL\n留空将自动公开搜索"} /></div>
-              <div className="field"><label>CSV</label><textarea defaultValue={"product,price,tag\nDaily Gut Chews,29.99,digestion"} /></div>
-              <div className="field"><label>手动文本</label><textarea defaultValue={"用户反复提到狗狗软便、换粮后肠胃不适、希望成分天然。"} /></div>
+              <div className="field">
+                <label>URL</label>
+                <textarea value={urlText} onChange={(e) => setUrlText(e.target.value)} placeholder={"每行一个公开 URL\n留空将自动公开搜索"} />
+                {v.invalidUrls.length > 0 && <span style={ERR_STYLE}>仅支持公开 http/https 链接：{v.invalidUrls[0]}</span>}
+              </div>
+              <div className="field"><label>CSV</label><textarea value={input.csvText} onChange={setField("csvText")} /></div>
+              <div className="field"><label>手动文本</label><textarea value={input.manualText} onChange={setField("manualText")} /></div>
             </div>
           )}
         </div>
@@ -342,9 +682,15 @@ function Setup({ input, setField, runMode, setRunMode, supOpen, setSupOpen, star
               <button key={m} className={runMode === m ? "on" : ""} onClick={() => setRunMode(m)}>{m}</button>
             ))}
           </div>
-          <span className="note">Mock 不抓真实网页；真实公开采集只处理公开 http/https URL。</span>
+          <span className="note" style={!v.ok ? { color: "var(--bad)" } : undefined}>
+            {v.missing.length
+              ? `还有 ${v.missing.length} 个必填项未填`
+              : v.invalidUrls.length
+                ? "补充资料里的 URL 必须是公开 http/https 链接"
+                : "Mock 不抓真实网页；真实公开采集只处理公开 http/https URL。"}
+          </span>
           <div className="spacer" />
-          <button className="btn btn-primary" onClick={startRun}><Icon name="play" size={15} />开始研究</button>
+          <button className="btn btn-primary" onClick={startRun} disabled={!v.ok} style={!v.ok ? { opacity: 0.5, cursor: "not-allowed" } : undefined} title={v.ok ? undefined : "请先补全必填项与合法 URL"}><Icon name="play" size={15} />开始研究</button>
         </div>
       </div>
     </>
@@ -352,7 +698,7 @@ function Setup({ input, setField, runMode, setRunMode, supOpen, setSupOpen, star
 }
 
 /* ============================= Running ============================= */
-function Running({ model, events, input, runMode }: { model: UIResearchModel; events: RunEvent[]; input: ResearchWorkflowInput; runMode: RunMode }) {
+function Running({ model, events, input, runMode, indeterminate, runError, onRetry, onBack, isMock }: { model: UIResearchModel; events: RunEvent[]; input: ResearchWorkflowInput; runMode: RunMode; indeterminate: boolean; runError: string | null; onRetry: () => void; onBack: () => void; isMock: boolean }) {
   const steps = model.workflowSteps;
   const d = useMemo(() => deriveRunState(events, model), [events, model]);
   const pct = Math.round(d.progress * 100);
@@ -362,15 +708,31 @@ function Running({ model, events, input, runMode }: { model: UIResearchModel; ev
 
   return (
     <div className="run-wrap">
+      {runError && (
+        <div className="run-panel" style={{ marginBottom: 18, borderColor: "var(--bad)", padding: "16px 20px" }}>
+          <div className="run-panel-head" style={{ padding: 0, border: 0, marginBottom: 10 }}>
+            <div><div className="eyebrow" style={{ color: "var(--bad)" }}>Run failed</div><h3>运行失败</h3></div>
+            <span className="badge" style={{ background: "color-mix(in oklch, var(--bad) 16%, transparent)", color: "var(--bad)" }}>{runMode}</span>
+          </div>
+          <p style={{ fontSize: 13, color: "var(--ink-2)", lineHeight: 1.6, margin: "0 0 14px", fontFamily: "var(--font-mono)", wordBreak: "break-word" }}>{runError}</p>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button className="btn btn-primary" onClick={onRetry}><Icon name="play" size={14} />重试该轮</button>
+            <button className="btn btn-ghost" onClick={onBack}>返回表单</button>
+          </div>
+        </div>
+      )}
       <div className="run-stage">
         <KnowledgeGraph databases={d.databases} progress={Math.max(0.04, d.progress)} building accent={ACCENT} height={360} />
         <div className="run-stage-overlay">
           <div className="run-stage-top">
             <div>
               <h2>{input.projectName}</h2>
-              <div className="now"><span className="spin" />{currentTitle} · {runMode}</div>
+              <div className="now"><span className="spin" />{runError ? "运行失败" : currentTitle} · {runMode}{isMock && <span className="badge" style={{ marginLeft: 8 }}>演示数据</span>}</div>
             </div>
-            <div className="run-pct"><b>{pct}%</b><span>Weaving graph</span></div>
+            <div className="run-pct">
+              {runError ? <b style={{ color: "var(--bad)" }}>失败</b> : indeterminate && !d.done ? <b style={{ color: "var(--accent)" }}>运行中</b> : <b>{pct}%</b>}
+              <span>{runError ? "已中断" : indeterminate ? "真实采集中" : "Weaving graph"}</span>
+            </div>
           </div>
           <div className="run-stage-bottom">
             <div className="c"><b>{d.stats.candidates}</b><span>信息源候选</span></div>
@@ -483,10 +845,13 @@ const DB_TO_TAB: Record<string, string> = {
   weekly_intelligence_reports: "weekly",
 };
 
-function Results({ model, runMode, tab, setTab, run = false, jumpDb = false }: {
-  model: UIResearchModel; runMode: RunMode; tab: string; setTab: (t: string) => void; run?: boolean; jumpDb?: boolean;
+function Results({ model, runMode, tab, setTab, result = null, runId = null, isMock = false, run = false, jumpDb = false }: {
+  model: UIResearchModel; runMode: RunMode; tab: string; setTab: (t: string) => void;
+  result?: ResearchWorkflowResult | null; runId?: string | null; isMock?: boolean;
+  run?: boolean; jumpDb?: boolean;
 }) {
   const animate = run && !jumpDb;
+  const [reviewedMd, setReviewedMd] = useState<string | null>(null);
   useEffect(() => { if (animate) showToast("研究完成 · 已建立九类行业数据库", "ok"); /* eslint-disable-next-line */ }, []);
 
   const cands = useCountUp(model.stats.candidates, animate);
@@ -516,7 +881,7 @@ function Results({ model, runMode, tab, setTab, run = false, jumpDb = false }: {
         <h2>研究结果</h2>
         <span className="meta">{model.project.industry} · {model.project.category} · {model.project.market}</span>
         <span className="line" />
-        <span className="meta">{runMode}</span>
+        <span className="meta">{runMode}{isMock ? " · 演示数据" : ""}</span>
       </div>
 
       <div className="stat-row">
@@ -534,7 +899,7 @@ function Results({ model, runMode, tab, setTab, run = false, jumpDb = false }: {
       <div className="section-title"><h2 style={{ fontSize: 19 }}>九类数据库视图</h2><span className="meta">nine industry databases</span><span className="line" /></div>
       <div className="db-grid">
         {model.databases.map((db, i) => (
-          <div className="db-card" key={db.id} style={{ "--hue": (i * 7 - 24) + "deg" } as CSSVars} onClick={() => { const t = DB_TO_TAB[db.id]; if (t) { setTab(t); jumpToDeep(); } }}>
+          <div className="db-card" key={db.id} style={{ "--hue": (i * 7 - 24) + "deg" } as CSSVars} onClick={() => { const t = DB_TO_TAB[db.id]; if (t) { setTab(t); jumpToDeep(); } }} role="button" tabIndex={0} onKeyDown={keyActivate(() => { const t = DB_TO_TAB[db.id]; if (t) { setTab(t); jumpToDeep(); } })} aria-label={`${db.label}，${db.count} 条`}>
             <div className="db-card-top">
               <div className="ico"><Icon name={db.icon} size={16} /></div>
               <span className="db-count">{db.count}<small>条</small></span>
@@ -548,7 +913,7 @@ function Results({ model, runMode, tab, setTab, run = false, jumpDb = false }: {
         ))}
       </div>
 
-      <div className="deep section-title"><h2 style={{ fontSize: 19 }}>结构化结果</h2><span className="line" /></div>
+      <div className="deep section-title"><h2 style={{ fontSize: 19 }}>结构化结果</h2><span className="line" /><button className="btn btn-ghost" style={{ padding: "7px 13px", fontSize: 12.5 }} onClick={() => exportOpportunitiesCsv(model)}><Icon name="download" size={14} />导出机会 CSV</button></div>
       <div className="tabs">
         {tabs.map(([id, label, n]) => (
           <button key={id} className={"tab" + (tab === id ? " on" : "")} onClick={() => setTab(id)}>{label}<span className="num">{n}</span></button>
@@ -556,18 +921,18 @@ function Results({ model, runMode, tab, setTab, run = false, jumpDb = false }: {
       </div>
 
       <div className="fade-in" key={tab}>
-        {tab === "opportunity" && <OppTable rows={model.opportunities} />}
-        {tab === "competitor" && <CompTable rows={model.competitors} />}
-        {tab === "product" && <ProdTable rows={model.products} />}
-        {tab === "pain" && <PainTable rows={model.painPoints} />}
-        {tab === "content" && <ContentTable rows={model.contentSignals} />}
-        {tab === "keyword" && <KeywordTable rows={model.keywords} />}
+        {tab === "opportunity" && (model.opportunities.length ? <OppTable rows={model.opportunities} /> : <EmptyTable label="机会评分" />)}
+        {tab === "competitor" && (model.competitors.length ? <CompTable rows={model.competitors} /> : <EmptyTable label="竞品" />)}
+        {tab === "product" && (model.products.length ? <ProdTable rows={model.products} /> : <EmptyTable label="产品" />)}
+        {tab === "pain" && (model.painPoints.length ? <PainTable rows={model.painPoints} /> : <EmptyTable label="用户痛点" />)}
+        {tab === "content" && (model.contentSignals.length ? <ContentTable rows={model.contentSignals} /> : <EmptyTable label="内容信号" />)}
+        {tab === "keyword" && (model.keywords.length ? <KeywordTable rows={model.keywords} /> : <EmptyTable label="关键词" />)}
         {tab === "weekly" && <WeeklyCard wk={model.weekly} />}
       </div>
 
       <div className="split">
-        <ReviewCard model={model} />
-        <ReportCard model={model} />
+        <ReviewCard model={model} result={result} onSubmitted={setReviewedMd} />
+        <ReportCard model={model} runId={runId} isMock={isMock} reviewedMarkdown={reviewedMd} />
       </div>
     </div>
   );
@@ -590,7 +955,7 @@ function OppTable({ rows }: { rows: UIOpportunity[] }) {
   return (
     <div className="table-wrap"><table className="data">
       <thead><tr>{cols.map(([k, l, num]) => (
-        <th key={k} className={(num ? "num " : "") + (sortKey === k ? "sorted" : "")} onClick={() => click(k)}>{l}<span className="sortcaret">{sortKey === k ? (dir === "asc" ? "▲" : "▼") : "↕"}</span></th>
+        <th key={k} scope="col" className={(num ? "num " : "") + (sortKey === k ? "sorted" : "")} onClick={() => click(k)} tabIndex={0} onKeyDown={keyActivate(() => click(k))} aria-sort={sortKey === k ? (dir === "asc" ? "ascending" : "descending") : "none"} title={`按${l}排序`}>{l}<span className="sortcaret" aria-hidden="true">{sortKey === k ? (dir === "asc" ? "▲" : "▼") : "↕"}</span></th>
       ))}</tr></thead>
       <tbody>{sorted.map((o, i) => (
         <tr key={i}>
@@ -599,7 +964,7 @@ function OppTable({ rows }: { rows: UIOpportunity[] }) {
           <td className="num"><Score v={o.competition} /></td>
           <td className="num"><Score v={o.gap} /></td>
           <td className="num"><Score v={o.value} /></td>
-          <td className="num"><Score v={o.evidence} /></td>
+          <td className="num"><EvidenceCell refs={o.evidenceRefs} ariaLabel={`${o.title} 证据质量`}><Score v={o.evidence} /></EvidenceCell></td>
           <td className="num"><TotalPill v={o.total} /></td>
           <td><StatusPill status={o.status} /></td>
         </tr>
@@ -618,7 +983,7 @@ function CompTable({ rows }: { rows: UICompetitor[] }) {
         <td><span className="chan-tag" style={{ "--hue": (chMap[c.channel] || 0) + "deg" } as CSSVars}><span className="chan-dot" />{c.channel}</span></td>
         <td><div className="desc" style={{ color: "var(--ink-2)", maxWidth: "30ch" }}>{c.positioning}</div></td>
         <td><div className="tags">{c.structure.map((s, j) => <span className="tag" key={j}>{s}</span>)}</div></td>
-        <td className="num"><InlineBar v={c.evidence} max={maxEv} /></td>
+        <td className="num"><EvidenceCell refs={c.evidenceRefs} ariaLabel={`${c.name} 证据强度`}><InlineBar v={c.evidence} max={maxEv} /></EvidenceCell></td>
       </tr>
     ))}</tbody>
   </table></div>);
@@ -642,7 +1007,7 @@ function PainTable({ rows }: { rows: UIPainPoint[] }) {
   return (<div className="table-wrap"><table className="data">
     <thead><tr><th>痛点主题</th><th>用户需求</th><th>频次</th><th className="num">证据</th></tr></thead>
     <tbody>{rows.map((p, i) => (
-      <tr key={i}><td><div className="name">{p.theme}</div></td><td><div className="desc" style={{ color: "var(--ink-2)" }}>{p.need}</div></td><td><FreqBars level={p.freq} /></td><td className="num"><InlineBar v={p.evidence} max={maxEv} /></td></tr>
+      <tr key={i}><td><div className="name">{p.theme}</div></td><td><div className="desc" style={{ color: "var(--ink-2)" }}>{p.need}</div></td><td><FreqBars level={p.freq} /></td><td className="num"><EvidenceCell refs={p.evidenceRefs} ariaLabel={`${p.theme} 证据`}><InlineBar v={p.evidence} max={maxEv} /></EvidenceCell></td></tr>
     ))}</tbody>
   </table></div>);
 }
@@ -654,7 +1019,7 @@ function ContentTable({ rows }: { rows: UIContentSignal[] }) {
     <tbody>{rows.map((c, i) => (
       <tr key={i}><td><span className="plat-badge">{c.platform}</span></td><td><div className="name">{c.topic}</div></td>
         <td><span className="chan-tag" style={{ "--hue": (typeHue[c.type] || 0) + "deg" } as CSSVars}><span className="chan-dot" />{CONTENT_TYPE[c.type]}</span></td>
-        <td><div className="desc" style={{ color: "var(--ink-2)" }}>{c.why}</div></td><td className="num"><InlineBar v={c.evidence} max={maxEv} /></td></tr>
+        <td><div className="desc" style={{ color: "var(--ink-2)" }}>{c.why}</div></td><td className="num"><EvidenceCell refs={c.evidenceRefs} ariaLabel={`${c.topic} 证据`}><InlineBar v={c.evidence} max={maxEv} /></EvidenceCell></td></tr>
     ))}</tbody>
   </table></div>);
 }
@@ -684,45 +1049,110 @@ function WeeklyCard({ wk }: { wk: UIWeeklyReport }) {
 }
 
 /* ========================== Review + report ======================= */
-function ReviewCard({ model }: { model: UIResearchModel }) {
-  const base = useMemo(() => [
-    ...model.opportunities.slice(0, 4).map((o, i) => ({ id: "opp" + i, type: "opportunity", label: o.title, status: o.status as ReviewStatus })),
-    ...(model.competitors[0] ? [{ id: "cmp0", type: "competitor", label: model.competitors[0].name + " · 定位", status: "approved" as ReviewStatus }] : []),
-    ...(model.painPoints[0] ? [{ id: "pain0", type: "pain_point", label: model.painPoints[0].theme, status: "needs_review" as ReviewStatus }] : []),
-  ], [model]);
-  const [picks, setPicks] = useState<Record<string, ReviewStatus>>(() => Object.fromEntries(base.map((b) => [b.id, b.status])));
-  const approveAll = () => { setPicks(Object.fromEntries(base.map((b) => [b.id, "approved"]))); showToast("已通过全部 " + base.length + " 项审核", "ok"); };
+const REVIEW_TYPE_LABEL: Record<ResearchReviewItem["targetType"], string> = {
+  competitor: "competitor",
+  product_signal: "product_signal",
+  pain_point: "pain_point",
+  content_signal: "content_signal",
+  opportunity: "opportunity",
+};
+
+function ReviewCard({ model, result, onSubmitted }: { model: UIResearchModel; result: ResearchWorkflowResult | null; onSubmitted: (markdown: string) => void }) {
+  // 优先用真实 run 结果里的 review items(带真实 id/targetId,可回写后端);
+  // 没有结果时(理论上不该发生)退回从 UI 模型派生的只读示意列表。
+  const items = useMemo(() => {
+    if (result?.reviewItems?.length) {
+      const compName = new Map(result.competitors.map((c) => [c.id, c.name]));
+      const oppTitle = new Map(result.opportunities.map((o) => [o.id, o.title]));
+      return result.reviewItems.map((it) => ({
+        id: it.id,
+        type: REVIEW_TYPE_LABEL[it.targetType],
+        label:
+          it.targetType === "competitor"
+            ? `${compName.get(it.targetId) ?? it.targetId} · 定位`
+            : it.targetType === "opportunity"
+              ? (oppTitle.get(it.targetId) ?? it.targetId)
+              : it.targetId,
+        status: it.status as ReviewStatus,
+      }));
+    }
+    return [
+      ...model.opportunities.slice(0, 4).map((o, i) => ({ id: "opp" + i, type: "opportunity", label: o.title, status: o.status as ReviewStatus })),
+      ...(model.competitors[0] ? [{ id: "cmp0", type: "competitor", label: model.competitors[0].name + " · 定位", status: "approved" as ReviewStatus }] : []),
+      ...(model.painPoints[0] ? [{ id: "pain0", type: "pain_point", label: model.painPoints[0].theme, status: "needs_review" as ReviewStatus }] : []),
+    ];
+  }, [model, result]);
+
+  const [picks, setPicks] = useState<Record<string, ReviewStatus>>({});
+  const [submitting, setSubmitting] = useState(false);
+  // items 变化(新一轮 run / 切换结果)时同步初始勾选状态
+  useEffect(() => { setPicks(Object.fromEntries(items.map((b) => [b.id, b.status]))); }, [items]);
+
+  const approveAll = () => { setPicks(Object.fromEntries(items.map((b) => [b.id, "approved"]))); showToast("已通过全部 " + items.length + " 项审核", "ok"); };
   const okCount = Object.values(picks).filter((s) => s === "approved").length;
+
+  const submit = async () => {
+    if (!result) { showToast("演示数据不回写审核报告", "spark"); return; }
+    setSubmitting(true);
+    const reviewItems: ResearchReviewItem[] = result.reviewItems.map((it) => ({ ...it, status: picks[it.id] ?? it.status }));
+    const res = await reviewReportAction(result, reviewItems);
+    setSubmitting(false);
+    if (!res.ok) { showToast("提交失败：" + res.error, "spark"); return; }
+    onSubmitted(res.markdown);
+    showToast("已生成审核版报告", "ok");
+  };
+
   return (
     <div className="card">
       <div className="card-head">
         <div><div className="eyebrow">Human review</div><h3>人工审核</h3></div>
-        <span className="right"><button className="btn btn-ghost" style={{ padding: "7px 13px", fontSize: 12.5 }} onClick={approveAll}><Icon name="check" size={14} />全部通过 {okCount}/{base.length}</button></span>
+        <span className="right" style={{ display: "flex", gap: 8 }}>
+          <button className="btn btn-ghost" style={{ padding: "7px 13px", fontSize: 12.5 }} onClick={approveAll}><Icon name="check" size={14} />全部通过 {okCount}/{items.length}</button>
+          <button className="btn btn-primary" style={{ padding: "7px 13px", fontSize: 12.5 }} onClick={submit} disabled={!result || submitting} title={result ? undefined : "演示数据不回写"}><Icon name="spark" size={14} />{submitting ? "提交中…" : "提交审核结果"}</button>
+        </span>
       </div>
-      {base.map((it) => (
-        <div className="review-item" key={it.id}>
-          <span className="typ">{it.type}</span>
-          <span className="desc">{it.label}</span>
-          <span className="review-actions">
-            <span className={"ra-btn" + (picks[it.id] === "approved" ? " pick-ok" : "")} onClick={() => setPicks((p) => ({ ...p, [it.id]: "approved" }))} title="通过"><Icon name="check" size={13} /></span>
-            <span className="ra-btn" style={picks[it.id] === "needs_review" ? { background: "var(--warn)", borderColor: "var(--warn)", color: "#fff" } : undefined} onClick={() => setPicks((p) => ({ ...p, [it.id]: "needs_review" }))} title="待复核"><Icon name="flag" size={13} /></span>
-            <span className={"ra-btn" + (picks[it.id] === "rejected" ? " pick-no" : "")} onClick={() => setPicks((p) => ({ ...p, [it.id]: "rejected" }))} title="驳回"><Icon name="x" size={13} /></span>
-          </span>
-        </div>
-      ))}
+      <div className="scroll" style={{ maxHeight: 332, overflowY: "auto", margin: "0 -4px", padding: "0 4px" }}>
+        {items.map((it) => (
+          <div className="review-item" key={it.id}>
+            <span className="typ">{it.type}</span>
+            <span className="desc">{it.label}</span>
+            <span className="review-actions" role="group" aria-label={`${it.label} 审核`}>
+              <span className={"ra-btn" + (picks[it.id] === "approved" ? " pick-ok" : "")} onClick={() => setPicks((p) => ({ ...p, [it.id]: "approved" }))} role="button" tabIndex={0} onKeyDown={keyActivate(() => setPicks((p) => ({ ...p, [it.id]: "approved" })))} aria-pressed={picks[it.id] === "approved"} title="通过" aria-label="通过"><Icon name="check" size={13} /></span>
+              <span className="ra-btn" style={picks[it.id] === "needs_review" ? { background: "var(--warn)", borderColor: "var(--warn)", color: "#fff" } : undefined} onClick={() => setPicks((p) => ({ ...p, [it.id]: "needs_review" }))} role="button" tabIndex={0} onKeyDown={keyActivate(() => setPicks((p) => ({ ...p, [it.id]: "needs_review" })))} aria-pressed={picks[it.id] === "needs_review"} title="待复核" aria-label="待复核"><Icon name="flag" size={13} /></span>
+              <span className={"ra-btn" + (picks[it.id] === "rejected" ? " pick-no" : "")} onClick={() => setPicks((p) => ({ ...p, [it.id]: "rejected" }))} role="button" tabIndex={0} onKeyDown={keyActivate(() => setPicks((p) => ({ ...p, [it.id]: "rejected" })))} aria-pressed={picks[it.id] === "rejected"} title="驳回" aria-label="驳回"><Icon name="x" size={13} /></span>
+            </span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
-function ReportCard({ model }: { model: UIResearchModel }) {
+function ReportCard({ model, runId, isMock, reviewedMarkdown }: { model: UIResearchModel; runId: string | null; isMock: boolean; reviewedMarkdown: string | null }) {
   const p = model.project;
   const top = [...model.opportunities].sort((a, b) => b.total - a.total).slice(0, 3);
-  const md = `# ${p.name}\n\n**行业** ${p.industry} ｜ **品类** ${p.category} ｜ **市场** ${p.market}\n**研究目标** ${p.goal}\n\n## 摘要\n基于 ${model.stats.candidates} 个公开信息源候选与 ${model.stats.rawDocs} 份 raw document，建立九类行业数据库，共沉淀 ${model.stats.evidence} 条可溯源证据。\n\n## 高分机会\n${top.map((o, i) => `${i + 1}. **${o.title}**（总分 ${o.total}）— ${o.summary}`).join("\n")}\n\n## 高频用户痛点\n${model.painPoints.slice(0, 3).map((pp) => `- ${pp.theme}：${pp.need}（${pp.freq}）`).join("\n")}\n\n## 内容打法\n${model.contentSignals.slice(0, 3).map((c) => `- [${c.platform}] ${c.topic} — ${c.why}`).join("\n")}\n\n## 下一步\n- 将高分机会转化为产品 / 内容选题\n- 用 RSS / sitemap 持续监控竞品更新，输出周报`;
+  const generated = `# ${p.name}\n\n**行业** ${p.industry} ｜ **品类** ${p.category} ｜ **市场** ${p.market}\n**研究目标** ${p.goal}\n\n## 摘要\n基于 ${model.stats.candidates} 个公开信息源候选与 ${model.stats.rawDocs} 份 raw document，建立九类行业数据库，共沉淀 ${model.stats.evidence} 条可溯源证据。\n\n## 高分机会\n${top.map((o, i) => `${i + 1}. **${o.title}**（总分 ${o.total}）— ${o.summary}`).join("\n")}\n\n## 高频用户痛点\n${model.painPoints.slice(0, 3).map((pp) => `- ${pp.theme}：${pp.need}（${pp.freq}）`).join("\n")}\n\n## 内容打法\n${model.contentSignals.slice(0, 3).map((c) => `- [${c.platform}] ${c.topic} — ${c.why}`).join("\n")}\n\n## 下一步\n- 将高分机会转化为产品 / 内容选题\n- 用 RSS / sitemap 持续监控竞品更新，输出周报`;
+  // 审核回写后优先展示后端生成的 reviewed_report.md 在线版
+  const reviewed = Boolean(reviewedMarkdown);
+  const md = reviewedMarkdown ?? generated;
+  const [downloading, setDownloading] = useState(false);
   const copy = () => { navigator.clipboard?.writeText(md); showToast("报告已复制到剪贴板", "copy"); };
+  const download = async () => {
+    if (!runId) return;
+    setDownloading(true);
+    const res = await downloadDeliveryPackageAction(runId);
+    setDownloading(false);
+    if (!res.ok) { showToast("下载失败：" + res.error, "spark"); return; }
+    downloadBlob(res.filename, res.json, "application/json;charset=utf-8");
+    showToast("交付包已下载", "copy");
+  };
   return (
     <div className="card">
       <div className="card-head">
-        <div><div className="eyebrow">Deliverable</div><h3>Markdown 报告</h3></div>
-        <span className="right"><button className="btn btn-ghost" style={{ padding: "7px 13px", fontSize: 12.5 }} onClick={copy}><Icon name="download" size={14} />复制</button></span>
+        <div><div className="eyebrow">Deliverable</div><h3>{reviewed ? "已审核版报告" : "Markdown 报告"}</h3></div>
+        <span className="right" style={{ display: "flex", gap: 8 }}>
+          <button className="btn btn-ghost" style={{ padding: "7px 13px", fontSize: 12.5, ...(runId ? {} : { opacity: 0.5, cursor: "not-allowed" }) }} onClick={download} disabled={!runId || downloading} title={runId ? undefined : (isMock ? "演示数据不生成交付包" : "本轮暂无交付包")}><Icon name="download" size={14} />{downloading ? "下载中…" : "下载交付包"}</button>
+          <button className="btn btn-ghost" style={{ padding: "7px 13px", fontSize: 12.5 }} onClick={copy}><Icon name="check" size={14} />复制</button>
+        </span>
       </div>
       <div className="report report-md scroll">{renderMarkdown(md)}</div>
     </div>

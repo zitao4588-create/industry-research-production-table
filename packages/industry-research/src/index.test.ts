@@ -48,7 +48,7 @@ describe("industry research mock workflow", () => {
     expect(result.research_documents.length).toBeGreaterThanOrEqual(
       result.raw_documents.length,
     );
-    expect(result.competitors).toHaveLength(1);
+    expect(result.competitors).toHaveLength(6);
     expect(result.product_signals.length).toBeGreaterThan(0);
     expect(result.pain_points.length).toBeGreaterThan(0);
     expect(result.content_signals.length).toBeGreaterThan(0);

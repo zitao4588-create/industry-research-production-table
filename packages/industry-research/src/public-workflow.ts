@@ -1,6 +1,7 @@
 import {
   generateCrawlPlan,
   generateSourceDiscoveryPlan,
+  requiredIndustryResearchDatabases,
 } from "./collection-plan";
 import { buildIndustryResearchDatabases } from "./database-builder";
 import {
@@ -27,6 +28,37 @@ import type {
   ResearchWorkflowResult,
 } from "./types";
 
+/**
+ * 流式进度事件(SSE 完整版用)。真实工作流在各阶段边界 emit;onProgress 不传时全是 no-op,
+ * 因此不影响现有非流式调用与测试。
+ */
+export type WorkflowProgressEvent =
+  | {
+      type: "phase";
+      phase: "discover" | "crawl" | "build" | "report";
+      status: "start" | "done";
+      at: string;
+    }
+  | {
+      type: "source";
+      at: string;
+      title: string;
+      method: string;
+      priority: "low" | "medium" | "high";
+      seed: string;
+    }
+  | {
+      type: "crawl";
+      at: string;
+      completed: number;
+      total: number;
+      rawDocs: number;
+    }
+  | { type: "db"; at: string; database: string; count: number }
+  | { type: "log"; at: string; message: string };
+
+export type WorkflowProgressHandler = (event: WorkflowProgressEvent) => void;
+
 type PublicWorkflowOptions = {
   fetcher?: PublicCrawlerFetch;
   now?: string;
@@ -34,6 +66,7 @@ type PublicWorkflowOptions = {
   maxProbeUrls?: number;
   maxSitemapUrls?: number;
   requestTimeoutMs?: number;
+  onProgress?: WorkflowProgressHandler;
 };
 
 function normalizeUrls(urls: string[]) {
@@ -178,6 +211,10 @@ export async function runPublicIndustryResearchWorkflow(
   input: ResearchWorkflowInput,
   options: PublicWorkflowOptions = {},
 ): Promise<ResearchWorkflowResult> {
+  const emit = options.onProgress ?? (() => {});
+  const ts = () => new Date().toISOString();
+  emit({ type: "phase", phase: "discover", status: "start", at: ts() });
+
   const project = createIndustryResearchProject(input);
   const sourceDiscoveryPlan = generateSourceDiscoveryPlan(project.id, input);
   const baseCrawlPlan = generateCrawlPlan(
@@ -218,6 +255,19 @@ export async function runPublicIndustryResearchWorkflow(
       "public_source_discovery 会保守探测公开首页、robots 和 sitemap；RSS/Atom、collection、product、blog 只从真实页面链接或 sitemap 进入采集。",
     ],
   };
+  for (const candidate of enhancedSourceDiscoveryPlan.candidates.slice(0, 12)) {
+    emit({
+      type: "source",
+      at: ts(),
+      title: candidate.title,
+      method: candidate.method,
+      priority: candidate.priority,
+      seed: candidate.seed,
+    });
+  }
+  emit({ type: "phase", phase: "discover", status: "done", at: ts() });
+  emit({ type: "phase", phase: "crawl", status: "start", at: ts() });
+
   const sources = createResearchSourcesFromPlan(
     project.id,
     input,
@@ -229,6 +279,15 @@ export async function runPublicIndustryResearchWorkflow(
     input,
     now: options.now,
   });
+  emit({
+    type: "crawl",
+    at: ts(),
+    completed: crawlerResult.crawl_jobs.length,
+    total: crawlerResult.crawl_jobs.length,
+    rawDocs: crawlerResult.raw_documents.length,
+  });
+  emit({ type: "phase", phase: "crawl", status: "done", at: ts() });
+  emit({ type: "phase", phase: "build", status: "start", at: ts() });
   const researchDocuments = createResearchDocumentsFromRawDocuments(
     project.id,
     crawlerResult.raw_documents,
@@ -242,6 +301,17 @@ export async function runPublicIndustryResearchWorkflow(
     rawDocuments: crawlerResult.raw_documents,
     sourceReliability: "needs_validation",
   });
+  for (const database of requiredIndustryResearchDatabases) {
+    emit({
+      type: "db",
+      at: ts(),
+      database,
+      count: databases[database].length,
+    });
+  }
+  emit({ type: "phase", phase: "build", status: "done", at: ts() });
+  emit({ type: "phase", phase: "report", status: "start", at: ts() });
+
   const dataset = {
     research_projects: [project],
     source_discovery_plans: [enhancedSourceDiscoveryPlan],
@@ -252,6 +322,7 @@ export async function runPublicIndustryResearchWorkflow(
     ...databases,
   };
   const reportContent = generateResearchMarkdownReport(dataset);
+  emit({ type: "phase", phase: "report", status: "done", at: ts() });
 
   return {
     ...dataset,

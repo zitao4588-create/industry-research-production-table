@@ -227,9 +227,32 @@ export function KnowledgeGraph({
     return () => { disposed = true; cancelAnimationFrame(raf); ro.disconnect(); canvas.removeEventListener("mousemove", onMove); canvas.removeEventListener("mouseleave", onLeave); };
   }, []);
 
+  const a11yLabel =
+    `行业研究知识图谱，包含 ${databases.length} 个数据库：` +
+    databases.map((d) => `${d.label} ${d.count} 条`).join("，");
   return (
     <div ref={wrapRef} className="kg-wrap" style={{ height }}>
-      <canvas ref={canvasRef} />
+      <canvas ref={canvasRef} role="img" aria-label={a11yLabel} />
+      {/* 屏幕阅读器可读的数据库清单(视觉隐藏),给 Canvas 图谱一个文字替代 */}
+      <ul
+        style={{
+          position: "absolute",
+          width: 1,
+          height: 1,
+          overflow: "hidden",
+          clip: "rect(0 0 0 0)",
+          whiteSpace: "nowrap",
+          border: 0,
+          padding: 0,
+          margin: -1,
+        }}
+      >
+        {databases.map((d) => (
+          <li key={d.label}>
+            {d.label}：{d.count} 条
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
