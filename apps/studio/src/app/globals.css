@@ -439,10 +439,20 @@ table.data td .desc { color: var(--muted); font-size: 12px; margin-top: 3px; max
 }
 @media (max-width: 720px) {
   .app { grid-template-columns: 1fr; }
-  .sidebar { display: none; }
+  /* P2-H: 窄屏侧栏改为抽屉式,默认收起,点汉堡滑出 */
+  .sidebar {
+    position: fixed; inset: 0 auto 0 0; width: min(280px, 84vw); z-index: 140;
+    transform: translateX(-100%); transition: transform 0.26s cubic-bezier(.2,.8,.2,1);
+    box-shadow: var(--shadow-lg);
+  }
+  .sidebar.open { transform: none; }
+  .nav-burger { display: inline-flex; }
   .field-grid, .supplement-grid { grid-template-columns: 1fr; }
   .db-grid { grid-template-columns: 1fr; }
   .stat-row { grid-template-columns: repeat(2, 1fr); }
+  /* P2-H: 宽表横向滚动 + 最小宽度,避免列被压垮 */
+  .table-wrap { overflow-x: auto; overflow-y: hidden; -webkit-overflow-scrolling: touch; }
+  table.data { min-width: 560px; }
 }
 
 /* =======================================================================
@@ -733,4 +743,37 @@ table.data tbody tr:hover td:first-child::before { content: ""; position: absolu
 @media (max-width: 720px) {
   .cmdk { width: 94vw; }
   .toaster { width: max-content; max-width: 90vw; }
+}
+
+/* ---- skeleton shimmer (P0-B) ---- */
+.irp-skel {
+  background: linear-gradient(100deg, var(--surface-2) 30%, var(--surface-3) 50%, var(--surface-2) 70%);
+  background-size: 200% 100%;
+  animation: irpSkel 1.2s ease-in-out infinite;
+}
+@keyframes irpSkel { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+/* ---- mobile nav drawer (P2-H): 汉堡 / 背板默认隐藏,窄屏由媒体查询打开 ---- */
+.nav-burger {
+  display: none; align-items: center; justify-content: center;
+}
+.nav-backdrop { display: none; }
+.nav-backdrop.open {
+  display: block; position: fixed; inset: 0; z-index: 135;
+  background: oklch(0 0 0 / 0.5); backdrop-filter: blur(3px);
+  animation: premFade 0.18s ease both;
+}
+@media (min-width: 721px) {
+  .nav-backdrop.open { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .irp-skel { animation: none; }
+  .sidebar { transition: none; }
+}
+
+/* P2-H 抽屉规则放最后,确保 source-order 胜过前面的 base/动画规则 */
+@media (max-width: 720px) {
+  .nav-burger { display: inline-flex; }
+  .sidebar { transform: translateX(-100%); }
+  .sidebar.open { transform: translateX(0); }
 }

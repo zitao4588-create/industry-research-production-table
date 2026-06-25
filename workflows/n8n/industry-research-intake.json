@@ -1,5 +1,7 @@
 {
   "name": "industry-research-v03-intake",
+  "id": "industryResearchV03Intake",
+  "active": true,
   "nodes": [
     {
       "parameters": {
@@ -12,141 +14,72 @@
       "name": "Webhook Intake",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
+      "webhookId": "industry-research-intake-webhook",
       "position": [0, 0]
     },
     {
       "parameters": {
-        "values": {
-          "string": [
-            {
-              "name": "mode",
-              "value": "={{$json.body.mode || 'public_web_deepseek'}}"
-            },
-            {
-              "name": "projectName",
-              "value": "={{$json.body.projectName}}"
-            },
-            {
-              "name": "industry",
-              "value": "={{$json.body.industry}}"
-            },
-            {
-              "name": "category",
-              "value": "={{$json.body.category}}"
-            },
-            {
-              "name": "market",
-              "value": "={{$json.body.market}}"
-            },
-            {
-              "name": "researchGoal",
-              "value": "={{$json.body.researchGoal}}"
-            },
-            {
-              "name": "urls",
-              "value": "={{Array.isArray($json.body.urls) ? $json.body.urls.join('\\n') : ''}}"
-            },
-            {
-              "name": "csvText",
-              "value": "={{$json.body.csvText || ''}}"
-            },
-            {
-              "name": "manualText",
-              "value": "={{$json.body.manualText || ''}}"
-            }
-          ]
-        }
-      },
-      "id": "normalize-input",
-      "name": "Normalize Intake",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3,
-      "position": [280, 0]
-    },
-    {
-      "parameters": {
         "method": "POST",
-        "url": "={{$env.AGENT_FACTORY_BASE_URL + '/api/industry-research/run'}}",
+        "url": "https://research.playgamelab.cn/api/industry-research/run",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "content-type",
               "value": "application/json"
-            },
-            {
-              "name": "x-internal-key",
-              "value": "={{$env.AGENT_FACTORY_INTERNAL_API_KEY}}"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{JSON.stringify({ mode: $json.mode, input: { projectName: $json.projectName, industry: $json.industry, category: $json.category, market: $json.market, researchGoal: $json.researchGoal, templateId: 'ecommerce_competitor_research', urls: $json.urls ? $json.urls.split('\\n').filter(Boolean) : [], csvText: $json.csvText, manualText: $json.manualText } })}}",
+        "jsonBody": "={{JSON.stringify({ mode: $json.body?.mode || $json.mode || 'public_web', input: { projectName: $json.body?.projectName || $json.projectName, industry: $json.body?.industry || $json.industry, category: $json.body?.category || $json.category, market: $json.body?.market || $json.market, researchGoal: $json.body?.researchGoal || $json.researchGoal, templateId: 'ecommerce_competitor_research', urls: Array.isArray($json.body?.urls) ? $json.body.urls : Array.isArray($json.urls) ? $json.urls : (($json.body?.urls || $json.urls) ? String($json.body?.urls || $json.urls).split('\\n').filter(Boolean) : []), csvText: $json.body?.csvText || $json.csvText || '', manualText: $json.body?.manualText || $json.manualText || '' } })}}",
         "options": {}
       },
       "id": "run-agent-factory",
-      "name": "Run Agent Factory",
+      "name": "Run Industry Research",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [560, 0]
-    },
-    {
-      "parameters": {
-        "values": {
-          "string": [
-            {
-              "name": "runId",
-              "value": "={{$json.result?.research_projects?.[0]?.id || $execution.id}}"
-            },
-            {
-              "name": "status",
-              "value": "completed"
-            },
-            {
-              "name": "deliveryPackageApiPath",
-              "value": "={{'/api/industry-research/runs/' + ($json.result?.research_projects?.[0]?.id || $execution.id) + '/download'}}"
-            },
-            {
-              "name": "message",
-              "value": "n8n draft completed Agent Factory run call. Delivery package lookup depends on agent-factory local run persistence."
-            }
-          ]
+      "position": [360, 0],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "industryResearchInternalHeader",
+          "name": "Industry Research Internal Header"
         }
-      },
-      "id": "build-completion-event",
-      "name": "Build Completion Event",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3,
-      "position": [840, 0]
+      }
     },
     {
       "parameters": {
         "method": "POST",
-        "url": "={{$env.AGENT_FACTORY_BASE_URL + '/api/industry-research/webhooks/n8n-run-complete'}}",
+        "url": "https://research.playgamelab.cn/api/industry-research/webhooks/n8n-run-complete",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "content-type",
               "value": "application/json"
-            },
-            {
-              "name": "x-agent-factory-webhook-secret",
-              "value": "={{$env.AGENT_FACTORY_N8N_WEBHOOK_SECRET}}"
             }
           ]
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{JSON.stringify({ runId: $json.runId, status: $json.status, n8nExecutionId: $execution.id, deliveryPackageApiPath: $json.deliveryPackageApiPath, message: $json.message })}}",
+        "jsonBody": "={{JSON.stringify({ runId: $json.deliveryPackage?.runId || $json.result?.research_projects?.[0]?.id || $execution.id, status: 'completed', n8nExecutionId: $execution.id, deliveryPackageApiPath: '/api/industry-research/runs/' + ($json.deliveryPackage?.runId || $json.result?.research_projects?.[0]?.id || $execution.id) + '/download', message: 'n8n completed industry research run through the configured OpenAI-compatible provider.' })}}",
         "options": {}
       },
       "id": "notify-agent-factory",
-      "name": "Notify Agent Factory",
+      "name": "Notify Industry Research",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [1120, 0]
+      "position": [720, 0],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "industryResearchN8nWebhookHeader",
+          "name": "Industry Research n8n Webhook Header"
+        }
+      }
     }
   ],
   "connections": {
@@ -154,40 +87,18 @@
       "main": [
         [
           {
-            "node": "Normalize Intake",
+            "node": "Run Industry Research",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Normalize Intake": {
+    "Run Industry Research": {
       "main": [
         [
           {
-            "node": "Run Agent Factory",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Run Agent Factory": {
-      "main": [
-        [
-          {
-            "node": "Build Completion Event",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Build Completion Event": {
-      "main": [
-        [
-          {
-            "node": "Notify Agent Factory",
+            "node": "Notify Industry Research",
             "type": "main",
             "index": 0
           }
@@ -199,7 +110,7 @@
     "executionOrder": "v1"
   },
   "meta": {
-    "templateCredsSetupCompleted": false,
-    "description": "v0.3 draft only. Import after self-hosted n8n is behind Caddy HTTPS; do not expose port 5678 directly."
+    "templateCredsSetupCompleted": true,
+    "description": "Production n8n intake for industry research. Calls the protected run API with n8n Header Auth credentials, then posts the completion callback."
   }
 }

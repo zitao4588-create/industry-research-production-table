@@ -77,6 +77,8 @@ export function createMockIndustryResearchDataset(
     discoveryPlan: sourceDiscoveryPlan,
     sources,
     rawDocuments: crawlerResult.raw_documents,
+    // Mock 是演示态:用高密度合成数据还原"生产台"厚度(竞品/机会 6、~74 证据)。
+    entityProfile: "rich",
   });
 
   return {

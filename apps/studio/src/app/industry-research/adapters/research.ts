@@ -31,6 +31,15 @@ export type UISourceCandidate = {
   db: IndustryResearchDatabaseName[];
 };
 
+/** 单条可溯源证据(给 EvidencePopover 用):来源标题 / URL / 原文片段。 */
+export type UIEvidenceRef = {
+  id: string;
+  quote: string;
+  url?: string;
+  source?: string;
+  reliability?: string;
+};
+
 export type UICompetitor = {
   name: string;
   channel: string;
@@ -38,6 +47,7 @@ export type UICompetitor = {
   market: string;
   structure: string[];
   evidence: number;
+  evidenceRefs?: UIEvidenceRef[];
   positioningNote?: string;
 };
 
@@ -54,6 +64,7 @@ export type UIPainPoint = {
   need: string;
   freq: "low" | "medium" | "high";
   evidence: number;
+  evidenceRefs?: UIEvidenceRef[];
 };
 
 export type UIContentSignal = {
@@ -62,6 +73,7 @@ export type UIContentSignal = {
   type: "exposure" | "growth" | "save" | "conversion" | "personal_brand";
   why: string;
   evidence: number;
+  evidenceRefs?: UIEvidenceRef[];
 };
 
 export type UIKeyword = {
@@ -80,6 +92,7 @@ export type UIOpportunity = {
   evidence: number;
   total: number;
   status: ResearchReviewStatus;
+  evidenceRefs?: UIEvidenceRef[];
 };
 
 export type UIWeeklyReport = {
@@ -377,6 +390,31 @@ export function adaptRun(raw: ResearchWorkflowResult): UIResearchModel {
     raw.competitors.map((item) => [item.id, item.name]),
   );
 
+  // 证据溯源:evidenceId → 来源标题 / URL / 原文片段(给 EvidencePopover)。
+  const evidenceById = new Map(raw.evidence.map((item) => [item.id, item]));
+  const sourceById = new Map(
+    raw.research_sources.map((item) => [item.id, item]),
+  );
+  const rawDocById = new Map(raw.raw_documents.map((item) => [item.id, item]));
+  const resolveEvidence = (ids: string[]): UIEvidenceRef[] =>
+    ids
+      .map((id) => evidenceById.get(id))
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+      .slice(0, 6)
+      .map((item) => {
+        const doc = item.rawDocumentId
+          ? rawDocById.get(item.rawDocumentId)
+          : undefined;
+        const source = sourceById.get(item.sourceId);
+        return {
+          id: item.id,
+          quote: item.quote,
+          url: doc?.url ?? source?.value,
+          source: source?.title ?? doc?.title,
+          reliability: doc?.sourceQuality?.sourceType,
+        };
+      });
+
   return {
     project,
     workflowSteps: raw.workflowSteps.map((step) => ({
@@ -401,6 +439,7 @@ export function adaptRun(raw: ResearchWorkflowResult): UIResearchModel {
       ),
       structure: competitor.websiteStructure,
       evidence: competitor.evidenceIds.length,
+      evidenceRefs: resolveEvidence(competitor.evidenceIds),
     })),
     products: raw.product_database.map((product) => ({
       name: product.name,
@@ -414,6 +453,7 @@ export function adaptRun(raw: ResearchWorkflowResult): UIResearchModel {
       need: painPoint.userNeed,
       freq: painPoint.frequency,
       evidence: painPoint.evidenceIds.length,
+      evidenceRefs: resolveEvidence(painPoint.evidenceIds),
     })),
     contentSignals: raw.content_signals.map((signal) => ({
       platform: signal.platform,
@@ -421,6 +461,7 @@ export function adaptRun(raw: ResearchWorkflowResult): UIResearchModel {
       type: signal.contentType,
       why: signal.whyItWorks,
       evidence: signal.evidenceIds.length,
+      evidenceRefs: resolveEvidence(signal.evidenceIds),
     })),
     keywords: raw.keyword_database.map((keyword) => ({
       keyword: keyword.keyword,
@@ -437,6 +478,7 @@ export function adaptRun(raw: ResearchWorkflowResult): UIResearchModel {
       evidence: opportunity.evidenceQualityScore,
       total: opportunity.totalScore,
       status: opportunity.reviewStatus,
+      evidenceRefs: resolveEvidence(opportunity.evidenceIds),
     })),
     weekly: raw.weekly_intelligence_reports[0]
       ? {
