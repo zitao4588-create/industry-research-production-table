@@ -1,5 +1,5 @@
-import IndustryResearchWorkbench from "./IndustryResearchWorkbench";
+import SimpleResearch from "./SimpleResearch";
 
 export default function IndustryResearchPage() {
-  return <IndustryResearchWorkbench />;
+  return <SimpleResearch />;
 }
