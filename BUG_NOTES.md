@@ -2,6 +2,65 @@
 
 更新时间：2026-06-29
 
+## 已处理：n8n 四态 workflow 首次 smoke 失败
+
+- 现象：导入四态 n8n workflow 后，第一次 webhook smoke 返回 failed callback；run API 报 `请求体缺少行业研究工作流必填字段。`
+- 原因：`Run Industry Research` 节点接在 `Notify Industry Research Running` 之后，但节点表达式仍使用 `$json`；此时 `$json` 已是 running callback 的 ack，不再是原始 webhook body。
+- 处理：将 Run 节点 `jsonBody` 表达式改为显式读取 `$('Webhook Intake').item.json`。
+- 验证：重新导入、发布、激活并重启 n8n 后，第二次 webhook smoke execution `12` 返回 completed；Supabase n8n event 表有 queued、running、completed 三条事件。
+
+## 已处理：zvec optimize warning 改为显式维护动作
+
+- 现象：生产 `pnpm zvec:index` 写入和检索都正常，但默认调用 `collection.optimizeSync()` 时会持续输出 RocksDB/FTS warning。
+- 风险：直接删除 collection 下的 `*.tmp` 目录属于目录删除，不符合项目“禁止脚本批量删除文件或目录”的安全边界。
+- 处理：`scripts/zvec-index-industry-research.ts` 新增 `--optimize` / `AGENT_FACTORY_ZVEC_OPTIMIZE=true`；默认日常 index 不再调用 optimize。
+- 验证：本地和生产默认 `pnpm zvec:index` 均返回 `optimizeRequested=false`、`warnings=[]`；生产写入/检索继续正常。
+
+## 当前限制：9router free/provider 探测无可用模型
+
+- 现象：服务器运行 `pnpm probe:9router` 后返回 `no_usable_model_found`，usableModels 为空。
+- 已核查：
+  - 9router base URL `http://127.0.0.1:20128/v1` 可达，模型列表返回 387 个模型，候选 122 个。
+  - 多数候选返回 `No active credentials for provider`。
+  - `mmf/mimo-auto` 和 `mimo-free/mimo-auto` 仍返回上游 `risk_control`。
+- 当前处理：保持默认业务流 `public_web`，不把 LLM 作为生产默认；需要 LLM 交付时必须接入自付费 provider 或可用 provider credentials。
+
+## 已处理：部署时直接 SSH root@domain 触发 host key verification failed
+
+- 现象：部署前尝试用 `root@research.playgamelab.cn` 做只读核查时返回 `Host key verification failed`。
+- 原因：当前可用的服务器连接信息在本机 SSH config 的 `lighthouse-lab` host alias 下，用户是 `ubuntu`，并使用指定 identity file；直接 root + domain 不匹配现有 known_hosts / 登录配置。
+- 处理：改用 `ssh lighthouse-lab` 做后续部署核查和操作。
+- 验证：`lighthouse-lab` 可正常返回主机名 `VM-0-3-ubuntu`，并确认 `industry-research.service` 为 active。
+
+## 已处理：远端部署目录不是 Git 仓库
+
+- 现象：`git -C /opt/playgamelab/industry-research status`、`rev-parse` 和 `branch --show-current` 均返回 `fatal: not a git repository`。
+- 原因：轻量服务器当前部署目录是 rsync/拷贝式发布目录，不是 Git checkout。
+- 处理：
+  - 不使用 `git pull` 部署。
+  - 部署前创建备份 `.deploy-backups/pre-703e41a-20260629T114634Z.tar.gz`。
+  - 使用非删除式 `rsync` 同步已提交代码，明确排除 `.git`、生产 env、依赖目录、运行输出和本地工具目录。
+- 验证：远端 `pnpm build` 通过，服务重启后公网 health 正常。
+
+## 已处理：远端手动 server:doctor 未加载 systemd env 导致误报失败
+
+- 现象：直接在远端运行 `pnpm server:doctor` 时，`AGENT_FACTORY_DEPLOYMENT_TARGET`、`NODE_ENV`、base URL、internal API key、n8n secret、Supabase/zvec 和 writable dir 检查失败。
+- 原因：生产环境变量由 systemd 的 `EnvironmentFile=/opt/playgamelab/industry-research/industry-research.env` 加载；手动 shell 没有自动加载该 root-owned env 文件，因此脚本看到空环境和默认 `/var/lib/...` 路径。
+- 处理：用 `sudo` 读取 env 文件，导出 systemd 同等环境，再以 `ubuntu` 用户运行 `pnpm server:doctor`。
+- 验证：重跑后 `status=ok`，Supabase/zvec 启用，runs/zvec 数据目录均可写。
+
+## 验收备注：生产内部 API 未授权返回 401 是预期保护
+
+- 现象：公网访问 `/api/industry-research/runs` 和 `POST /api/industry-research/runs/<runId>/replay` 未带内部凭据时返回 `401`。
+- 判断：这两个接口走 `authorizeIndustryResearchRequest`，生产环境未带内部 key 返回 401 符合当前安全边界。
+- 验证：页面 `/industry-research` 返回 200；run stream token GET 带合法 Origin 返回 200；replay POST 未授权返回 401。
+
+## 验收备注：本轮部署后 zvec optimize 仍出现 RocksDB/FTS warning
+
+- 现象：生产 `pnpm zvec:index` 返回 `status=ok`，但 native 日志出现 `RocksDB path ... already exists` / `ReduceFts: create destination FTS RocksDB failed`，脚本 warnings 包含 `zvec optimize skipped`。
+- 判断：本轮写入 138 个 chunk，Supabase metadata rows 138，`pnpm zvec:search --query=taobao` 可检索到 smoke run 和历史 run；失败点仍是 optimize/压缩，不是写入或查询。
+- 当前处理：继续把 optimize 失败降级为 warning；后续可在维护窗口评估清理重建 collection 或升级 zvec。
+
 ## 已处理：Supabase n8n event sequence 默认 PUBLIC 权限
 
 - 现象：应用 Supabase migration 后，4 张表的 `anon` / `authenticated` 权限都已是 false，但 `industry_research_n8n_events_id_seq` 仍显示对 `anon` / `authenticated` 有 USAGE/SELECT/UPDATE。

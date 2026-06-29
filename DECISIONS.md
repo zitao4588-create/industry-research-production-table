@@ -24,6 +24,42 @@
   - 报告必须分层显示“已确认发现 / 候选发现 / 不确定 / 阻塞项”，并暴露可信度指标。
   - Supabase 是权威运行记录读取优先级，本地交付包是 fallback；zvec 是可重建缓存，并记录增量索引状态。
 
+## 2026-06-29：提交后的生产部署采用非删除式同步，不在服务器上 git pull
+
+- 决策：本轮 `703e41a` 推送后，轻量服务器部署不使用 `git pull`，而是对 `/opt/playgamelab/industry-research` 做非删除式 `rsync` 同步，并明确排除 `.git`、生产 env、依赖目录、构建缓存、运行输出和本地工具/草稿目录。
+- 原因：远端实际部署目录不是 Git 仓库；同时生产 env 为 root-owned 文件，运行数据在 `/opt/playgamelab/industry-research-data`，使用删除式同步或整目录覆盖会增加误删配置/数据的风险。
+- 影响：
+  - 每次部署前先生成 `.deploy-backups/<timestamp>.tar.gz` 源码备份。
+  - 服务器上的 `industry-research.env*`、`node_modules`、运行数据和 `.deploy-backups` 不由 rsync 覆盖或删除。
+  - 远端验证以 `pnpm install --frozen-lockfile`、`pnpm build`、按 systemd env 加载的 `server:doctor`、Supabase/zvec smoke 和 systemd health 为准。
+
+## 2026-06-29：n8n workflow JSON 同步不等于自动导入生产 n8n
+
+- 决策：本轮只把扩展四态事件的 `workflows/n8n/industry-research-intake.json` 同步到服务器代码目录，不自动导入或覆盖 n8n 实例中的 workflow。
+- 原因：n8n workflow 导入会影响生产 webhook、active workflow、Header Auth credentials 和可能的 workflow id/webhookId；在没有确认目标 workflow 和导入方式前，自动导入容易生成重复 workflow 或导致凭据错配。
+- 影响：
+  - 代码仓库和服务器文件系统已经有最新版 workflow JSON。
+  - 生产 n8n 仍以现有 active workflow 为准。
+  - 下一轮如果要启用四态 workflow，需要单独做 n8n 导入/复核/真实 webhook smoke。
+
+## 2026-06-29：n8n 四态 workflow 用同 id 更新现有 workflow
+
+- 决策：生产 n8n 启用四态 workflow 时，保留 workflow id `industryResearchV03Intake`，先导出现有 active workflow 备份，再导入同 id JSON、publish、active，并重启 n8n 容器刷新 webhook 注册。
+- 原因：同 id 更新可以避免重复 production webhook 和重复 active workflow；n8n 普通部署模式的 `import:workflow --activeState=fromJson` 不可用，因此需要导入后显式发布和激活。
+- 影响：
+  - n8n 数据卷保留导入前备份。
+  - 当前 production webhook 仍是 `POST /webhook/industry-research/intake`。
+  - 四态链路用 `n8nExecutionId` 串联 queued/running/completed；completed 事件使用真实 delivery runId。
+
+## 2026-06-29：zvec optimize 不作为日常 index 默认动作
+
+- 决策：`pnpm zvec:index` 默认只做 upsert、FTS index ensure、metadata sync 和状态文件更新；`collection.optimizeSync()` 改为显式维护动作，需要传 `--optimize` 或设置 `AGENT_FACTORY_ZVEC_OPTIMIZE=true`。
+- 原因：当前 zvec optimize 在生产 collection 上会产生 RocksDB/FTS 临时目录 warning，但写入、metadata 和搜索都正常；为消除 warning 去删除 collection 临时目录不符合项目删除安全边界。
+- 影响：
+  - 日常增量索引输出稳定为 `warnings=[]`。
+  - 需要压缩或重建 collection 时，单独安排维护窗口并显式启用 optimize。
+  - `optimizeRequested` 会出现在脚本输出中，便于审计。
+
 ## 2026-06-29：运行模式命名收敛为 canonical mode + provider metadata
 
 - 决策：对外模式收敛为 `public_web`、`public_web_llm`、`llm_only`；`9router`、`public_web_9router`、`deepseek`、`public_web_deepseek`、`glm`、`public_web_glm` 只作为 legacy alias。provider、model、baseUrlHost、fallbackReason 和 llmUsed 写入 `runMetadata`，不再通过报告标题或文本字符串推断 LLM 状态。

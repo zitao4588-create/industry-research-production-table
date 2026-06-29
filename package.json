@@ -16,6 +16,7 @@
     "server:doctor": "tsx scripts/lightweight-server-doctor.ts",
     "supabase:doctor": "tsx scripts/supabase-doctor.ts",
     "supabase:smoke": "tsx scripts/supabase-smoke.ts",
+    "supabase:backfill-local-runs": "tsx scripts/supabase-backfill-local-runs.ts",
     "zvec:index": "tsx scripts/zvec-index-industry-research.ts",
     "zvec:search": "tsx scripts/zvec-search-industry-research.ts",
     "probe:9router": "tsx scripts/probe-9router-free-models.ts",

@@ -8,7 +8,7 @@
   - 入口：n8n Webhook `POST /webhook/industry-research/intake`
   - 动作：调用行业研究 `POST /api/industry-research/run`
   - 回调：调用行业研究 `POST /api/industry-research/webhooks/n8n-run-complete`
-  - 状态：2026-06-25 版本已导入轻量服务器 n8n，并验证 `public_web` 默认业务流可跑通；2026-06-29 仓库版本已扩展 queued/running/completed/failed 四态事件，但尚未导入生产 n8n 复测。
+  - 状态：2026-06-29 四态版本已导入轻量服务器 n8n，同 id 更新 `industryResearchV03Intake`，并验证 `public_web` 默认业务流可跑通。
 
 默认模式：
 
@@ -64,4 +64,5 @@ x-agent-factory-webhook-secret: <AGENT_FACTORY_N8N_WEBHOOK_SECRET>
 - 2026-06-25：不传 `mode` 的 `public_web` webhook 请求返回 `industry_research_n8n_run_complete_ack.v1`。
 - 2026-06-25：生成交付包目录，包含 `input.json`、`raw_documents.json`、`databases.json`、`review_items.json`、`report.md`、`reviewed_report.md`、`run_log.json`、`manifest.json`。
 - 2026-06-25：下载 API 使用内部 key 可返回该 run 的交付包 JSON。
-- 2026-06-29：仓库 workflow JSON 已通过静态 JSON 解析和测试断言，确认包含 queued/running/completed/failed 四态；生产 n8n 导入和 execution 复测仍待执行。
+- 2026-06-29：四态 workflow 已导入生产 n8n；首次 smoke 暴露 Run 节点读取 callback ack 的表达式问题，已改为读取 `$('Webhook Intake').item.json`。
+- 2026-06-29：修正后 execution `12` 完成 queued / running / completed 三事件落库；completed runId 为 `n8n-four-state-smoke-fixed-2026-06-29T16-17-15-732Z`。

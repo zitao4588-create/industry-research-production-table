@@ -81,6 +81,10 @@ function flagEnabled(name: string) {
   return process.argv.includes(`--${name}`);
 }
 
+function truthyEnv(value: string | undefined) {
+  return value === "1" || value === "true" || value === "yes";
+}
+
 function zvecCollectionPath() {
   return resolve(
     env.AGENT_FACTORY_ZVEC_DIR || ".cache/industry-research-zvec/chunks",
@@ -98,6 +102,10 @@ function zvecSourceMode(): ZvecIndexState["sourceMode"] {
   const value = argValue("source") || env.AGENT_FACTORY_ZVEC_SOURCE || "auto";
 
   return value === "local" || value === "supabase" ? value : "auto";
+}
+
+function shouldOptimizeCollection() {
+  return flagEnabled("optimize") || truthyEnv(env.AGENT_FACTORY_ZVEC_OPTIMIZE);
 }
 
 function runsRoot() {
@@ -483,6 +491,7 @@ async function upsertChunkMetadata(chunks: Chunk[]) {
 async function main() {
   const collection = await openCollection();
   const sourceMode = zvecSourceMode();
+  const optimizeRequested = shouldOptimizeCollection();
   const previousState = await readIndexState();
   const previousSignatures = previousChunkSignatures(previousState);
   const runTargets = await listRunTargets();
@@ -524,14 +533,16 @@ async function main() {
       );
     }
 
-    try {
-      collection.optimizeSync();
-    } catch (error) {
-      warnings.push(
-        `zvec optimize skipped: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+    if (optimizeRequested) {
+      try {
+        collection.optimizeSync();
+      } catch (error) {
+        warnings.push(
+          `zvec optimize skipped: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
     }
   }
 
@@ -574,6 +585,7 @@ async function main() {
         chunkCount: allChunks.length,
         upsertedChunkCount: chunksToUpsert.length,
         unchangedChunkCount: allChunks.length - chunksToUpsert.length,
+        optimizeRequested,
         zvecStats: collection.stats,
         supabaseMetadata,
         warnings,

@@ -108,6 +108,26 @@
   - zvec index 新增 `.cache/industry-research-zvec/index-state.json` 增量状态，支持 `AGENT_FACTORY_ZVEC_SOURCE=local|supabase|auto`，可从本地交付包或 Supabase artifact 重建。
   - 可信度指标已写入 `run_log.json` / `manifest.json` / 报告：采集网页数、有效证据数、已确认结论数、待复核结论数、低质量来源数、抓取失败数、LLM fallback。
   - Biome 排除了本地工具/草稿目录 `.claude`、`.codebuddy`、`.workbuddy`、`remotion-videos`，避免未跟踪外部产物阻塞项目代码检查。
+- 2026-06-29 本轮 P0/P1/P2 准生产优化已提交、推送并部署到轻量服务器：
+  - Git 提交：`703e41a1627ba0425acbcbafb2f280cd8caf3ea7`，提交信息 `feat: harden industry research production baseline`。
+  - 已推送 `origin/main`。
+  - 生产部署目录：`/opt/playgamelab/industry-research`；实际服务仍由 `industry-research.service` 从该目录启动。
+  - 部署前备份：`/opt/playgamelab/industry-research/.deploy-backups/pre-703e41a-20260629T114634Z.tar.gz`。
+  - 远端目录不是 Git 仓库，因此本轮采用非删除式 `rsync` 同步已提交代码，明确排除 `.git`、`.env.local`、`industry-research.env*`、`node_modules`、构建缓存、运行输出和本地工具目录。
+  - 远端 `pnpm install --frozen-lockfile`、`pnpm build`、按 systemd env 加载的 `pnpm server:doctor`、`pnpm supabase:doctor`、`pnpm supabase:smoke` 均通过。
+  - 生产 `industry-research.service` 已重启并保持 active；本机和公网 health 均返回 `status=ok`。
+  - 生产 Supabase smoke run：`supabase-smoke-2026-06-29T11-50-40-175Z`，8 类 artifacts 写入并读回成功。
+  - 生产 zvec 增量索引和检索通过，能检索到刚写入的 smoke run；optimize 阶段仍可能因为 RocksDB 临时目录发出 warning，但不影响写入和检索。
+  - n8n workflow JSON 已随代码同步到服务器，但没有直接导入/覆盖 n8n 实例里的 workflow；需要单独确认目标 workflow 后再导入，避免重复工作流或凭据错配。
+- 2026-06-29 TODO 剩余项已继续收敛：
+  - 服务器真实运行 `pnpm probe:9router`，结果为 `no_usable_model_found`；当前 9router free/MiMo 仍不可用于生产 LLM 交付，后续需要接入自付费 provider 或有效 provider credentials。
+  - 新增 `pnpm supabase:backfill-local-runs`，默认 dry-run，`--write --skip-existing` 时把本地 8 文件历史 run 幂等写入 Supabase。
+  - 轻量服务器 backfill dry-run 显示 5 个本地 run 中 4 个缺失、1 个已存在；执行写入后 4 个历史 run 已补进 Supabase，已存在 run 被跳过。
+  - backfill 后 `pnpm zvec:index -- --force` 重建 metadata：runCount 7、chunkCount 198、Supabase metadata rows 198、skippedMissingRuns 0。
+  - 四态 n8n workflow 已导入生产 n8n 同 id `industryResearchV03Intake`，未生成重复 workflow；导入前备份在 n8n 数据卷 `workflow-backups/` 下。
+  - 第一次四态 smoke 暴露 Run 节点表达式仍读 callback ack 的 bug，已修为显式读取 `$('Webhook Intake').item.json`。
+  - 修正后 webhook smoke 成功：execution `12` 写入 queued / running / completed 三条事件；真实 runId `n8n-four-state-smoke-fixed-2026-06-29T16-17-15-732Z`，下载 API 返回 200。
+  - zvec optimize warning 已改为显式维护动作：默认 index 不再调用 `collection.optimizeSync()`，如需维护压缩可用 `--optimize` 或 `AGENT_FACTORY_ZVEC_OPTIMIZE=true`。生产复测 `warnings=[]`。
 
 ## 验证结果
 
@@ -121,7 +141,38 @@
   - `pnpm supabase:smoke`：本机无 Supabase service role，按预期 `skipped_supabase_not_ready` 并 exit 2；未访问远端、未写生产库。
   - `pnpm zvec:index`：通过，首次本轮写入 328 chunks，随后复跑显示 `upsertedChunkCount=0`、`unchangedChunkCount=328`，确认增量状态生效。
   - `pnpm zvec:search --query=taobao`：通过，返回本地历史与最新 public_web run 的 raw document chunk。
-  - 未验证：未在本轮调用真实 provider、未部署、未应用数据库 migration、未写生产 Supabase。
+  - 本地阶段未验证：未在本机调用真实 provider、未应用数据库 migration、未写生产 Supabase；这些生产侧验证已在后续轻量服务器部署阶段单独完成。
+- 2026-06-29 P0/P1/P2 提交与生产部署验证：
+  - `git diff --check`：提交前通过。
+  - Git commit：`703e41a1627ba0425acbcbafb2f280cd8caf3ea7`。
+  - `git push origin main`：通过，`main -> main`。
+  - 服务器实际目录核查：`/opt/playgamelab/industry-research` 存在，`/opt/industry-research-production-table` 不存在；`industry-research.service` 使用该实际目录和 `/opt/playgamelab/industry-research/industry-research.env`。
+  - 部署前备份已生成：`.deploy-backups/pre-703e41a-20260629T114634Z.tar.gz`。
+  - 远端非删除式同步完成，保留 root-owned production env、依赖目录和运行数据目录。
+  - 远端 `pnpm install --frozen-lockfile`：通过。
+  - 远端 `pnpm build`：通过，Next.js 生产构建包含 `/api/industry-research/runs/[runId]/replay`。
+  - 远端 `pnpm server:doctor`：首次手动运行因未加载 systemd env 失败；按 systemd env 文件和 `ubuntu` 用户重跑后通过。
+  - 远端 `pnpm supabase:doctor`：通过，4 张表可达，RLS 模型仍为 `deny_by_default_service_role_only`。
+  - 远端 `pnpm supabase:smoke`：通过，runId `supabase-smoke-2026-06-29T11-50-40-175Z`，写入并读回 8 类 artifacts。
+  - 远端 `pnpm zvec:index`：通过，`upsertedChunkCount=138`，Supabase metadata rows 138；optimize warning 已记录在 BUG_NOTES。
+  - 远端 `pnpm zvec:search --query=taobao`：通过，可检索 smoke run 和历史 run。
+  - `systemctl restart industry-research.service`：通过；服务状态 `active/running`。
+  - 公网 `https://research.playgamelab.cn/api/health`：返回 `status=ok`。
+  - 公网 `https://research.playgamelab.cn/industry-research`：返回 `200`。
+  - 公网内部 API 保护验证：未带凭据访问 runs/replay POST 返回 `401`，符合内部 API 保护预期；run stream token GET 带合法 Origin 返回 `200`。
+- 2026-06-29 TODO 剩余项收敛验证：
+  - 远端 `pnpm probe:9router`：执行完成但 exit 1，状态 `no_usable_model_found`，modelListCount 387，candidateCount 122，usableModels 为空；主要失败原因为 provider 无 active credentials，MiMo 为 risk_control。
+  - 远端 `pnpm supabase:backfill-local-runs`：dry-run 通过，would_insert 4、would_update 1。
+  - 远端 `pnpm supabase:backfill-local-runs -- --write --skip-existing`：通过，inserted_or_updated 4、skipped_existing 1。
+  - 远端 `pnpm zvec:index -- --force`：通过，runCount 7、chunkCount 198、supabaseMetadata rows 198、skippedMissingRuns 0。
+  - 远端 `pnpm zvec:search --query=n8n-default-public-web-smoke`：通过，可检索 backfill 后的历史 n8n run，路径为 Supabase artifact。
+  - n8n workflow 导入：先备份原 active workflow，再导入同 id workflow，publish + active，重启 n8n 后 active id 仍为 `industryResearchV03Intake`。
+  - n8n 四态 smoke 第一次执行 `11` 返回 failed callback，错误为 run API 缺少必填字段；已定位为 workflow 表达式 bug 并修复。
+  - n8n 四态 smoke 第二次执行 `12` 返回 completed callback；Supabase event 表按 `n8n_execution_id=12` 查询到 queued、running、completed 三条事件。
+  - 新 run 下载 API：`/api/industry-research/runs/n8n-four-state-smoke-fixed-2026-06-29T16-17-15-732Z/download` 带内部 key 返回 200。
+  - 远端增量 `pnpm zvec:index`：通过，runCount 8、chunkCount 202、upsertedChunkCount 4、warnings 空。
+  - 远端 `pnpm zvec:search --query=修正后的四态workflow`：通过，命中新 run `n8n-four-state-smoke-fixed-2026-06-29T16-17-15-732Z`。
+  - 公网 `https://research.playgamelab.cn/api/health`：返回 `status=ok`。
 - 2026-06-26 待办收敛验证：
   - `pnpm check`：通过
   - `pnpm build`：通过，Next.js 生产构建成功，`/industry-research` 静态预渲染成功
@@ -206,10 +257,10 @@
 - 不做支付。
 - 不做复杂多租户。
 - Supabase 代码侧接入和远程 migration 已完成；当前第一版仍只允许服务端 `service_role` 访问，不开放客户端直连表。
-- 远端最小同步已完成；server/Supabase/zvec/API/health 验收均通过。
+- 远端最小同步和本轮 P0/P1/P2 完整部署均已完成；server/Supabase/zvec/API/health 验收均通过。
 - GitHub `main` 已包含 Claude Code 简化 UI，且轻量服务器生产服务已部署该 UI。
 - 生产运行和 API 固定在轻量服务器；不要把正式运行态拆到 Vercel、本机或其他托管面。
-- 生产 / 付费交付必须使用自付费 provider；当前免费 9router/MiMo 只适合探索，不适合承诺交付。
+- 生产 / 付费交付必须使用自付费 provider；当前服务器实测 9router free/MiMo 无 usable model，不适合承诺 LLM 交付。
 - 真实 run 已接入：工作台经同源 server action / 流式路由发真实 `public_web` / `9router` / `public_web_9router`（legacy `deepseek` / `public_web_deepseek` 仍兼容）。**P0-A 完整版 SSE 已落地且覆盖全部真实模式**：经 `POST /api/industry-research/run/stream` 逐阶段流式上报进度，`public_web` 发现阶段真实耗时 ~5.3s，LLM 系 emit discover/crawl/build done + report start，流式不可用时回退非流式 server action。
-- n8n 已在轻量服务器接入默认 `public_web` 业务流；本地代码已支持回调 route 在 Supabase 启用时写入事件表，但远端项目代码仍需最小同步后才会生效。
+- n8n 已在轻量服务器接入默认 `public_web` 业务流；生产 workflow 已更新为 queued / running / completed / failed 四态事件，并通过真实 webhook smoke 验证。
 - 前端功能接线已完成：P0-C 表单校验、P0-A 真实 run（含完整 SSE）、P0-B 失败态/空态/Skeleton、P1-D 下载/审核回写/导出 CSV、P1-E 证据溯源弹层、P1-F 无障碍（键盘可达 + canvas 文字替代）、P1-G 刷新持久化、P2-H 移动端抽屉、P2-J 导航解耦、Mock 数据密度恢复（rich profile）、运行期表格逐格骨架与 phase×view 派生收敛。

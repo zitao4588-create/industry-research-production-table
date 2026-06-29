@@ -116,18 +116,31 @@
   - zvec index 增加增量状态文件和 local/supabase/auto 来源模式。
   - 可信度指标进入 run_log、manifest 和报告。
   - 验证：`pnpm check`、`pnpm build`、`pnpm sample:public-web`、本地安全版 `pnpm server:doctor`、`pnpm zvec:index`、`pnpm zvec:search --query=taobao` 均通过；Supabase 本机无密钥时 doctor disabled、smoke skipped。
+- [x] 2026-06-29 P0/P1/P2 提交、推送和轻量服务器部署完成：
+  - 提交：`703e41a1627ba0425acbcbafb2f280cd8caf3ea7 feat: harden industry research production baseline`。
+  - 已推送 `origin/main`。
+  - 生产目录 `/opt/playgamelab/industry-research` 已非删除式同步，保留 `industry-research.env*`、`node_modules`、运行数据和本地工具目录。
+  - 部署前备份：`.deploy-backups/pre-703e41a-20260629T114634Z.tar.gz`。
+  - 远端 `pnpm install --frozen-lockfile`、`pnpm build`、按 systemd env 加载的 `pnpm server:doctor`、`pnpm supabase:doctor`、`pnpm supabase:smoke` 均通过。
+  - `industry-research.service` 已重启并保持 active；公网 `/api/health` 和 `/industry-research` 可访问。
+  - 生产 zvec index/search 通过；当前仍保留 optimize warning 作为后续观察项。
+- [x] 2026-06-29 TODO 剩余项继续完成：
+  - 服务器真实运行 `pnpm probe:9router`，结论为 `no_usable_model_found`；当前没有可用于生产 LLM 交付的 free/provider 模型。
+  - 新增 `pnpm supabase:backfill-local-runs`，支持 dry-run、`--write`、`--skip-existing`、`--run-id`、`--limit`。
+  - 远端 backfill 已执行：4 个历史本地 run 写入 Supabase，1 个已存在 run 跳过。
+  - zvec metadata 已强制重建，`skippedMissingRuns=0`；历史 n8n run 可通过 zvec 检索。
+  - 四态 n8n workflow 已导入生产同 id workflow，并通过 execution `12` 验证 queued/running/completed 三事件落库。
+  - 修复 n8n Run 节点表达式，避免 callback ack 覆盖原始 webhook input。
+  - zvec optimize warning 已通过显式开关处理：默认不跑 optimize，生产复测 `warnings=[]`；需要维护压缩时再显式传 `--optimize`。
 
 ## 待处理
 
-- 9router free 模型的最终可用性需要在服务器带 `AGENT_FACTORY_LLM_API_KEY` / `NINE_ROUTER_API_KEY` 的环境运行 `pnpm probe:9router` 复核；本地当前没有 provider key，不能确认 live chat 成功。
-- 后续如果要把 2026-06-24 的历史本地 run 也变成 Supabase 权威记录，需要单独写 backfill 脚本导入 run + artifacts，再重新跑 zvec metadata；当前不影响新 run。
-- 本轮 n8n workflow JSON 已扩展四态事件，但还没有导入 n8n UI 做真实执行复测；导入前需复核 `If Run Succeeded` 和 `onError: continueRegularOutput` 在当前 n8n 版本里的兼容性。
-- 本轮未部署到轻量服务器，未使用 provider 额度，未写生产 Supabase；如要上线这些改动，需要单独走服务器同步、env 复核和 smoke。
+- 当前没有可由代码继续完成的阻塞项。
+- LLM 生产交付仍需要用户决策：接入自付费 OpenAI-compatible provider 或给 9router 配置可用 provider credentials 后，再运行 `pnpm probe:9router` / `pnpm verify:9router` 复核。
 
 ## 下一步建议
 
 1. 先把 n8n 业务流继续稳定在 `public_web`，保证无 LLM 也能产出 8 文件交付包。
-2. 需要 LLM 交付时，在服务器运行 `pnpm probe:9router`；若没有 usable model，切换自付费 OpenAI-compatible provider 后再启用 `public_web_9router`。
-3. 生产上线前复核内部 API key、n8n Header Auth credentials、robots / 公开数据边界和 provider 成本。
-4. Supabase、zvec、轻量服务器 API 和简化 UI 都已完成第一版闭环；下一步可以把本轮四态 n8n workflow 导入轻量服务器 n8n 并做真实执行复测。
-5. 如果要使用 LLM 交付，先在服务器运行 provider 探测，确认可用的自付费 OpenAI-compatible provider。
+2. 需要 LLM 交付时，先接入自付费 OpenAI-compatible provider；当前服务器探测没有 usable free model。
+3. 生产上线前继续复核内部 API key、n8n Header Auth credentials、robots / 公开数据边界和 provider 成本。
+4. Supabase、zvec、轻量服务器 API、简化 UI、P0/P1/P2 准生产基线和 n8n 四态 workflow 都已完成部署闭环；后续重点是真实业务样本质量和付费 provider 稳定性。

@@ -82,9 +82,14 @@ pnpm sample:public-web
 pnpm server:doctor
 pnpm supabase:doctor
 pnpm supabase:smoke
+pnpm supabase:backfill-local-runs
 pnpm zvec:index
 pnpm zvec:search --query="宠物 益生菌"
 ```
+
+`supabase:backfill-local-runs` 默认是 dry-run；确认结果后再传 `--write`，如只补缺失历史 run 可加 `--skip-existing`。
+
+`zvec:index` 默认不执行 zvec optimize；如需维护压缩，显式传 `--optimize` 或设置 `AGENT_FACTORY_ZVEC_OPTIMIZE=true`。
 
 ## 可选 Studio
 
@@ -126,6 +131,7 @@ AGENT_FACTORY_ALLOW_LOCAL_LLM_IN_PROD=1
 - `scripts/run-industry-research-public-web-smoke.ts`：低负载 public_web smoke 脚本
 - `scripts/supabase-doctor.ts`：Supabase env / 表可用性只读检查
 - `scripts/supabase-smoke.ts`：Supabase service-role 写入/读回 smoke
+- `scripts/supabase-backfill-local-runs.ts`：把本地 8 文件历史 run 幂等补写到 Supabase
 - `scripts/zvec-index-industry-research.ts`：把本地历史 run 索引到 zvec
 - `scripts/zvec-search-industry-research.ts`：搜索 zvec 本地检索缓存
 - `scripts/probe-9router-free-models.ts`：9router free 候选模型真实 chat 探测脚本
