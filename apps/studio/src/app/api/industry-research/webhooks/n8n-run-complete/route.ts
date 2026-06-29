@@ -3,12 +3,15 @@ import {
   authorizeN8nWebhookRequest,
   loadServerEnv,
 } from "../../_lib/server-env";
+import { recordIndustryResearchN8nEvent } from "../../_lib/supabase-run-store";
 
 export const runtime = "nodejs";
 
 const MAX_WEBHOOK_BODY_BYTES = 64_000;
 
 class WebhookValidationError extends Error {}
+
+type WebhookStatus = "queued" | "running" | "completed" | "failed";
 
 function isString(value: unknown): value is string {
   return typeof value === "string";
@@ -38,7 +41,7 @@ function parseWebhookPayload(value: unknown) {
 
   return {
     runId: body.runId.trim(),
-    status: body.status,
+    status: body.status as WebhookStatus,
     n8nExecutionId: isString(body.n8nExecutionId)
       ? body.n8nExecutionId.trim()
       : undefined,
@@ -73,14 +76,23 @@ export async function POST(request: Request) {
     }
 
     const payload = parseWebhookPayload(parsed);
+    const persistence = await recordIndustryResearchN8nEvent({
+      event: {
+        ...payload,
+        payload: parsed as Record<string, unknown>,
+      },
+      env,
+    });
 
     return NextResponse.json({
       schemaVersion: "industry_research_n8n_run_complete_ack.v1",
       accepted: true,
       receivedAt: new Date().toISOString(),
       event: payload,
-      persistence: "reserved_only",
-      note: "当前仅预留 n8n 回调合约，尚未写入 Supabase 或启动公网 n8n。",
+      persistence: persistence.enabled ? "supabase" : "disabled",
+      note: persistence.enabled
+        ? "n8n 回调事件已写入 Supabase 事件表。"
+        : "Supabase persistence 未启用；本次只完成回调鉴权与 payload 校验。",
     });
   } catch (error) {
     const status = error instanceof WebhookValidationError ? 400 : 500;

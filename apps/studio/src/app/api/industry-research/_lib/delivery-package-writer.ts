@@ -6,7 +6,11 @@ import {
   type ResearchWorkflowInput,
   type ResearchWorkflowResult,
 } from "@industry-research/core";
-import { industryResearchRunsRootDir } from "./local-runs";
+import {
+  industryResearchRunOutputLabel,
+  industryResearchRunsRootDir,
+} from "./local-runs";
+import { persistIndustryResearchArtifactsToSupabase } from "./supabase-run-store";
 
 function timestampForPath(date: Date) {
   return date.toISOString().replace(/[:.]/g, "-");
@@ -56,15 +60,17 @@ export async function persistIndustryResearchDeliveryPackage({
   result,
   startedAt,
   finishedAt,
+  env,
 }: {
   input: ResearchWorkflowInput;
   result: ResearchWorkflowResult;
   startedAt: string;
   finishedAt: string;
+  env?: Record<string, string | undefined>;
 }) {
   const startedDate = new Date(startedAt);
   const runId = `${slugifyRunId(input.projectName)}-${timestampForPath(startedDate)}`;
-  const outputDir = join(industryResearchRunsRootDir(), runId);
+  const outputDir = join(industryResearchRunsRootDir(env), runId);
   const artifacts = createIndustryResearchDeliveryArtifacts({
     input,
     result,
@@ -75,10 +81,11 @@ export async function persistIndustryResearchDeliveryPackage({
 
   await mkdir(outputDir, { recursive: true });
   await writeDeliveryArtifacts(outputDir, artifacts);
+  await persistIndustryResearchArtifactsToSupabase({ artifacts, env });
 
   return {
     runId,
-    relativeOutputDir: `outputs/industry-research-runs/${runId}`,
+    relativeOutputDir: industryResearchRunOutputLabel(runId, env),
     manifest: artifacts.manifest,
     run_log: artifacts.run_log,
   };

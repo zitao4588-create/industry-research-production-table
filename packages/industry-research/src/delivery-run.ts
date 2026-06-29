@@ -239,18 +239,19 @@ function detectLlmStatus(result: ResearchWorkflowResult) {
 
   if (
     text.includes("本地回退") ||
+    text.includes("OpenAI-compatible provider 报告节点暂时失败") ||
     text.includes("DeepSeek 报告节点暂时失败") ||
     text.includes("9router 报告节点暂时失败")
   ) {
     return "fallback" as const;
   }
 
-  if (text.includes("DeepSeek") || text.includes("deepseek")) {
-    return "deepseek" as const;
+  if (text.includes("9router") || text.includes("OpenAI-compatible")) {
+    return "9router" as const;
   }
 
-  if (text.includes("9router")) {
-    return "9router" as const;
+  if (text.includes("DeepSeek") || text.includes("deepseek")) {
+    return "deepseek" as const;
   }
 
   return "local" as const;
@@ -535,7 +536,9 @@ function formatBlockedClaims(result: ResearchWorkflowResult) {
   }
 
   if (detectLlmStatus(result) === "fallback") {
-    blockers.push("DeepSeek 报告节点失败，当前 report.md 使用本地回退报告。");
+    blockers.push(
+      "OpenAI-compatible provider 报告节点失败，当前 report.md 使用本地回退报告。",
+    );
   }
 
   return blockers.length > 0
@@ -547,7 +550,7 @@ function formatRemainingUncertainty(result: ResearchWorkflowResult) {
   const notes = [
     "公开网页抓取只能证明页面当时可访问，不能证明销量、市场份额或真实转化率。",
     "价格、评论、广告投放和社媒表现仍需更多来源交叉验证。",
-    "DeepSeek 结构化抽取结果必须由人工确认后，才能进入客户交付结论。",
+    "OpenAI-compatible provider 结构化抽取结果必须由人工确认后，才能进入客户交付结论。",
   ];
 
   if (result.raw_documents.length < 3) {

@@ -29,7 +29,14 @@ import {
 import { loadServerEnv } from "../api/industry-research/_lib/server-env";
 
 /** Real run modes the UI can trigger (Mock stays local, never hits this). */
-type UiRunMode = "deepseek" | "public_web" | "public_web_deepseek";
+type UiRunMode =
+  | "9router"
+  | "public_web"
+  | "public_web_9router"
+  | "deepseek"
+  | "public_web_deepseek"
+  | "glm"
+  | "public_web_glm";
 
 type RunActionResult =
   | ({ ok: true } & IndustryResearchRunResult)

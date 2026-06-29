@@ -12,7 +12,7 @@
 
 ## 当前状态
 
-MVP 开发中。第一版已支持 mock crawler、公开 URL 轻量采集、mock 数据库建设流程；Markdown 报告和公开资料结构化抽取节点已支持服务端调用 DeepSeek v4 flash。当前不接真实 OpenAI、Supabase、n8n 或复杂爬虫工具。
+MVP 开发中。第一版已支持 mock crawler、公开 URL 轻量采集、mock 数据库建设流程；Markdown 报告和公开资料结构化抽取节点已支持服务端调用 OpenAI-compatible provider。当前默认业务流是 `public_web`，不调用 LLM；n8n 已作为编排入口接入默认 `public_web` 链路。Supabase + zvec 基础设施已完成代码侧第一版，但真实 Supabase migration 需要专用 project 后再应用。
 
 ## 工作流
 
@@ -27,13 +27,12 @@ MVP 开发中。第一版已支持 mock crawler、公开 URL 轻量采集、mock
 9. 人工审核。
 10. 生成 Markdown 报告。
 
-## DeepSeek 接入
+## LLM / OpenAI-compatible provider 接入
 
-- Studio 页面支持“用 DeepSeek 生成报告”和“公开采集 + DeepSeek 抽取”。
+- Studio/API 支持显式 LLM 模式和“公开采集 + provider 抽取”。
 - 真实模型用于报告生成和 public_web raw documents 的结构化抽取；所有结论仍标记为待人工验证。
-- 环境变量优先读取 `AGENT_FACTORY_DEEPSEEK_API_KEY` / `DEEPSEEK_API_KEY`，也可用 `AGENT_FACTORY_LLM_API_KEY` 指向自付费 OpenAI-compatible provider。
-- 默认 base url：`https://api.deepseek.com`。
-- 默认文本模型：`deepseek-v4-flash`，可用 `AGENT_FACTORY_DEEPSEEK_MODEL` 覆盖。
+- 当前业务口径优先使用 `AGENT_FACTORY_LLM_API_KEY` / `AGENT_FACTORY_LLM_BASE_URL` / `AGENT_FACTORY_LLM_MODEL` 指向自付费 OpenAI-compatible provider。
+- 旧 DeepSeek 变量保留为历史兼容入口，不作为当前默认 provider 口径。
 
 ## 自动采集入口
 
@@ -90,6 +89,7 @@ MVP 开发中。第一版已支持 mock crawler、公开 URL 轻量采集、mock
 
 交付前验收清单：
 - `run_log.json` 中 `llmStatus` 为 `deepseek`，不是 `fallback`。
+- 如果是默认 `public_web` 交付，`llmStatus` 可以是 `local`；如果承诺 LLM 抽取/报告，必须确认不是 `fallback`。
 - `raw_documents.json` 至少包含 3 条可复核公开资料。
 - `sourceQualitySummary.acceptedForReport` 大于 0。
 - `report.md` 包含已确认发现、证据不足但可能成立的发现、阻塞项、剩余不确定性和证据索引。

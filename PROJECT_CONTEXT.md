@@ -1,6 +1,6 @@
 # 项目上下文
 
-更新时间：2026-06-25
+更新时间：2026-06-29
 
 ## 当前项目目标
 
@@ -14,12 +14,12 @@
 - Vitest
 - Biome
 - CLI-first：日常验证优先使用 `scripts/*`，不默认启动 Next dev server
-- 真实 LLM 使用 OpenAI-compatible provider；轻量服务器当前指向 9router / `mmf/mimo-auto`，但默认业务流先走不调用 LLM 的 `public_web`
+- 真实 LLM 使用 9router / OpenAI-compatible provider；默认业务流先走不调用 LLM 的 `public_web`
 
 ## 当前真实状态
 
 - 已从 `agent-factory` 同步行业研究 v0.3 核心边界：
-  - DeepSeek v4 flash 默认真实 LLM
+  - OpenAI-compatible provider 抽取 / 报告节点（旧 `deepseek` mode 保留为兼容别名）
   - public_web 保守采集
   - `sourceQuality`
   - `reviewed_report.md`
@@ -27,9 +27,9 @@
   - `manifest.json`
   - 本地交付包目录 `outputs/industry-research-runs/<runId>/`
   - 最小 run list / detail / download API
-  - n8n webhook 合约和 workflow 草案
-- 新增低负载 CLI 脚本 `pnpm sample:public-web`，只跑公开网页轻量采集，不调用 DeepSeek，不启动 Studio。
-- 新增 DeepSeek 验证入口 `pnpm verify:deepseek` 和交付样例入口 `pnpm sample:deepseek`；执行前需要确认 `.env.local` 中已配置 DeepSeek key，并接受调用成本。
+  - n8n webhook 合约和 workflow
+- 新增低负载 CLI 脚本 `pnpm sample:public-web`，只跑公开网页轻量采集，不调用 LLM，不启动 Studio。
+- 新增 `pnpm probe:9router` 和 `pnpm verify:9router`，用于真实探测 9router / OpenAI-compatible provider；执行前需要配置 `AGENT_FACTORY_LLM_API_KEY` 等服务端环境变量，并接受调用成本。
 - `/industry-research` 工作台已按 `docs/design_handoff_research_console 2/porting/` 的 source CSS 和 TSX 组件完成移植。
 - `globals.css` 已改为按源设计稿规则对齐，包括噪点层、玻璃效果、光晕、暗/亮主题、reduced-motion 等。
 - `IndustryResearchWorkbench.tsx` 已换成装配版，接入已有 adapter、fixture、运行事件流和 `@industry-research/core` mock 工作流。
@@ -43,7 +43,7 @@
 - 2026-06-25 Mock 数据密度通过 `entityProfile: "rich"`（仅 Mock）恢复，浏览器实测结果页统计条 `8 / 8 / 26 / 74 / 9`：
   - 信息源候选：8 ｜ raw documents：8 ｜ extraction jobs：26 ｜ evidence：74
   - 竞品：6 ｜ 机会：6 ｜ 产品：6 ｜ 痛点：5 ｜ 内容：5 ｜ 关键词：6 ｜ 九库 10/6/3/6/6/5/5/6/2
-  - 真实 `public_web`/`deepseek` 保持 lean（1 竞品），不凭空夸大采集结果（见 DECISIONS）。
+  - 真实 `public_web` / 9router LLM 模式保持 lean（1 竞品），不凭空夸大采集结果（见 DECISIONS）。
 - `localhost:3000` 的 Next dev 服务不再作为日常入口；如果电脑发热，应优先停止 dev server，改用 CLI。
 - 2026-06-25 已把轻量服务器 n8n 业务流接入行业研究生产台：
   - n8n production webhook：`POST /webhook/industry-research/intake`
@@ -51,9 +51,101 @@
   - workflow 默认 `public_web`，不调用 LLM；如要走 9router，调用方显式传 `mode: "public_web_9router"` 或 `mode: "9router"`。
   - 已验证默认 webhook 产生 run：`n8n-default-public-web-smoke-2026-06-24T18-51-31-476Z`。
   - 9router 当前仍指向 `mmf/mimo-auto`，但本轮探测到 MiMo Free 上游返回 `risk_control`，暂不能作为稳定默认模型。
+- 2026-06-26 已收敛剩余 UX / provider 待办：
+  - 运行中页面补齐 stat 条、九库卡、表格区逐格 Skeleton 预览。
+  - `phase x view` 可见性收敛为单一 `deriveVisibleScreen` 派生函数。
+  - 工作台、首页、health、README、当前状态文档统一为 9router / OpenAI-compatible provider 口径；旧 `deepseek` mode / 函数名保留为兼容别名。
+  - API 默认 run mode 改为 `public_web`，不显式传 LLM mode 时不调用 provider。
+  - 新增 `scripts/probe-9router-free-models.ts`；本地无 `.env.local` / provider key，当前只能确认脚本会明确跳过，真实 free 模型可用性需在服务器带 key 环境运行。
+- 2026-06-29 Claude Code UI 简化版已合并到 GitHub：
+  - 当前 `main` / `origin/main` 指向提交 `329dab8`：`feat(studio): simplify /industry-research to a 3-step flow, keep console as advanced mode`。
+  - `/industry-research` 默认入口改为 3 步用户流程：输入品类 / 可选竞品 URL → 自动研究进度 → Markdown 报告 + 竞品表 + 机会列表 + 下载。
+  - 新增 `SimpleResearch.tsx`；完整工程控制台 `IndustryResearchWorkbench` 保留在低调的「高级模式」里。
+  - Studio 首页文案去工程黑话，改成「输入品类 → 自动研究 → 得到报告」。
+  - 后端 actions、SSE route、adapter、run/stream 复用既有链路，没有引入新的后端 contract。
+  - GitHub 合并提交记录显示 Claude Code 已跑过 `pnpm check` 和 `pnpm build`；本轮同步只核查 Git 状态，未重新做浏览器视觉验收。
+  - 已最小同步到轻量服务器生产服务；公网 `/industry-research` 已返回新 UI 文案和「高级模式」入口。
+- 2026-06-29 Supabase + zvec 基础设施接入已完成代码侧第一版：
+  - 新增轻量 Supabase production schema：`industry_research_runs`、`industry_research_artifacts`、`industry_research_n8n_events`、`industry_research_zvec_chunks`。
+  - RLS 全部启用，第一版不开放 `anon` / `authenticated` policy，只允许服务端 `service_role` 写入。
+  - `AGENT_FACTORY_SUPABASE_ENABLED=true` 时，run 成功后会把交付包写入 Supabase；写入失败会让 run 失败。
+  - n8n 回调 route 会在 Supabase 启用时写入事件表；未启用时只完成鉴权和 payload 校验。
+  - 新增 `pnpm supabase:doctor` / `pnpm supabase:smoke` / `pnpm zvec:index` / `pnpm zvec:search`。
+  - zvec 使用 `@zvec/zvec@0.5.0`，默认本地目录 `.cache/industry-research-zvec/chunks`，索引历史 run 的 raw documents / report / reviewed_report。
+  - 专用 Supabase project 已创建：`industry-research-production-table`，ref `ghsyjdipofnyokbbbrdb`，URL `https://ghsyjdipofnyokbbbrdb.supabase.co`，region `ap-southeast-1`，Postgres `17.6`。
+  - `supabase/migrations/20260629_industry_research_infra.sql` 已应用到专用 project；4 张表、索引、RLS、service-role-only 权限已核查。
+- 2026-06-29 生产运行面已明确固定为轻量服务器：
+  - `research.playgamelab.cn` 承载行业研究前端/API，Caddy 反代到 `127.0.0.1:3010`。
+  - n8n、9router/provider gateway、交付包目录和 zvec 缓存都按轻量服务器路径设计。
+  - 新增 `deploy/lightweight-server/` systemd / Caddy / env 模板。
+  - 新增 `docs/lightweight-server-runtime.md` 和 `pnpm server:doctor`。
+  - server env 统一支持 `/etc/industry-research/industry-research.env` 和 `AGENT_FACTORY_ENV_FILE`；手动跑 `pnpm server:doctor` / `pnpm zvec:index` / `pnpm zvec:search` 时不需要复制密钥到 repo。
+  - Vercel / 本机只作为开发或预览，不承载正式 run、API、数据目录或 zvec 缓存。
+- 2026-06-29 轻量服务器 Supabase env 已接入：
+  - 远端 env 实际路径为 `/opt/playgamelab/industry-research/industry-research.env`，权限保持 `root:root 600`。
+  - 已修正一次 `SUPABASE_SERVICE_ROLE_KEY` 粘贴错误：原值是两个有效 JWT key 拼接在一起，导致 REST 返回 `401 Invalid API key`。
+  - 修正前已备份远端 env：`industry-research.env.bak-20260628215506`。
+  - 修正后在轻量服务器上完成 Supabase REST smoke：4 张表可访问，测试 run/artifact/n8n event/zvec chunk 可写可读，并已清理测试数据。
+  - 已完成远端最小同步：同步 Supabase/zvec/server-doctor/env/docs/deploy 模板等基础设施文件，未整仓覆盖 UI/Remotion 改动。
+  - 已在远端安装新增依赖 `@supabase/supabase-js@2.108.2` 和 `@zvec/zvec@0.5.0`。
+  - 已补齐远端非密钥运行配置：`AGENT_FACTORY_DEPLOYMENT_TARGET=lightweight_server`、base URL、`PORT=3010`、runs/zvec 数据目录。
+  - 远端 `pnpm server:doctor`、`pnpm supabase:doctor`、`pnpm supabase:smoke` 已通过。
+  - 远端生产 build 已通过，`industry-research.service` 已重启并保持 active。
+  - 本机和公网 health 均返回 `runStorage=supabase_and_local_json_markdown`、`zvecCache=enabled`。
+  - 已用受保护本机 API 生成 deployment smoke run：`deployment-api-smoke-2026-06-29T04-48-52-525Z`。
+  - API smoke 生成本地 8 文件交付包，并写入 Supabase run + 8 类 artifacts。
+  - zvec 已索引 5 个历史/新 run、74 个 chunk；deployment smoke run 写入 14 行 Supabase zvec metadata，并可通过 `pnpm zvec:search --query=deployment-api-smoke` 检索到。
+  - 历史本地 run 仍有 60 个 chunk 只存在于 zvec 本地缓存，未写 Supabase metadata；这是因为这些旧 run 不存在于 Supabase 权威表，脚本会计入 `skippedMissingRuns`。
 
 ## 验证结果
 
+- 2026-06-26 待办收敛验证：
+  - `pnpm check`：通过
+  - `pnpm build`：通过，Next.js 生产构建成功，`/industry-research` 静态预渲染成功
+  - typecheck：`packages/industry-research` 和 `apps/studio` 均通过
+  - Vitest：2 个测试文件通过，34 条测试通过
+  - Biome：检查 60 个文件，无需修复
+  - `pnpm probe:9router`：本地无 `.env.local` / provider key，按预期返回 `skipped_missing_api_key`；未能在本机确认 live chat 可用。
+- 2026-06-29 Supabase + zvec 本地验证：
+  - Supabase project 创建费用查询结果为 `0` monthly；已创建专用 project `ghsyjdipofnyokbbbrdb`。
+  - Supabase MCP 只读核查通过：project 状态 `ACTIVE_HEALTHY`，Postgres `17.6`。
+  - migration 已应用：4 张行业研究表存在，RLS 全部开启，policy 为空，`anon` / `authenticated` 表级 SELECT/INSERT/UPDATE/DELETE 全部 false，`service_role` 全部 true。
+  - 发现并修正 `industry_research_n8n_events_id_seq` 默认 PUBLIC 权限；修正后 `anon` / `authenticated` 对 sequence 的 USAGE/SELECT/UPDATE 全部 false，`service_role` 为 true。
+  - service_role 事务 smoke 通过：run/artifact/n8n event/zvec chunk 可写可读，事务已 rollback，4 张表最终仍为空。
+  - Supabase advisors：security 仅返回 `rls_enabled_no_policy` INFO（符合 v1 deny-by-default 设计）；performance 仅返回新索引 unused INFO（新表尚无查询历史）。
+  - `anon` / `authenticated` 负向查询验证通过：读取 `industry_research_runs` 返回 `permission denied`。
+  - `pnpm supabase:doctor`：通过安全跳过，确认 Supabase 未启用且缺少 project ref / URL / service role key。
+  - `pnpm zvec:index`：通过，历史 10 个 run 生成 308 个 chunk，写入 `.cache/industry-research-zvec/chunks`。
+  - `pnpm zvec:search --query=Amazon`：通过，可从 zvec 返回本地检索结果，并显示真实 artifact 文件路径。
+  - FTS-only 查询 `Amazon`：通过，确认 zvec 文本索引可返回结果。
+  - `pnpm check`：通过，typecheck / Vitest / Biome 全部通过。
+- 2026-06-29 轻量服务器部署资产验证：
+  - 已新增 systemd / Caddy / env 模板；本轮未 SSH 到服务器安装。
+  - `pnpm server:doctor` 本机模拟通过；Supabase 未启用时只给 warning，不打印 secret。
+  - `pnpm server:doctor` 可用于服务器侧检查，但本机默认不应创建 `/var/lib/industry-research`。
+- 2026-06-29 轻量服务器 Supabase env 验证：
+  - 已通过 SSH 核查 `/opt/playgamelab/industry-research/industry-research.env`，Supabase project ref、URL、service role key 均已配置。
+  - 远端 smoke 脚本通过：`industry_research_runs`、`industry_research_artifacts`、`industry_research_n8n_events`、`industry_research_zvec_chunks` 全部可由 service role 访问。
+  - smoke 写入的测试数据已清理，4 张表测试计数均为 `0`。
+- 2026-06-29 轻量服务器最小同步验证：
+  - 已同步 68 个基础设施相关路径，并在远端保存备份：`.deploy-backups/minimal-infra-sync-before-20260629060251.tar.gz`。
+  - `pnpm install --frozen-lockfile`：通过，新增 Supabase/zvec 依赖安装完成。
+  - `pnpm server:doctor`：通过，runs dir `/opt/playgamelab/industry-research-data/runs`，zvec dir `/opt/playgamelab/industry-research-data/zvec`。
+  - `pnpm supabase:doctor`：通过。
+  - `pnpm supabase:smoke`：通过，8 类 artifact 写入读回成功。
+  - `pnpm zvec:index`：首次因空 collection 目录打开失败；改远端 env `AGENT_FACTORY_ZVEC_DIR=/opt/playgamelab/industry-research-data/zvec/industry-research-chunks` 后进入下一步。
+  - `pnpm zvec:index`：随后因历史本地 run 不存在于 Supabase 触发 `industry_research_zvec_chunks_run_id_fkey`；脚本已修复为跳过缺失 Supabase run 的 metadata upsert。
+  - `pnpm zvec:index` 复测通过：runCount 5，chunkCount 74，deployment smoke run 的 metadata rows 14。
+  - `pnpm zvec:search --query=deployment-api-smoke` 复测通过，可检索到 deployment smoke run 的 report / reviewed_report chunk。
+  - 远端 `pnpm build` 通过；`industry-research.service` 重启成功。
+  - 本机 `http://127.0.0.1:3010/api/health` 和公网 `https://research.playgamelab.cn/api/health` 均通过。
+  - 受保护本机 API smoke 通过，并确认 Supabase run/artifact 写入：run 1 条、artifact 8 条。
+- 2026-06-29 Claude Code UI GitHub 同步核查：
+  - `git fetch origin` 完成，本地 `main` 与 `origin/main` 一致。
+  - 最新提交 `329dab8` 包含 `apps/studio/src/app/industry-research/SimpleResearch.tsx`、`apps/studio/src/app/industry-research/page.tsx`、`apps/studio/src/app/page.tsx`。
+  - 首次只读核查发现轻量服务器缺少 `SimpleResearch.tsx`；随后已从 GitHub `HEAD` 打包同步 `/industry-research` 前端目录、首页、`globals.css` 和 `layout.tsx`。
+  - 同步后远端 `pnpm build` 通过，`industry-research.service` 已重启并保持 active。
+  - 公网 `https://research.playgamelab.cn/industry-research` 已返回新 UI 文案：「帮你做电商竞品研究，一键生成报告」、「输入品类」、「高级模式」。
 - 2026-06-25 Claude Code UI 修正后验证：
   - `pnpm check`：通过
   - typecheck：`packages/industry-research` 和 `apps/studio` 均通过
@@ -70,7 +162,7 @@
   - `pnpm --filter @industry-research/core typecheck`：通过
   - `pnpm test`：通过，18 个测试通过
   - `pnpm check`：通过
-  - `pnpm sample:public-web`：通过，不启动 Next、不调用 DeepSeek，6.8 秒完成
+  - `pnpm sample:public-web`：通过，不启动 Next、不调用 LLM，6.8 秒完成
   - 最新低负载交付包：`outputs/industry-research-runs/v03-public-web-smoke-2026-06-18T14-21-27-261Z/`
   - 本次 smoke run：raw documents 3，acceptedForReport 1，crawlFailures 0，`manifest.json` 可解析
 - 2026-06-15 UI 验证历史：
@@ -90,8 +182,11 @@
 - 不做登录。
 - 不做支付。
 - 不做复杂多租户。
-- Supabase migration 仍是草案，应用前必须复核 RLS、`owner_id` 和 policy。
+- Supabase 代码侧接入和远程 migration 已完成；当前第一版仍只允许服务端 `service_role` 访问，不开放客户端直连表。
+- 远端最小同步已完成；server/Supabase/zvec/API/health 验收均通过。
+- GitHub `main` 已包含 Claude Code 简化 UI，且轻量服务器生产服务已部署该 UI。
+- 生产运行和 API 固定在轻量服务器；不要把正式运行态拆到 Vercel、本机或其他托管面。
 - 生产 / 付费交付必须使用自付费 provider；当前免费 9router/MiMo 只适合探索，不适合承诺交付。
-- 真实 run 已接入：工作台经同源 server action / 流式路由发真实 `deepseek` / `public_web` / `public_web_deepseek`。**P0-A 完整版 SSE 已落地且覆盖全部真实模式**：经 `POST /api/industry-research/run/stream` 逐阶段流式上报进度，`public_web` 发现阶段真实耗时 ~5.3s、`deepseek` 系也 emit discover/crawl/build done + report start（浏览器实测），流式不可用时回退非流式 server action。
-- n8n 已在轻量服务器接入默认 `public_web` 业务流；回调 route 目前仍是 `reserved_only`，尚未写入 Supabase 或事件表。
-- 2026-06-25 Claude Code 完成前端功能接线全三批：P0-C 表单校验、P0-A 真实 run（含完整 SSE、deepseek 细粒度）、P0-B 失败态/空态/Skeleton、P1-D 下载/审核回写/导出 CSV、P1-E 证据溯源弹层、P1-F 无障碍（键盘可达 + canvas 文字替代）、P1-G 刷新持久化、P2-H 移动端抽屉、P2-J 导航解耦、Mock 数据密度恢复（rich profile）。handoff 主线 P0-A~P2-K 已基本收尾；残留可选项为运行期表格逐格骨架与 phase×view 派生收敛。
+- 真实 run 已接入：工作台经同源 server action / 流式路由发真实 `public_web` / `9router` / `public_web_9router`（legacy `deepseek` / `public_web_deepseek` 仍兼容）。**P0-A 完整版 SSE 已落地且覆盖全部真实模式**：经 `POST /api/industry-research/run/stream` 逐阶段流式上报进度，`public_web` 发现阶段真实耗时 ~5.3s，LLM 系 emit discover/crawl/build done + report start，流式不可用时回退非流式 server action。
+- n8n 已在轻量服务器接入默认 `public_web` 业务流；本地代码已支持回调 route 在 Supabase 启用时写入事件表，但远端项目代码仍需最小同步后才会生效。
+- 前端功能接线已完成：P0-C 表单校验、P0-A 真实 run（含完整 SSE）、P0-B 失败态/空态/Skeleton、P1-D 下载/审核回写/导出 CSV、P1-E 证据溯源弹层、P1-F 无障碍（键盘可达 + canvas 文字替代）、P1-G 刷新持久化、P2-H 移动端抽屉、P2-J 导航解耦、Mock 数据密度恢复（rich profile）、运行期表格逐格骨架与 phase×view 派生收敛。

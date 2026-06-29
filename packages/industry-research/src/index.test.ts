@@ -196,7 +196,7 @@ describe("industry research mock workflow", () => {
   });
 });
 
-describe("industry research DeepSeek workflow", () => {
+describe("industry research OpenAI-compatible workflow", () => {
   it("resolves DeepSeek config from the DeepSeek env shape", () => {
     const config = resolveDeepSeekConfig({
       AGENT_FACTORY_DEEPSEEK_API_KEY: "test-key",
@@ -298,7 +298,7 @@ describe("industry research DeepSeek workflow", () => {
     ).rejects.toThrow("api key: [redacted]");
   });
 
-  it("uses DeepSeek to replace only the markdown report while keeping database outputs", async () => {
+  it("uses an OpenAI-compatible provider to replace only the markdown report while keeping database outputs", async () => {
     const fakeFetch: DeepSeekFetch = async () => ({
       ok: true,
       status: 200,
@@ -325,14 +325,14 @@ describe("industry research DeepSeek workflow", () => {
     expect(result.source_database.length).toBeGreaterThan(0);
     expect(result.raw_documents.length).toBeGreaterThan(0);
     expect(result.research_reports[0]?.title).toContain(
-      "DeepSeek Markdown 报告",
+      "9router / OpenAI-compatible Markdown 报告",
     );
     expect(result.research_reports[0]?.content).toContain(
       "DeepSeek 行业研究报告",
     );
   });
 
-  it("uses DeepSeek to extract structured data from public raw documents before report generation", async () => {
+  it("uses an OpenAI-compatible provider to extract structured data from public raw documents before report generation", async () => {
     let deepSeekCallCount = 0;
     const fakePublicFetch: PublicCrawlerFetch = async () => ({
       ok: true,
@@ -461,7 +461,7 @@ describe("industry research DeepSeek workflow", () => {
     );
   });
 
-  it("keeps public crawl results when DeepSeek report generation fails", async () => {
+  it("keeps public crawl results when provider report generation fails", async () => {
     let deepSeekCallCount = 0;
     const fakePublicFetch: PublicCrawlerFetch = async () => ({
       ok: true,
@@ -539,7 +539,7 @@ describe("industry research DeepSeek workflow", () => {
     expect(result.competitors[0]?.name).toBe("GutPet Labs");
     expect(result.research_reports[0]?.title).toContain("本地回退");
     expect(result.research_reports[0]?.content).toContain(
-      "DeepSeek 报告节点暂时失败",
+      "OpenAI-compatible provider 报告节点暂时失败",
     );
     expect(result.research_reports[0]?.content).toContain("## 公开采集结果");
   });

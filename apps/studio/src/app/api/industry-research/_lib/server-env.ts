@@ -3,6 +3,15 @@ import { join, resolve } from "node:path";
 
 export const INTERNAL_KEY_ENV = "AGENT_FACTORY_INTERNAL_API_KEY";
 export const N8N_WEBHOOK_SECRET_ENV = "AGENT_FACTORY_N8N_WEBHOOK_SECRET";
+export const SUPABASE_ENABLED_ENV = "AGENT_FACTORY_SUPABASE_ENABLED";
+export const SUPABASE_PROJECT_REF_ENV = "AGENT_FACTORY_SUPABASE_PROJECT_REF";
+export const SUPABASE_URL_ENV = "NEXT_PUBLIC_SUPABASE_URL";
+export const SUPABASE_SERVICE_ROLE_KEY_ENV = "SUPABASE_SERVICE_ROLE_KEY";
+export const ZVEC_ENABLED_ENV = "AGENT_FACTORY_ZVEC_ENABLED";
+export const ZVEC_DIR_ENV = "AGENT_FACTORY_ZVEC_DIR";
+export const SERVER_ENV_FILE_ENV = "AGENT_FACTORY_ENV_FILE";
+
+const DEFAULT_SERVER_ENV_FILE = "/etc/industry-research/industry-research.env";
 
 function parseEnvFile(filePath: string) {
   if (!existsSync(filePath)) {
@@ -39,7 +48,9 @@ export function loadServerEnv() {
     resolve(cwd, ".env.local"),
     resolve(cwd, "../..", ".env.local"),
     join(cwd, "apps/studio/.env.local"),
-  ];
+    DEFAULT_SERVER_ENV_FILE,
+    process.env[SERVER_ENV_FILE_ENV]?.trim(),
+  ].filter((filePath): filePath is string => Boolean(filePath));
   const fileEnv = candidates.reduce<Record<string, string>>((env, filePath) => {
     Object.assign(env, parseEnvFile(filePath));
     return env;
@@ -114,4 +125,8 @@ export function authorizeN8nWebhookRequest(
   }
 
   return { ok: true };
+}
+
+export function isTruthyEnv(value: string | undefined) {
+  return value === "1" || value === "true" || value === "yes";
 }

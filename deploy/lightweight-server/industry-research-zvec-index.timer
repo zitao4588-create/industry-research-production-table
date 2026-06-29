@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh Industry Research zvec cache every 30 minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=30min
+Persistent=true
+Unit=industry-research-zvec-index.service
+
+[Install]
+WantedBy=timers.target

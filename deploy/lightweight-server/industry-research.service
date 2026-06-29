@@ -1,0 +1,21 @@
+[Unit]
+Description=Industry Research Production Table
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=industry-research
+Group=industry-research
+WorkingDirectory=/opt/industry-research-production-table
+EnvironmentFile=/etc/industry-research/industry-research.env
+ExecStart=/usr/bin/env bash -lc 'pnpm start'
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/industry-research /opt/industry-research-production-table/.next
+
+[Install]
+WantedBy=multi-user.target

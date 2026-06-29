@@ -1,7 +1,7 @@
 import {
   type GlmFetch,
   type GlmRuntimeEnv,
-  generateDeepSeekResearchMarkdownReport,
+  generateOpenAICompatibleResearchMarkdownReport,
 } from "./glm-client";
 import {
   applyGlmStructuredExtraction,
@@ -19,7 +19,7 @@ import {
 import { generateResearchMarkdownReport } from "./report";
 import type { ResearchWorkflowInput, ResearchWorkflowResult } from "./types";
 
-async function replaceReportWithDeepSeek(
+async function replaceReportWithProvider(
   baseResult: ResearchWorkflowResult,
   options: {
     env: GlmRuntimeEnv;
@@ -30,15 +30,15 @@ async function replaceReportWithDeepSeek(
   const project = baseResult.research_projects[0];
 
   if (!project) {
-    throw new Error("DeepSeek workflow must create a research project.");
+    throw new Error("LLM workflow must create a research project.");
   }
 
   let report: Awaited<
-    ReturnType<typeof generateDeepSeekResearchMarkdownReport>
+    ReturnType<typeof generateOpenAICompatibleResearchMarkdownReport>
   >;
 
   try {
-    report = await generateDeepSeekResearchMarkdownReport({
+    report = await generateOpenAICompatibleResearchMarkdownReport({
       dataset: baseResult,
       env: options.env,
       fetcher: options.fetcher,
@@ -54,12 +54,12 @@ async function replaceReportWithDeepSeek(
       ...baseResult,
       research_reports: [
         {
-          id: "report-deepseek-fallback-1",
+          id: "report-llm-fallback-1",
           projectId: project.id,
           format: "markdown",
           title: `${project.name} Markdown 报告（本地回退）`,
           content: [
-            "> DeepSeek 报告节点暂时失败，下面先展示本地 Markdown 报告，公开采集和结构化数据库结果已保留。",
+            "> OpenAI-compatible provider 报告节点暂时失败，下面先展示本地 Markdown 报告，公开采集和结构化数据库结果已保留。",
             "",
             `> 失败原因：${message}`,
             "",
@@ -75,10 +75,10 @@ async function replaceReportWithDeepSeek(
     ...baseResult,
     research_reports: [
       {
-        id: "report-deepseek-1",
+        id: "report-llm-1",
         projectId: project.id,
         format: "markdown",
-        title: `${project.name} DeepSeek Markdown 报告（${report.model}）`,
+        title: `${project.name} 9router / OpenAI-compatible Markdown 报告（${report.model}）`,
         content: report.content,
         createdAt: new Date().toISOString(),
       },
@@ -94,7 +94,7 @@ export async function runDeepSeekIndustryResearchWorkflow(
     onProgress?: WorkflowProgressHandler;
   },
 ): Promise<ResearchWorkflowResult> {
-  // 纯 deepseek = 本地 mock 数据集(同步) + LLM 报告。mock 部分瞬时,逐阶段标 done;
+  // 纯 LLM = 本地 mock 数据集(同步) + provider 报告。mock 部分瞬时,逐阶段标 done;
   // 报告阶段包住真实 LLM 调用,把唯一的耗时段映射成进度。
   const emit = options.onProgress ?? (() => {});
   const ts = () => new Date().toISOString();
@@ -104,7 +104,7 @@ export async function runDeepSeekIndustryResearchWorkflow(
   emit({ type: "phase", phase: "crawl", status: "done", at: ts() });
   emit({ type: "phase", phase: "build", status: "done", at: ts() });
   emit({ type: "phase", phase: "report", status: "start", at: ts() });
-  const result = await replaceReportWithDeepSeek(base, options);
+  const result = await replaceReportWithProvider(base, options);
   emit({ type: "phase", phase: "report", status: "done", at: ts() });
   return result;
 }
@@ -129,7 +129,7 @@ export async function runPublicDeepSeekIndustryResearchWorkflow(
     maxSitemapUrls: options.maxSitemapUrls,
     now: options.now,
     // 内层 public 的 discover/crawl/build 直接透传;report 阶段抑制掉,
-    // 因为 public+deepseek 的真正报告由下面的 LLM 抽取 + 生成承担。
+    // 因为 public + LLM 的真正报告由下面的 provider 抽取 + 生成承担。
     onProgress: options.onProgress
       ? (event) => {
           if (event.type === "phase" && event.phase === "report") return;
@@ -157,7 +157,7 @@ export async function runPublicDeepSeekIndustryResearchWorkflow(
         extraction_jobs: publicResult.extraction_jobs.map((job) => ({
           ...job,
           status: "needs_review",
-          summary: `${job.summary} DeepSeek 结构化抽取失败，已保留 public_web 原始资料：${message}`,
+          summary: `${job.summary} OpenAI-compatible provider 结构化抽取失败，已保留 public_web 原始资料：${message}`,
         })),
       };
     }
@@ -168,7 +168,7 @@ export async function runPublicDeepSeekIndustryResearchWorkflow(
     reviewItems: createResearchReviewItems(structuredResult),
   };
 
-  const finalResult = await replaceReportWithDeepSeek(reviewedResult, {
+  const finalResult = await replaceReportWithProvider(reviewedResult, {
     ...options,
     fallbackToLocalReport: true,
   });

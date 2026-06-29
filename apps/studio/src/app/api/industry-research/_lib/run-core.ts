@@ -119,13 +119,13 @@ export function parseRunMode(value: unknown): IndustryResearchRunMode {
     return value;
   }
 
-  return "deepseek";
+  return "public_web";
 }
 
 export function parseRunRequest(value: unknown) {
   if (!value || typeof value !== "object") {
     return {
-      mode: "deepseek" as const,
+      mode: "public_web" as const,
       input: parseResearchWorkflowInput(value),
     };
   }
@@ -140,7 +140,7 @@ export function parseRunRequest(value: unknown) {
   }
 
   return {
-    mode: "deepseek" as const,
+    mode: "public_web" as const,
     input: parseResearchWorkflowInput(value),
   };
 }
@@ -170,7 +170,7 @@ export async function executeIndustryResearchRun({
   input: ResearchWorkflowInput;
   mode: IndustryResearchRunMode;
   env: Record<string, string | undefined>;
-  /** SSE 完整版:public_web 模式会逐阶段 emit 进度;其余模式暂不细粒度上报。 */
+  /** SSE 完整版:public_web 与 LLM 模式都会逐阶段 emit 进度。 */
   onProgress?: WorkflowProgressHandler;
 }): Promise<IndustryResearchRunResult> {
   const startedAt = new Date().toISOString();
@@ -200,6 +200,7 @@ export async function executeIndustryResearchRun({
         result,
         startedAt,
         finishedAt,
+        env,
       })
     : null;
 

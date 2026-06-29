@@ -45,7 +45,7 @@ x-agent-factory-webhook-secret: <AGENT_FACTORY_N8N_WEBHOOK_SECRET>
 }
 ```
 
-当前 route 只确认事件，不写 Supabase；后续接持久化时应写入 `run_logs` 或自动化事件表。
+当前 route 在 `AGENT_FACTORY_SUPABASE_ENABLED=true` 时会把事件写入 `industry_research_n8n_events`；未启用 Supabase 时只确认鉴权和 payload 校验。
 
 ## 与轻量服务器项目的衔接
 

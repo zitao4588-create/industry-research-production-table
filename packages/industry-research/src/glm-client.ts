@@ -1,6 +1,7 @@
 import type { ResearchWorkflowDataset } from "./types";
 
 export type GlmRuntimeEnv = Record<string, string | undefined>;
+export type OpenAICompatibleRuntimeEnv = GlmRuntimeEnv;
 export type NineRouterRuntimeEnv = GlmRuntimeEnv;
 export type DeepSeekRuntimeEnv = GlmRuntimeEnv;
 
@@ -9,6 +10,7 @@ export type GlmConfig = {
   baseUrl: string;
   model: string;
 };
+export type OpenAICompatibleConfig = GlmConfig;
 export type NineRouterConfig = GlmConfig;
 export type DeepSeekConfig = GlmConfig;
 
@@ -30,6 +32,7 @@ export type GlmFetch = (
   status: number;
   text: () => Promise<string>;
 }>;
+export type OpenAICompatibleFetch = GlmFetch;
 export type NineRouterFetch = GlmFetch;
 export type DeepSeekFetch = GlmFetch;
 
@@ -45,25 +48,35 @@ type GlmChatCompletionResponse = {
   message?: string;
 };
 
-function pickDeepSeekBaseUrl(env: GlmRuntimeEnv) {
+function pickOpenAICompatibleBaseUrl(env: GlmRuntimeEnv) {
   return (
     env.AGENT_FACTORY_LLM_BASE_URL ||
     env.AGENT_FACTORY_DEEPSEEK_BASE_URL ||
     env.DEEPSEEK_BASE_URL ||
-    "https://api.deepseek.com"
+    "https://router.playgamelab.cn/v1"
   ).replace(/\/$/, "");
 }
 
-function pickDeepSeekModel(env: GlmRuntimeEnv) {
-  return (
-    env.AGENT_FACTORY_LLM_MODEL ||
-    env.AGENT_FACTORY_DEEPSEEK_MODEL ||
-    env.DEEPSEEK_MODEL ||
-    "deepseek-v4-flash"
-  );
+function pickOpenAICompatibleModel(env: GlmRuntimeEnv) {
+  if (env.AGENT_FACTORY_LLM_MODEL) {
+    return env.AGENT_FACTORY_LLM_MODEL;
+  }
+  if (env.AGENT_FACTORY_DEEPSEEK_MODEL || env.DEEPSEEK_MODEL) {
+    return env.AGENT_FACTORY_DEEPSEEK_MODEL || env.DEEPSEEK_MODEL || "";
+  }
+  if (
+    env.AGENT_FACTORY_DEEPSEEK_API_KEY ||
+    env.DEEPSEEK_API_KEY ||
+    env.AGENT_FACTORY_DEEPSEEK_BASE_URL ||
+    env.DEEPSEEK_BASE_URL
+  ) {
+    return "deepseek-v4-flash";
+  }
+
+  return env.AGENT_FACTORY_LLM_MODEL || "mmf/mimo-auto";
 }
 
-export function resolveDeepSeekConfig(env: GlmRuntimeEnv): GlmConfig {
+export function resolveOpenAICompatibleConfig(env: GlmRuntimeEnv): GlmConfig {
   const apiKey =
     env.AGENT_FACTORY_LLM_API_KEY ||
     env.AGENT_FACTORY_DEEPSEEK_API_KEY ||
@@ -72,12 +85,12 @@ export function resolveDeepSeekConfig(env: GlmRuntimeEnv): GlmConfig {
 
   if (!apiKey) {
     throw new Error(
-      "未配置 DeepSeek API Key：请设置 AGENT_FACTORY_DEEPSEEK_API_KEY，或用 AGENT_FACTORY_LLM_API_KEY 指向自付费 OpenAI-compatible provider。",
+      "未配置 OpenAI-compatible provider API Key：请设置 AGENT_FACTORY_LLM_API_KEY；历史 AGENT_FACTORY_DEEPSEEK_API_KEY / DEEPSEEK_API_KEY 仅作为兼容 fallback。",
     );
   }
 
-  const baseUrl = pickDeepSeekBaseUrl(env);
-  const model = pickDeepSeekModel(env);
+  const baseUrl = pickOpenAICompatibleBaseUrl(env);
+  const model = pickOpenAICompatibleModel(env);
 
   // audit P1-5 / P3-2: 生产环境不要静默跑在本地 provider 默认地址上。
   // 需显式配置自付费 provider；如确需在生产用本地路由，设逃生阀。
@@ -100,11 +113,13 @@ export function resolveDeepSeekConfig(env: GlmRuntimeEnv): GlmConfig {
   };
 }
 
+export const resolveDeepSeekConfig = resolveOpenAICompatibleConfig;
+
 export function resolve9RouterConfig(env: GlmRuntimeEnv): GlmConfig {
-  return resolveDeepSeekConfig(env);
+  return resolveOpenAICompatibleConfig(env);
 }
 
-export function hasDeepSeekConfig(env: GlmRuntimeEnv) {
+export function hasOpenAICompatibleConfig(env: GlmRuntimeEnv) {
   return Boolean(
     env.AGENT_FACTORY_LLM_API_KEY ||
       env.AGENT_FACTORY_DEEPSEEK_API_KEY ||
@@ -112,8 +127,10 @@ export function hasDeepSeekConfig(env: GlmRuntimeEnv) {
   );
 }
 
+export const hasDeepSeekConfig = hasOpenAICompatibleConfig;
+
 export function has9RouterConfig(env: GlmRuntimeEnv) {
-  return hasDeepSeekConfig(env);
+  return hasOpenAICompatibleConfig(env);
 }
 
 function parseGlmResponse(rawText: string): GlmChatCompletionResponse {
@@ -169,7 +186,7 @@ export function extractGlmText(data: GlmChatCompletionResponse) {
   return data.choices?.[0]?.message?.content?.trim() ?? "";
 }
 
-export async function callDeepSeekChatCompletion({
+export async function callOpenAICompatibleChatCompletion({
   env,
   messages,
   fetcher = fetch,
@@ -186,7 +203,7 @@ export async function callDeepSeekChatCompletion({
   responseFormat?: "json_object";
   timeoutMs?: number;
 }) {
-  const config = resolveDeepSeekConfig(env);
+  const config = resolveOpenAICompatibleConfig(env);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let response: Awaited<ReturnType<GlmFetch>>;
@@ -212,7 +229,9 @@ export async function callDeepSeekChatCompletion({
     });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`DeepSeek API 请求超时（${timeoutMs}ms）。`);
+      throw new Error(
+        `OpenAI-compatible provider 请求超时（${timeoutMs}ms）。`,
+      );
     }
 
     throw error;
@@ -232,7 +251,7 @@ export async function callDeepSeekChatCompletion({
     const message =
       data.error?.message ||
       data.message ||
-      `DeepSeek API 请求失败，HTTP ${response.status}`;
+      `OpenAI-compatible provider 请求失败，HTTP ${response.status}`;
 
     throw new Error(sanitizeProviderErrorMessage(message));
   }
@@ -240,7 +259,7 @@ export async function callDeepSeekChatCompletion({
   const content = extractGlmText(data);
 
   if (!content) {
-    throw new Error("DeepSeek API 没有返回可用文本。");
+    throw new Error("OpenAI-compatible provider 没有返回可用文本。");
   }
 
   return {
@@ -249,14 +268,15 @@ export async function callDeepSeekChatCompletion({
   };
 }
 
-export const call9RouterChatCompletion = callDeepSeekChatCompletion;
+export const callDeepSeekChatCompletion = callOpenAICompatibleChatCompletion;
+export const call9RouterChatCompletion = callOpenAICompatibleChatCompletion;
 
 function createReportInput(dataset: ResearchWorkflowDataset) {
   const project = dataset.research_projects[0];
 
   if (!project) {
     throw new Error(
-      "Cannot generate DeepSeek report without a research project.",
+      "Cannot generate an OpenAI-compatible provider report without a research project.",
     );
   }
 
@@ -328,8 +348,10 @@ export function createDeepSeekReportMessages(dataset: ResearchWorkflowDataset) {
 }
 
 export const create9RouterReportMessages = createDeepSeekReportMessages;
+export const createOpenAICompatibleReportMessages =
+  createDeepSeekReportMessages;
 
-export async function generateDeepSeekResearchMarkdownReport({
+export async function generateOpenAICompatibleResearchMarkdownReport({
   dataset,
   env,
   fetcher,
@@ -338,7 +360,7 @@ export async function generateDeepSeekResearchMarkdownReport({
   env: GlmRuntimeEnv;
   fetcher?: GlmFetch;
 }) {
-  return callDeepSeekChatCompletion({
+  return callOpenAICompatibleChatCompletion({
     env,
     fetcher,
     messages: createDeepSeekReportMessages(dataset),
@@ -346,5 +368,7 @@ export async function generateDeepSeekResearchMarkdownReport({
   });
 }
 
+export const generateDeepSeekResearchMarkdownReport =
+  generateOpenAICompatibleResearchMarkdownReport;
 export const generate9RouterResearchMarkdownReport =
-  generateDeepSeekResearchMarkdownReport;
+  generateOpenAICompatibleResearchMarkdownReport;

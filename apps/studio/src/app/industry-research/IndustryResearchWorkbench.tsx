@@ -25,7 +25,7 @@ import { KnowledgeGraph } from "./components/KnowledgeGraph";
 import { DbMicro, StatSpark, Radar, InlineBar, PriceScale } from "./components/micro";
 import { CommandPalette, Toaster, showToast, renderMarkdown, type NavTarget } from "./components/extras";
 import { EvidenceCell } from "./components/EvidencePopover";
-import { EmptyTable } from "./components/states";
+import { EmptyTable, Skeleton } from "./components/states";
 import {
   adaptRun,
   createModelFromInput,
@@ -58,7 +58,19 @@ import {
 
 type CSSVars = CSSProperties & Record<string, string | number>;
 type Phase = "setup" | "running" | "done";
-type RunMode = "Mock" | "DeepSeek" | "Public Web" | "Public + DeepSeek";
+type RunMode = "Mock" | "9router" | "Public Web" | "Public + 9router";
+type VisibleScreen =
+  | "setup"
+  | "running"
+  | "results"
+  | "databaseResults"
+  | "needDatabases"
+  | "weekly"
+  | "needWeekly"
+  | "projects"
+  | "capability"
+  | "settings"
+  | "none";
 
 const ACCENT = "#34dcc0";
 const CONTENT_TYPE: Record<string, string> = { exposure: "曝光型", growth: "涨粉型", save: "收藏型", conversion: "转化型", personal_brand: "个人品牌" };
@@ -86,12 +98,49 @@ const DEFAULT_INPUT: ResearchWorkflowInput = {
 };
 
 /** UI 运行模式 → 真实 API 模式（Mock 留本地，不走 API）。 */
-type UiRealMode = "deepseek" | "public_web" | "public_web_deepseek";
+type UiRealMode = "9router" | "public_web" | "public_web_9router";
 const REAL_RUN_MODE: Record<Exclude<RunMode, "Mock">, UiRealMode> = {
-  DeepSeek: "deepseek",
+  "9router": "9router",
   "Public Web": "public_web",
-  "Public + DeepSeek": "public_web_deepseek",
+  "Public + 9router": "public_web_9router",
 };
+
+function normalizeRunMode(value: unknown): RunMode {
+  if (value === "9router" || value === "Public Web" || value === "Public + 9router" || value === "Mock") {
+    return value;
+  }
+  if (value === "DeepSeek") return "9router";
+  if (value === "Public + DeepSeek") return "Public + 9router";
+  return "Mock";
+}
+
+function deriveVisibleScreen({
+  phase,
+  view,
+  hasResult,
+  hasTarget,
+}: {
+  phase: Phase;
+  view: string;
+  hasResult: boolean;
+  hasTarget: boolean;
+}): VisibleScreen {
+  if (view === "workbench") {
+    if (phase === "setup") return "setup";
+    if (phase === "running") return hasTarget ? "running" : "none";
+    return hasResult ? "results" : "none";
+  }
+  if (view === "databases") {
+    return phase === "done" && hasResult ? "databaseResults" : "needDatabases";
+  }
+  if (view === "weekly") {
+    return phase === "done" && hasResult ? "weekly" : "needWeekly";
+  }
+  if (view === "projects") return "projects";
+  if (view === "capability") return "capability";
+  if (view === "settings") return "settings";
+  return "none";
+}
 
 const REQUIRED_FIELDS: [keyof ResearchWorkflowInput, string][] = [
   ["projectName", "项目名称"],
@@ -279,7 +328,7 @@ export default function IndustryResearchWorkbench({
     restored.current = true;
     const snap = loadSnapshot();
     if (!snap) return;
-    setRunMode(snap.runMode);
+    setRunMode(normalizeRunMode(snap.runMode));
     setView(snap.view);
     setResultTab(snap.resultTab);
     setInput(snap.input);
@@ -507,6 +556,12 @@ export default function IndustryResearchWorkbench({
       setInput((f) => ({ ...f, [k]: e.target.value }));
 
   const searchModel = resultModel ?? targetModel ?? createModelFromInput(input);
+  const visibleScreen = deriveVisibleScreen({
+    phase,
+    view,
+    hasResult: Boolean(resultModel),
+    hasTarget: Boolean(targetModel),
+  });
 
   return (
     <div className="app">
@@ -515,26 +570,23 @@ export default function IndustryResearchWorkbench({
       <main className="main scroll">
         <Topbar theme={theme} toggleTheme={() => setTheme((t) => (t === "dark" ? "light" : "dark"))} phase={phase} projectName={input.projectName} reset={reset} view={view} onOpenCmd={() => setCmdOpen(true)} onToggleNav={() => setNavOpen((o) => !o)} />
 
-        {phase === "setup" && view === "workbench" && (
+        {visibleScreen === "setup" && (
           <Setup input={input} setField={setField} urlText={urlText} setUrlText={setUrlText} runMode={runMode} setRunMode={setRunMode} supOpen={supOpen} setSupOpen={setSupOpen} startRun={startRun} skeletonDatabases={createModelFromInput(input).databases} />
         )}
-        {phase === "running" && view === "workbench" && targetModel && (
+        {visibleScreen === "running" && targetModel && (
           <Running model={targetModel} events={events} input={input} runMode={runMode} indeterminate={indeterminate} runError={runError} onRetry={retryRun} onBack={reset} isMock={isMockResult} />
         )}
-        {phase === "done" && view === "workbench" && resultModel && (
+        {visibleScreen === "results" && resultModel && (
           <Results model={resultModel} runMode={runMode} tab={resultTab} setTab={setResultTab} result={rawResult} runId={deliveryRunId} isMock={isMockResult} run />
         )}
 
-        {view === "databases" && (phase === "done" && resultModel
-          ? <Results model={resultModel} runMode={runMode} tab={resultTab} setTab={setResultTab} result={rawResult} runId={deliveryRunId} isMock={isMockResult} jumpDb />
-          : <NeedRun reset={() => setView("workbench")} label="数据库视图" />)}
-        {view === "weekly" && (phase === "done" && resultModel
-          ? <WeeklyView wk={resultModel.weekly} />
-          : <NeedRun reset={() => setView("workbench")} label="情报周报" />)}
-        {view === "projects" && resultModel && <ProjectsView model={resultModel} setView={setView} />}
-        {view === "projects" && !resultModel && <ProjectsView model={createModelFromInput(input)} setView={setView} />}
-        {view === "capability" && <CapabilityView />}
-        {view === "settings" && <SettingsView />}
+        {visibleScreen === "databaseResults" && resultModel && <Results model={resultModel} runMode={runMode} tab={resultTab} setTab={setResultTab} result={rawResult} runId={deliveryRunId} isMock={isMockResult} jumpDb />}
+        {visibleScreen === "needDatabases" && <NeedRun reset={() => setView("workbench")} label="数据库视图" />}
+        {visibleScreen === "weekly" && resultModel && <WeeklyView wk={resultModel.weekly} />}
+        {visibleScreen === "needWeekly" && <NeedRun reset={() => setView("workbench")} label="情报周报" />}
+        {visibleScreen === "projects" && <ProjectsView model={resultModel ?? createModelFromInput(input)} setView={setView} />}
+        {visibleScreen === "capability" && <CapabilityView />}
+        {visibleScreen === "settings" && <SettingsView />}
       </main>
 
       <CommandPalette open={cmdOpen} onClose={() => setCmdOpen(false)} D={searchModel} onNavigate={onNavigate} />
@@ -678,7 +730,7 @@ function Setup({ input, setField, urlText, setUrlText, runMode, setRunMode, supO
         </div>
         <div className="console-foot">
           <div className="runmode">
-            {(["Mock", "DeepSeek", "Public Web", "Public + DeepSeek"] as RunMode[]).map((m) => (
+            {(["Mock", "9router", "Public Web", "Public + 9router"] as RunMode[]).map((m) => (
               <button key={m} className={runMode === m ? "on" : ""} onClick={() => setRunMode(m)}>{m}</button>
             ))}
           </div>
@@ -743,6 +795,8 @@ function Running({ model, events, input, runMode, indeterminate, runError, onRet
         </div>
       </div>
 
+      <RunningDataSkeleton model={model} stats={d.stats} databases={d.databases} />
+
       <div className="run-cols">
         <div className="run-panel">
           <div className="run-panel-head">
@@ -793,6 +847,81 @@ function Running({ model, events, input, runMode, indeterminate, runError, onRet
           ))}
           {d.logs.length === 0 && <div className="log-line"><span className="ts">--:--</span>初始化研究项目…</div>}
         </div>
+      </div>
+    </div>
+  );
+}
+
+function metricOrSkeleton(value: number, width = 34) {
+  return value > 0 ? value : <Skeleton width={width} height={24} radius={7} />;
+}
+
+function RunningDataSkeleton({
+  model,
+  stats,
+  databases,
+}: {
+  model: UIResearchModel;
+  stats: UIResearchModel["stats"];
+  databases: UIResearchModel["databases"];
+}) {
+  const statCells = [
+    { n: stats.candidates, l: "信息源候选", sub: "公开搜索 · 官网 · RSS" },
+    { n: stats.rawDocs, l: "Raw documents", sub: "采集产出" },
+    { n: stats.extractionJobs, l: "抽取任务", sub: "按数据库目标" },
+    { n: stats.evidence, l: "证据条目", sub: "可溯源引用" },
+    { n: databases.some((db) => db.count > 0) ? 9 : 0, l: "数据库视图", sub: "逐库写入中" },
+  ];
+
+  return (
+    <div className="view" style={{ padding: "18px 0 0" }} aria-busy="true">
+      <div className="stat-row">
+        {statCells.map((s, i) => (
+          <div className="stat-cell" key={s.l} style={{ "--hue": (i * 14 - 14) + "deg" } as CSSVars}>
+            <div className="stat-top">
+              <div className="n">{metricOrSkeleton(s.n)}</div>
+              <Skeleton width={82} height={28} radius={8} />
+            </div>
+            <div className="l">{s.l}</div>
+            <div className="sub">{s.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="section-title"><h2 style={{ fontSize: 19 }}>九类数据库视图</h2><span className="meta">building previews</span><span className="line" /></div>
+      <div className="db-grid">
+        {databases.map((db, i) => (
+          <div className="db-card" key={db.id} style={{ "--hue": (i * 7 - 24) + "deg" } as CSSVars}>
+            <div className="db-card-top">
+              <div className="ico"><Icon name={db.icon} size={16} /></div>
+              <span className="db-count">{db.count > 0 ? db.count : <Skeleton width={24} height={18} radius={6} />}<small>条</small></span>
+            </div>
+            <div className="id">{db.id}</div>
+            <div className="lab">{db.label}</div>
+            <div className="sample">{db.count > 0 ? db.sample : <Skeleton width="86%" height={12} />}</div>
+            <div className="db-micro-wrap">{db.count > 0 ? <DbMicro id={db.id} model={model} /> : <Skeleton width="100%" height={46} radius={8} />}</div>
+            <div className="arrow"><Icon name="arrow" size={16} /></div>
+          </div>
+        ))}
+      </div>
+
+      <div className="deep section-title"><h2 style={{ fontSize: 19 }}>结构化结果</h2><span className="line" /></div>
+      <div className="table-wrap">
+        <table className="data">
+          <thead>
+            <tr><th>条目</th><th>来源</th><th className="num">证据</th><th className="num">状态</th></tr>
+          </thead>
+          <tbody>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <tr key={i}>
+                <td><Skeleton width={i === 0 ? "72%" : "58%"} height={14} /></td>
+                <td><Skeleton width="64%" height={14} /></td>
+                <td className="num"><Skeleton width={52} height={14} /></td>
+                <td className="num"><Skeleton width={68} height={18} radius={9} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
@@ -1191,14 +1320,14 @@ function ProjectsView({ model, setView }: { model: UIResearchModel; setView: (v:
 }
 function CapabilityView() {
   const caps = [
-    { name: "DeepSeek 抽取 / 报告", src: "DeepSeek", status: "reusable_now", use: "公开资料结构化抽取与 Markdown 报告" },
+    { name: "OpenAI-compatible 抽取 / 报告", src: "9router / paid provider", status: "needs_provider", use: "公开资料结构化抽取与 Markdown 报告" },
     { name: "公开搜索源发现", src: "agent_factory", status: "reusable_now", use: "竞品官网与内容源候选发现" },
     { name: "RSS / sitemap 监控", src: "future_plugin", status: "future_candidate", use: "低风险持续情报更新" },
     { name: "Crawlee crawler", src: "github", status: "future_candidate", use: "TypeScript 浏览器型采集" },
     { name: "Hermes XCrawl", src: "hermes", status: "mock_only_now", use: "scrape / search / crawl（需 API key）" },
     { name: "Supabase 落库", src: "future_plugin", status: "future_candidate", use: "项目 / 证据 / 报告持久化" },
   ];
-  const ST: Record<string, [string, string]> = { reusable_now: ["可复用", "var(--good)"], future_candidate: ["后续候选", "var(--accent)"], mock_only_now: ["仅 mock", "var(--warn)"] };
+  const ST: Record<string, [string, string]> = { reusable_now: ["可复用", "var(--good)"], needs_provider: ["需验证 provider", "var(--warn)"], future_candidate: ["后续候选", "var(--accent)"], mock_only_now: ["仅 mock", "var(--warn)"] };
   return (<div className="view"><div className="section-title"><h2>能力评估</h2><span className="line" /><span className="meta">capability assessment</span></div>
     <div className="table-wrap"><table className="data">
       <thead><tr><th>能力</th><th>来源</th><th>用途</th><th>状态</th></tr></thead>
@@ -1211,8 +1340,8 @@ function CapabilityView() {
 function SettingsView() {
   return (<div className="view"><div className="section-title"><h2>设置</h2><span className="line" /></div>
     <div className="card" style={{ padding: 24, maxWidth: 560 }}>
-      <div className="field" style={{ marginBottom: 18 }}><label style={{ marginBottom: 8 }}>LLM Provider Base URL</label><input defaultValue="http://localhost:20128/v1" /></div>
-      <div className="field" style={{ marginBottom: 18 }}><label style={{ marginBottom: 8 }}>Model</label><input defaultValue="DeepSeek / openai-compatible" /></div>
-      <p style={{ fontSize: 12.5, color: "var(--faint)", lineHeight: 1.6 }}>生产 / 付费交付必须切换自付费 provider。生产环境若仍指向 localhost LLM 将被拒绝，除非显式允许。不做登录、支付与多租户。</p>
+      <div className="field" style={{ marginBottom: 18 }}><label style={{ marginBottom: 8 }}>LLM Provider Base URL</label><input readOnly value="AGENT_FACTORY_LLM_BASE_URL" /></div>
+      <div className="field" style={{ marginBottom: 18 }}><label style={{ marginBottom: 8 }}>Model</label><input readOnly value="AGENT_FACTORY_LLM_MODEL" /></div>
+      <p style={{ fontSize: 12.5, color: "var(--faint)", lineHeight: 1.6 }}>LLM 由服务端环境变量控制。探索可用 9router；生产 / 付费交付必须切换自付费 provider。生产环境若仍指向 localhost LLM 将被拒绝，除非显式允许。不做登录、支付与多租户。</p>
     </div></div>);
 }

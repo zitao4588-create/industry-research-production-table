@@ -9,6 +9,7 @@ import {
   industryResearchDeliveryPackageFiles,
   type ResearchWorkflowInput,
 } from "@industry-research/core";
+import { loadServerEnv } from "./server-env";
 
 const RUN_ID_PATTERN = /^[A-Za-z0-9._-]+$/;
 
@@ -73,13 +74,25 @@ function resolveRepoRoot() {
   return cwd;
 }
 
-export function industryResearchRunsRootDir() {
-  const configuredDir =
-    process.env.AGENT_FACTORY_INDUSTRY_RESEARCH_RUNS_DIR?.trim();
+export function industryResearchRunsRootDir(
+  env: Record<string, string | undefined> = loadServerEnv(),
+) {
+  const configuredDir = env.AGENT_FACTORY_INDUSTRY_RESEARCH_RUNS_DIR?.trim();
 
   return configuredDir
     ? resolve(configuredDir)
     : join(resolveRepoRoot(), "outputs", "industry-research-runs");
+}
+
+export function industryResearchRunOutputLabel(
+  runId: string,
+  env: Record<string, string | undefined> = loadServerEnv(),
+) {
+  const configuredDir = env.AGENT_FACTORY_INDUSTRY_RESEARCH_RUNS_DIR?.trim();
+
+  return configuredDir
+    ? join(resolve(configuredDir), runId)
+    : `outputs/industry-research-runs/${runId}`;
 }
 
 function assertSafeRunId(runId: string) {
@@ -163,7 +176,7 @@ async function readRunSummary(
 
   return {
     runId: runLog.runId,
-    relativeOutputDir: `outputs/industry-research-runs/${runLog.runId}`,
+    relativeOutputDir: industryResearchRunOutputLabel(runLog.runId),
     startedAt: runLog.startedAt,
     finishedAt: runLog.finishedAt,
     mode: runLog.mode,

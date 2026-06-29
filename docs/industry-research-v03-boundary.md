@@ -2,7 +2,7 @@
 
 更新时间：2026-06-18
 
-v0.3 的目标不是完整 SaaS，而是把 v0.2 的行业研究生产台推进到“可交付、可留档、可准备内部部署和自动化”的边界版本。仍然不做登录注册、支付、多租户、代理池爬虫、公开生产发布或生产数据库迁移。
+v0.3 的目标不是完整 SaaS，而是把 v0.2 的行业研究生产台推进到“可交付、可留档、可部署到轻量服务器和自动化”的边界版本。仍然不做登录注册、支付、多租户、代理池爬虫或对外 SaaS。
 
 ## 1. 交付包 / run 管理
 
@@ -43,16 +43,17 @@ v0.3 增强点：
 
 ## 3. 数据库边界扩展
 
-本轮只实现最小持久化边界，不切运行时存储：
+当前实现分两层：
 
 - TypeScript repository contract：`IndustryResearchRepository`
 - 本地 JSON 兼容 adapter：`createIndustryResearchLocalJsonRepository`
 - 最小对象：research runs、raw documents、review items、reports、run logs
+- Supabase service-role-only 基础设施表：`industry_research_runs`、`industry_research_artifacts`、`industry_research_n8n_events`、`industry_research_zvec_chunks`
 
-Supabase 后续接入原则：
+Supabase 接入原则：
 
-- 不能直接应用现有 migration 草案。
-- 必须先补 deny-by-default RLS。
+- 不能把旧大 migration 草案直接应用到生产；生产优先使用轻量 schema。
+- 必须保持 deny-by-default RLS。
 - 服务端写入必须走受控 service role，客户端不能直接写行业研究表。
 - 本地 JSON/Markdown 留档能力必须继续保留，不能被数据库替代掉。
 
@@ -68,21 +69,22 @@ Supabase 后续接入原则：
 
 部署边界：
 
-- 可以部署到自有轻量服务器或 Vercel 内部环境。
+- 生产固定部署到自有轻量服务器。
+- Vercel / 本机只允许作为开发或预览，不承载正式 run、API、交付目录或 zvec 缓存。
 - 不能公开成 SaaS。
 - 不做登录、支付、多租户。
 - 不把 API key、服务器 IP、SSH 私钥、n8n 密码或 `N8N_ENCRYPTION_KEY` 写入仓库。
 - 生产环境必须配置 shared secret；无 secret 时行业研究 API 应拒绝运行。
 
-Caddy/API 域名规划只做预留：
+Caddy/API 域名：
 
-- `api.<domain>`：未来指向 agent-factory API 或内部部署环境。
-- `n8n.<domain>`：未来指向自部署 n8n。
-- 当前备案 / webblock 未解除前，不启动公网 n8n。
+- `research.playgamelab.cn`：行业研究 Next/API，经 Caddy 反代到 `127.0.0.1:3010`。
+- `n8n.playgamelab.cn`：自部署 n8n。
+- `router.playgamelab.cn`：9router / OpenAI-compatible gateway。
 
 ## 5. n8n 自动化边界扩展
 
-当前只预留合约和草案：
+当前 workflow 已按轻量服务器链路接入：
 
 - workflow：`workflows/n8n/industry-research-intake.json`
 - 说明：`workflows/n8n/README.md`
@@ -95,13 +97,11 @@ Caddy/API 域名规划只做预留：
 - 未来必须走 Caddy HTTPS 反向代理。
 - n8n 调用 agent-factory run API 使用 `x-internal-key`。
 - n8n 回调 agent-factory 使用 `x-agent-factory-webhook-secret`。
-- 本轮不要求真实 n8n 服务启动，不要求公网 webhook 可访问。
+- n8n production webhook 已验证过默认 `public_web` 链路；后续以轻量服务器真实运行态为准。
 
 ## 当前未做
 
 - 不生成 `v02-summary.md`。
-- 不接生产 Supabase。
-- 不启动公网 n8n。
 - 不 Docker 化 agent-factory。
 - 不接登录、支付、多租户。
 - 不做代理池或验证码绕过。

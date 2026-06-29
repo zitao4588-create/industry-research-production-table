@@ -3,7 +3,31 @@
 > **更新时间**：2026-06-22
 > **受众**：Codex / 接手前端的开发者
 > **性质**：基于**已移植到仓库的真实代码**（不是设计原型）做的一次全面 UX 复盘 + 可执行任务清单。
-> 这份文档是 `ROADMAP.md` 的「as-built」升级版：ROADMAP 写的是设计阶段的设想，这份写的是**移植后代码的真实状态**和**据此排好的落地项**。两者冲突时以本文件为准。
+> 这份文档是 `ROADMAP.md` 的「as-built」升级版：ROADMAP 写的是设计阶段的设想，这份写的是**移植后代码的真实状态**和**据此排好的落地项**。
+> 2026-06-26 之后，UX 已进入实现后状态同步阶段；最新状态以根目录 `PROJECT_CONTEXT.md`、`TODO.md`、`DECISIONS.md` 为准。
+
+---
+
+## 2026-06-26 状态同步
+
+这份文档最初记录的是 UX 优化前的交接底稿。Claude Code 这轮 UX 优化已经提交到 `main`，当前不应再按“前端只是 demo 壳、真实请求数为 0”的旧判断继续排期。
+
+已完成：
+
+- 表单受控、必填校验、Start 禁用态。
+- Mock / `public_web` / 9router 相关运行模式接入真实执行链路。
+- `POST /api/industry-research/run/stream` SSE 流式进度接入，`public_web` 与 LLM 相关模式都能输出阶段进度。
+- 失败态、空态、骨架屏组件补齐。
+- 下载交付包、复盘提交、CSV 导出接线。
+- Evidence popover 覆盖 opportunities / competitors / pain points / content signals，并补了键盘和 aria 访问性。
+- Mock 富数据 profile 扩充到更接近真实交付体量，当前 Mock 指标为 `8 / 8 / 26 / 74 / 9`。
+- 结果快照 localStorage 持久化、移动端 drawer sidebar、宽表横向滚动、命令面板跳转保护、主要交互控件访问性补齐。
+- true run 期间的 stat / 九库卡 / 表格区 skeleton 已铺进 running 页面。
+- `phase x view` 可见性已收敛成单一 derived function。
+- UI / health / README / 当前状态文档已统一为 9router / OpenAI-compatible provider 口径；旧 DeepSeek 命名仅保留为兼容层。
+- 9router free 模型探测已脚本化为 `pnpm probe:9router`；生产或付费交付仍必须切自付费 provider。
+
+下面原文保留为历史设计、问题发现和验收依据；涉及“当前状态”的判断以本节和根目录状态文档为准。
 
 ---
 
@@ -18,16 +42,16 @@
 
 ## 1. 一句话现状（最重要的认知）
 
-**当前前端是一套视觉完成度极高、但「接线」只完成一半的演示外壳。视觉完整 ≠ 功能就绪——不要被界面的精致骗了。**
+**当前前端已经从演示外壳推进到可运行的行业研究控制台，真实运行、SSE 进度、证据查看、下载和复盘链路已经接上。**
 
 具体来说：
 
-- 界面今天发起的**真实后端请求数为 0**（`grep fetch( / EventSource` 在 `industry-research/` 里只命中两行注释）。
-- 「开始研究」无论选哪个运行模式，**永远只跑本地 mock**，再用 `setTimeout` 回放一段编排好的假事件。
-- 但**后端其实已经就绪**：真实 run、交付包落盘、run 列表/详情/下载、审核版报告生成、n8n webhook 合约全都有路由（见 §3）。
-- 缺的不是后端，是**前端没接 + 没有失败态 + 结果不可操作**。
+- 界面已不再是“真实后端请求数为 0”的状态；非 Mock 模式通过 server action / stream route 进入真实执行链路。
+- 「开始研究」会按运行模式分流；Mock 保留本地演示数据，`public_web` 和 LLM 相关模式走真实工作流。
+- 真实 run、交付包落盘、run 列表/详情/下载、审核版报告生成、n8n webhook 合约都已成为前端可触达能力。
+- 当前剩余工作主要是继续搭业务流和在服务器带 key 环境复核 provider 可用性。
 
-所以本轮的核心动作是「**把已就绪的后端接上，并补齐真实运行一定会撞到的非 happy-path**」，而不是继续做视觉。
+所以当前核心动作已经从「接上后端」转为「继续搭业务流、稳定 provider、避免旧文档误导后续执行」。
 
 ---
 

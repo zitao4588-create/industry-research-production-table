@@ -1,6 +1,59 @@
 # 决策记录
 
-更新时间：2026-06-25
+更新时间：2026-06-29
+
+## 2026-06-29：生产运行面固定为轻量服务器
+
+- 决策：行业研究生产台的正式运行、API、n8n 回调、本地交付包、zvec 缓存和 provider gateway 都以轻量服务器为主；`research.playgamelab.cn` 由 Caddy 反代到本机 `127.0.0.1:3010`。Vercel / 本机只作为开发或预览。
+- 原因：用户明确要求 agent 的内容架构、运行和 API 都搭建到轻量服务器；项目也已经有 n8n、9router、Caddy、systemd 的服务器体系，继续把生产运行面分散到 Vercel 或本机会增加状态漂移。
+- 影响：
+  - 新增 `docs/lightweight-server-runtime.md` 和 `deploy/lightweight-server/` 模板。
+  - `apps/studio` 的 start 命令改为尊重 `PORT`，轻量服务器推荐 `PORT=3010`。
+  - 新增 `pnpm server:doctor` 检查轻量服务器 env、目录、端口、n8n secret、Supabase 和 zvec 状态。
+  - `.env.example` 新增 `AGENT_FACTORY_DEPLOYMENT_TARGET`，生产值为 `lightweight_server`。
+  - 服务器脚本默认读取 `/etc/industry-research/industry-research.env`，并支持 `AGENT_FACTORY_ENV_FILE` 显式指定 env 文件。
+
+## 2026-06-29：远端部署先做基础设施最小同步
+
+- 决策：轻量服务器 `/opt/playgamelab/industry-research` 当前已有旧版线上代码，本轮只同步 Supabase、zvec、server doctor、env/docs/deploy 模板等基础设施相关文件，不整仓覆盖。
+- 原因：本地工作区同时存在 UI、Remotion、WorkBuddy 等无关改动；整仓同步会把尚未验收的前端/视频改动混进生产运行面。
+- 影响：
+  - 远端同步前后都需要跑 `pnpm server:doctor`、`pnpm supabase:doctor`、`pnpm supabase:smoke`、`pnpm zvec:index`、`pnpm zvec:search --query=Amazon`。
+  - 只有基础设施验证通过后，才重启 `industry-research.service`。
+  - UI/Remotion 改动继续留给 Claude Code 或后续独立验收，不作为本轮部署内容。
+
+## 2026-06-29：默认 UI 改为 3 步用户流程，高级控制台保留
+
+- 决策：GitHub `main` 已合并 Claude Code 提交 `329dab8`，`/industry-research` 默认显示简化的 3 步用户流程；原完整工程控制台不删除，放到「高级模式」里。
+- 原因：用户明确觉得原前端 UI 太复杂、看不懂；默认界面应该面向普通使用者，先让用户输入品类并拿到报告，而不是先暴露 provider、run mode、九库和工程运行态。
+- 影响：
+  - 新增 `SimpleResearch.tsx`。
+  - `/industry-research/page.tsx` 默认渲染简化流程。
+  - Studio 首页文案改成「输入品类 → 自动研究 → 得到报告」。
+  - 后端 run/stream、server action、adapter 和交付包链路不变。
+  - UI 已最小同步并部署到轻量服务器；同步时保留基础设施热更新，不整仓覆盖。
+
+## 2026-06-29：Supabase 做权威运行记录，zvec 做本地检索缓存
+
+- 决策：Supabase 第一版只做服务端私有运行记录库，保存 run metadata、8 文件交付包、n8n event 和 zvec chunk metadata；zvec 只做本地可重建检索缓存，不做权威存储。
+- 原因：项目当前仍不做登录、支付和多租户；如果直接开放客户端 Supabase 表，会引入 owner/RLS/SaaS 边界复杂度。把 Supabase 限定为 service-role-only 后端存储，能先解决可审计留档；zvec 则适合复用历史研究产物和本地语义/全文检索。
+- 影响：
+  - 新增 `supabase/migrations/20260629_industry_research_infra.sql`，RLS 全开但不创建 `anon` / `authenticated` policy。
+  - 新增 `@supabase/supabase-js@2.108.2` 和 `@zvec/zvec@0.5.0`。
+  - 新增 `pnpm supabase:doctor` / `pnpm supabase:smoke` / `pnpm zvec:index` / `pnpm zvec:search`。
+  - `AGENT_FACTORY_SUPABASE_ENABLED=true` 时，run 成功后必须写 Supabase；失败会让 run 失败。
+  - 专用 project 已创建：`industry-research-production-table` / `ghsyjdipofnyokbbbrdb`，不使用 inactive `wardrobe` project。
+
+## 2026-06-26：默认业务流固定 `public_web`，LLM 只作为显式 9router / OpenAI-compatible provider
+
+- 决策：API 缺省 run mode 从 legacy LLM mode 改为 `public_web`；前端可见运行模式改为 `Mock` / `9router` / `Public Web` / `Public + 9router`；health、首页、设置页、README 和当前状态文档统一为 9router / OpenAI-compatible provider 口径。旧 `deepseek` / `public_web_deepseek` mode、函数名和脚本作为历史兼容层保留，不作为当前默认 provider 口径。
+- 原因：用户当前服务器已部署 n8n 和 9router，并明确不再用 DeepSeek。免费 9router provider 不能只看模型列表，必须测真实 `/v1/chat/completions`；在没有稳定 LLM provider 前，默认业务流应先保证 `public_web` 可交付，避免误调用、误计费或误承诺。
+- 影响：
+  - 新增 `scripts/probe-9router-free-models.ts` 和 `pnpm probe:9router`，按 `/models` 候选 + 最小 `pong` chat 逐个探测；没有 key 时明确 `skipped_missing_api_key`。
+  - 新增 `pnpm verify:9router` 入口；历史 `verify:deepseek` / `sample:deepseek` 保留但不再推荐为当前口径。
+  - `glm-client` 新增 OpenAI-compatible 中性导出，旧 DeepSeek 导出转为别名。
+  - 运行中 UX 补齐 stat / 九库 / 表格逐格 skeleton，`phase x view` 渲染分支收敛为 `deriveVisibleScreen`。
+  - 生产 / 付费交付仍必须切自付费 provider；free 9router 只适合探索。
 
 ## 2026-06-25：Mock 演示用 `entityProfile: "rich"` 高密度数据，真实模式保持 lean 诚实
 

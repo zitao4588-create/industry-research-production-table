@@ -154,7 +154,9 @@ export function parseGlmStructuredExtraction(
   try {
     return normalizeExtraction(JSON.parse(jsonText));
   } catch {
-    throw new Error("DeepSeek 结构化抽取没有返回可解析 JSON。");
+    throw new Error(
+      "OpenAI-compatible provider 结构化抽取没有返回可解析 JSON。",
+    );
   }
 }
 
@@ -352,7 +354,7 @@ function createEvidenceBuilder(result: ResearchWorkflowResult) {
         ? quotes
         : [
             fallbackRawDocument?.excerpt ??
-              "DeepSeek 抽取结果缺少直接引用，需人工复核。",
+              "LLM 抽取结果缺少直接引用，需人工复核。",
           ];
 
     return normalizedQuotes.map((quote) => {
@@ -428,11 +430,11 @@ export function applyGlmStructuredExtraction(
       collectionSignals: asStringArray(competitor.collectionSignals),
       positioning: asString(
         competitor.positioning,
-        "DeepSeek 从公开资料抽取，等待人工复核。",
+        "OpenAI-compatible provider 从公开资料抽取，等待人工复核。",
       ),
       evidenceIds: evidenceIdsFor(
         asStringArray(competitor.evidenceQuotes),
-        "DeepSeek 竞品抽取证据。",
+        "OpenAI-compatible provider 竞品抽取证据。",
       ),
     }),
   );
@@ -457,12 +459,12 @@ export function applyGlmStructuredExtraction(
         category: asString(signal.category, project.category),
         signal: asString(
           signal.signal,
-          "DeepSeek 抽取到产品信号，等待人工复核。",
+          "OpenAI-compatible provider 抽取到产品信号，等待人工复核。",
         ),
         tags: asStringArray(signal.tags),
         evidenceIds: evidenceIdsFor(
           asStringArray(signal.evidenceQuotes),
-          "DeepSeek 产品信号抽取证据。",
+          "OpenAI-compatible provider 产品信号抽取证据。",
         ),
       };
     },
@@ -475,7 +477,7 @@ export function applyGlmStructuredExtraction(
     frequency: normalizeFrequency(point.frequency),
     evidenceIds: evidenceIdsFor(
       asStringArray(point.evidenceQuotes),
-      "DeepSeek 用户痛点抽取证据。",
+      "OpenAI-compatible provider 用户痛点抽取证据。",
     ),
   }));
   const contentSignals: ContentSignal[] = extraction.contentSignals.map(
@@ -488,7 +490,7 @@ export function applyGlmStructuredExtraction(
       whyItWorks: asString(signal.whyItWorks, "等待人工复核内容价值。"),
       evidenceIds: evidenceIdsFor(
         asStringArray(signal.evidenceQuotes),
-        "DeepSeek 内容信号抽取证据。",
+        "OpenAI-compatible provider 内容信号抽取证据。",
       ),
     }),
   );
@@ -507,11 +509,11 @@ export function applyGlmStructuredExtraction(
       reviewStatus: normalizeReviewStatus(opportunity.reviewStatus),
       reviewNote: asString(
         opportunity.reviewNote,
-        "DeepSeek 抽取，需人工复核。",
+        "OpenAI-compatible provider 抽取，需人工复核。",
       ),
       evidenceIds: evidenceIdsFor(
         asStringArray(opportunity.evidenceQuotes),
-        "DeepSeek 机会评分抽取证据。",
+        "OpenAI-compatible provider 机会评分抽取证据。",
       ),
     }),
   );
@@ -562,7 +564,7 @@ export function applyGlmStructuredExtraction(
       projectId: project.id,
       keyword,
       intent: index % 2 === 0 ? "research" : "purchase",
-      source: "deepseek_structured_extraction",
+      source: "openai_compatible_structured_extraction",
       evidenceIds: evidence.slice(0, 3).map((item) => item.id),
     }),
   );
@@ -606,7 +608,8 @@ export function applyGlmStructuredExtraction(
       projectId: project.id,
       weekOf: "2026-06-01",
       title: `${project.category} 公开资料结构化周报种子`,
-      summary: "基于 public_web raw documents 的 DeepSeek 结构化抽取结果。",
+      summary:
+        "基于 public_web raw documents 的 OpenAI-compatible provider 结构化抽取结果。",
       newSignals: [
         ...productSignals.slice(0, 3).map((signal) => signal.signal),
         ...contentSignals.slice(0, 2).map((signal) => signal.topic),

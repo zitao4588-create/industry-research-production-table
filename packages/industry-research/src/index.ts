@@ -30,19 +30,27 @@ export type {
   NineRouterConfig,
   NineRouterFetch,
   NineRouterRuntimeEnv,
+  OpenAICompatibleConfig,
+  OpenAICompatibleFetch,
+  OpenAICompatibleRuntimeEnv,
 } from "./glm-client";
 export {
   call9RouterChatCompletion,
   callDeepSeekChatCompletion,
+  callOpenAICompatibleChatCompletion,
   create9RouterReportMessages,
   createDeepSeekReportMessages,
+  createOpenAICompatibleReportMessages,
   extractGlmText,
   generate9RouterResearchMarkdownReport,
   generateDeepSeekResearchMarkdownReport,
+  generateOpenAICompatibleResearchMarkdownReport,
   has9RouterConfig,
   hasDeepSeekConfig,
+  hasOpenAICompatibleConfig,
   resolve9RouterConfig,
   resolveDeepSeekConfig,
+  resolveOpenAICompatibleConfig,
 } from "./glm-client";
 export type { GlmStructuredExtraction } from "./glm-extraction";
 export {
