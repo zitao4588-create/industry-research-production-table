@@ -52,6 +52,14 @@ async function replaceReportWithProvider(
 
     return {
       ...baseResult,
+      runMetadata: {
+        ...baseResult.runMetadata,
+        canonicalMode:
+          baseResult.runMetadata?.canonicalMode ?? "public_web_llm",
+        provider: "local_fallback",
+        fallbackReason: message,
+        llmUsed: true,
+      },
       research_reports: [
         {
           id: "report-llm-fallback-1",
@@ -73,6 +81,13 @@ async function replaceReportWithProvider(
 
   return {
     ...baseResult,
+    runMetadata: {
+      ...baseResult.runMetadata,
+      canonicalMode: baseResult.runMetadata?.canonicalMode ?? "public_web_llm",
+      provider: baseResult.runMetadata?.provider ?? "openai_compatible",
+      model: report.model,
+      llmUsed: true,
+    },
     research_reports: [
       {
         id: "report-llm-1",

@@ -13,6 +13,32 @@
   - `.env.example` 新增 `AGENT_FACTORY_DEPLOYMENT_TARGET`，生产值为 `lightweight_server`。
   - 服务器脚本默认读取 `/etc/industry-research/industry-research.env`，并支持 `AGENT_FACTORY_ENV_FILE` 显式指定 env 文件。
 
+## 2026-06-29：准生产基线优先解决可信度、可审计和可复现
+
+- 决策：本轮 P0/P1/P2 优化不引入登录、支付、多租户、Docker 或新后端，而是在现有 Next/API/core/scripts/n8n 边界内补齐 CI、安全、证据验收、运行记录读取、replay 和 zvec 增量状态。
+- 原因：当前目标是把“可演示、可运行”推进到“可稳定交付、可审计、可复现、可信报告”；过早引入账户体系或新基础设施会扩大风险，并偏离当前电商竞品研究工作流。
+- 影响：
+  - CI 固定为 `pnpm install --frozen-lockfile`、`pnpm check`、`pnpm build`。
+  - SSE 同源入口需要 Host/Origin 白名单和一次性 run token；外部 REST run API 继续使用内部 key 保护。
+  - 真实 public_web 只输出公开采集事实和证据，不再生成模板业务结论；业务结论必须来自可匹配 quote 的结构化抽取或人工审核。
+  - 报告必须分层显示“已确认发现 / 候选发现 / 不确定 / 阻塞项”，并暴露可信度指标。
+  - Supabase 是权威运行记录读取优先级，本地交付包是 fallback；zvec 是可重建缓存，并记录增量索引状态。
+
+## 2026-06-29：运行模式命名收敛为 canonical mode + provider metadata
+
+- 决策：对外模式收敛为 `public_web`、`public_web_llm`、`llm_only`；`9router`、`public_web_9router`、`deepseek`、`public_web_deepseek`、`glm`、`public_web_glm` 只作为 legacy alias。provider、model、baseUrlHost、fallbackReason 和 llmUsed 写入 `runMetadata`，不再通过报告标题或文本字符串推断 LLM 状态。
+- 原因：旧命名把执行模式、provider 和历史 DeepSeek 函数名混在一起，容易把“兼容别名”误读成真实 provider 调用；metadata 明确后，run log、manifest、下载包和 UI 都能基于结构化字段判断。
+- 影响：
+  - 简化 UI 默认 `public_web`，不调用 LLM。
+  - `Public + 9router` 仍可映射到 `public_web_llm` + provider metadata。
+  - provider 探测或额度调用必须在有 key 的服务器环境显式执行。
+
+## 2026-06-29：Biome 检查只覆盖项目代码，不覆盖本地工具/草稿目录
+
+- 决策：`biome.json` 排除 `.claude`、`.codebuddy`、`.workbuddy` 和 `remotion-videos`。
+- 原因：这些目录是本地工具状态或未跟踪视频草稿，不属于行业研究生产台主代码；让它们阻塞 `pnpm check` 会让项目质量信号失真。
+- 影响：`pnpm check` 继续覆盖应用、核心包、脚本、workflow 和测试；未跟踪工具目录不作为本轮交付内容。
+
 ## 2026-06-29：远端部署先做基础设施最小同步
 
 - 决策：轻量服务器 `/opt/playgamelab/industry-research` 当前已有旧版线上代码，本轮只同步 Supabase、zvec、server doctor、env/docs/deploy 模板等基础设施相关文件，不整仓覆盖。

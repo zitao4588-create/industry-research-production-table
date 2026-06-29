@@ -23,6 +23,16 @@ export {
   industryResearchDeliveryPackageFiles,
 } from "./delivery-run";
 export type {
+  EvidenceQuoteValidation,
+  StructuredExtractionValidationResult,
+} from "./extraction-validator";
+export {
+  hasUnsupportedQuantifiedClaim,
+  mergeReviewStatus,
+  validateEvidenceQuotes,
+  validationNote,
+} from "./extraction-validator";
+export type {
   DeepSeekConfig,
   DeepSeekFetch,
   DeepSeekRuntimeEnv,
@@ -143,6 +153,9 @@ export type {
   ResearchReport,
   ResearchReviewItem,
   ResearchReviewStatus,
+  ResearchRunCanonicalMode,
+  ResearchRunMetadata,
+  ResearchRunProvider,
   ResearchSource,
   ResearchSourceType,
   ResearchTemplateId,

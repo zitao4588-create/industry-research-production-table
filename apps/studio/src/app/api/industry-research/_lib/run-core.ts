@@ -1,4 +1,5 @@
 import {
+  type ResearchRunMetadata,
   type ResearchWorkflowInput,
   type ResearchWorkflowResult,
   runDeepSeekIndustryResearchWorkflow,
@@ -18,10 +19,12 @@ import { persistIndustryResearchDeliveryPackage } from "./delivery-package-write
  */
 
 export type IndustryResearchRunMode =
+  | "public_web"
+  | "public_web_llm"
+  | "llm_only"
   | "9router"
   | "public_web_9router"
   | "deepseek"
-  | "public_web"
   | "public_web_deepseek"
   | "glm"
   | "public_web_glm";
@@ -108,10 +111,12 @@ export function parseResearchWorkflowInput(
 
 export function parseRunMode(value: unknown): IndustryResearchRunMode {
   if (
+    value === "public_web" ||
+    value === "public_web_llm" ||
+    value === "llm_only" ||
     value === "9router" ||
     value === "public_web_9router" ||
     value === "deepseek" ||
-    value === "public_web" ||
     value === "public_web_deepseek" ||
     value === "glm" ||
     value === "public_web_glm"
@@ -120,6 +125,104 @@ export function parseRunMode(value: unknown): IndustryResearchRunMode {
   }
 
   return "public_web";
+}
+
+function canonicalModeFor(mode: IndustryResearchRunMode) {
+  if (mode === "public_web") {
+    return "public_web" as const;
+  }
+
+  if (
+    mode === "public_web_llm" ||
+    mode === "public_web_9router" ||
+    mode === "public_web_deepseek" ||
+    mode === "public_web_glm"
+  ) {
+    return "public_web_llm" as const;
+  }
+
+  return "llm_only" as const;
+}
+
+function providerFor(mode: IndustryResearchRunMode) {
+  if (mode === "public_web") {
+    return "none" as const;
+  }
+
+  if (mode === "9router" || mode === "public_web_9router") {
+    return "9router" as const;
+  }
+
+  if (mode === "deepseek" || mode === "public_web_deepseek") {
+    return "deepseek" as const;
+  }
+
+  return "openai_compatible" as const;
+}
+
+function safeHost(value: string | undefined) {
+  if (!value) {
+    return undefined;
+  }
+
+  try {
+    return new URL(value).host;
+  } catch {
+    return undefined;
+  }
+}
+
+function createRunMetadata({
+  mode,
+  env,
+}: {
+  mode: IndustryResearchRunMode;
+  env: Record<string, string | undefined>;
+}): ResearchRunMetadata {
+  const canonicalMode = canonicalModeFor(mode);
+
+  return {
+    requestedMode: mode,
+    canonicalMode,
+    provider: providerFor(mode),
+    model:
+      env.AGENT_FACTORY_LLM_MODEL ??
+      env.AGENT_FACTORY_DEEPSEEK_MODEL ??
+      env.DEEPSEEK_MODEL,
+    baseUrlHost: safeHost(
+      env.AGENT_FACTORY_LLM_BASE_URL ??
+        env.AGENT_FACTORY_DEEPSEEK_BASE_URL ??
+        env.DEEPSEEK_BASE_URL,
+    ),
+    llmUsed: canonicalMode !== "public_web",
+  };
+}
+
+function withRunMetadata(
+  result: ResearchWorkflowResult,
+  metadata: ResearchRunMetadata,
+): ResearchWorkflowResult {
+  const resultMetadata = result.runMetadata;
+
+  return {
+    ...result,
+    runMetadata: {
+      ...resultMetadata,
+      ...metadata,
+      requestedMode: metadata.requestedMode,
+      canonicalMode: metadata.canonicalMode,
+      provider:
+        resultMetadata?.provider === "local_fallback"
+          ? "local_fallback"
+          : metadata.provider,
+      model: resultMetadata?.model ?? metadata.model,
+      baseUrlHost: resultMetadata?.baseUrlHost ?? metadata.baseUrlHost,
+      fallbackReason: resultMetadata?.fallbackReason ?? metadata.fallbackReason,
+      llmUsed:
+        resultMetadata?.provider === "local_fallback" || metadata.llmUsed,
+      timings: resultMetadata?.timings ?? metadata.timings,
+    },
+  };
 }
 
 export function parseRunRequest(value: unknown) {
@@ -174,35 +277,30 @@ export async function executeIndustryResearchRun({
   onProgress?: WorkflowProgressHandler;
 }): Promise<IndustryResearchRunResult> {
   const startedAt = new Date().toISOString();
-  const normalizedMode =
-    mode === "glm" || mode === "9router" || mode === "deepseek"
-      ? "deepseek"
-      : mode === "public_web_glm" ||
-          mode === "public_web_9router" ||
-          mode === "public_web_deepseek"
-        ? "public_web_deepseek"
-        : mode;
+  const canonicalMode = canonicalModeFor(mode);
+  const metadata = createRunMetadata({ mode, env });
 
   const result =
-    normalizedMode === "public_web"
+    canonicalMode === "public_web"
       ? await runPublicIndustryResearchWorkflow(input, { onProgress })
-      : normalizedMode === "public_web_deepseek"
+      : canonicalMode === "public_web_llm"
         ? await runPublicDeepSeekIndustryResearchWorkflow(input, {
             env,
             onProgress,
           })
         : await runDeepSeekIndustryResearchWorkflow(input, { env, onProgress });
+  const resultWithMetadata = withRunMetadata(result, metadata);
 
   const finishedAt = new Date().toISOString();
   const deliveryPackage = shouldPersistDeliveryPackage(env)
     ? await persistIndustryResearchDeliveryPackage({
         input,
-        result,
+        result: resultWithMetadata,
         startedAt,
         finishedAt,
         env,
       })
     : null;
 
-  return { result, deliveryPackage };
+  return { result: resultWithMetadata, deliveryPackage };
 }

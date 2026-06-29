@@ -18,6 +18,7 @@ import {
   runPublicCrawler,
   runPublicDeepSeekIndustryResearchWorkflow,
   runPublicIndustryResearchWorkflow,
+  validateEvidenceQuotes,
 } from "./index";
 
 const input: ResearchWorkflowInput = {
@@ -133,8 +134,8 @@ describe("industry research mock workflow", () => {
       "/api/industry-research/runs/delivery-test-run/download",
     );
     expect(artifacts.reportMarkdown).toContain("## 已确认发现");
-    expect(artifacts.reportMarkdown).toContain("## 证据不足但可能成立的发现");
-    expect(artifacts.reportMarkdown).toContain("## 阻塞项");
+    expect(artifacts.reportMarkdown).toContain("## 候选发现");
+    expect(artifacts.reportMarkdown).toContain("## 不确定 / 阻塞项");
     expect(artifacts.reportMarkdown).toContain("## 剩余不确定性");
     expect(artifacts.reportMarkdown).toContain("## 证据索引");
     expect(artifacts.reportMarkdown).toContain("URL：");
@@ -1055,9 +1056,47 @@ describe("industry research public workflow", () => {
       ),
     ).toBe(true);
     expect(result.source_database[0]?.reliability).toBe("needs_validation");
+    expect(result.competitors).toHaveLength(0);
+    expect(result.product_signals).toHaveLength(0);
+    expect(result.opportunities).toHaveLength(0);
+    expect(
+      result.evidence.every(
+        (evidence) =>
+          evidence.rawDocumentId && evidence.validation?.quoteMatched,
+      ),
+    ).toBe(true);
     expect(
       result.workflowSteps.some((step) => step.title === "采集公开资料"),
     ).toBe(true);
     expect(result.research_reports[0]?.content).toContain("## 公开采集结果");
+
+    const artifacts = createIndustryResearchDeliveryArtifacts({
+      input,
+      result,
+      runId: "public-web-no-template-run",
+      startedAt: "2026-06-29T00:00:00.000Z",
+      finishedAt: "2026-06-29T00:00:01.000Z",
+    });
+    const combinedReport = [
+      artifacts.reportMarkdown,
+      artifacts.reviewedReportMarkdown,
+      JSON.stringify(artifacts.databases),
+    ].join("\n");
+
+    expect(combinedReport).toContain("## 已确认发现");
+    expect(combinedReport).toContain("## 候选发现");
+    expect(combinedReport).toContain("## 不确定 / 阻塞项");
+    expect(combinedReport).not.toMatch(
+      /头部竞品 A|Subscription Pack|mock 周报|mock：/,
+    );
+
+    const unmatched = validateEvidenceQuotes(
+      ["this quote does not exist in any crawled document"],
+      result.raw_documents,
+    );
+    expect(unmatched.status).toBe("needs_review");
+    expect(unmatched.failureReasons).toContain(
+      "quote_not_found_in_raw_documents",
+    );
   });
 });

@@ -2,12 +2,16 @@ import { NextResponse } from "next/server";
 import {
   getLocalIndustryResearchRunDetail,
   LocalRunNotFoundError,
-} from "../../_lib/local-runs";
+} from "../../../_lib/local-runs";
+import {
+  executeIndustryResearchRun,
+  parseRunMode,
+} from "../../../_lib/run-core";
 import {
   authorizeIndustryResearchRequest,
   loadServerEnv,
-} from "../../_lib/server-env";
-import { getIndustryResearchSupabaseRunDetail } from "../../_lib/supabase-run-store";
+} from "../../../_lib/server-env";
+import { getIndustryResearchSupabaseRunDetail } from "../../../_lib/supabase-run-store";
 
 export const runtime = "nodejs";
 
@@ -19,12 +23,12 @@ async function routeParams(context: RouteContext) {
   return await context.params;
 }
 
-export async function GET(request: Request, context: RouteContext) {
+export async function POST(request: Request, context: RouteContext) {
   const env = loadServerEnv();
   const auth = authorizeIndustryResearchRequest(
     request,
     env,
-    "行业研究 run 详情 API",
+    "行业研究 run replay API",
   );
 
   if (!auth.ok) {
@@ -33,14 +37,33 @@ export async function GET(request: Request, context: RouteContext) {
 
   try {
     const { runId } = await routeParams(context);
-    const run =
+    const sourceRun =
       (await getIndustryResearchSupabaseRunDetail({ runId, env })) ??
       (await getLocalIndustryResearchRunDetail(runId));
 
+    if (!sourceRun.input) {
+      return NextResponse.json(
+        { error: "原 run 缺少 input.json，无法 replay。" },
+        { status: 409 },
+      );
+    }
+
+    const mode = parseRunMode(
+      sourceRun.run_log.providerMetadata?.requestedMode ??
+        sourceRun.run_log.providerMetadata?.canonicalMode ??
+        sourceRun.mode,
+    );
+    const replay = await executeIndustryResearchRun({
+      input: sourceRun.input,
+      mode,
+      env,
+    });
+
     return NextResponse.json({
-      schemaVersion: "industry_research_run_detail.v1",
-      storage: "storage" in run ? run.storage : "local_json_markdown",
-      run,
+      schemaVersion: "industry_research_run_replay.v1",
+      replayOf: runId,
+      mode,
+      ...replay,
     });
   } catch (error) {
     if (error instanceof LocalRunNotFoundError) {
@@ -48,7 +71,6 @@ export async function GET(request: Request, context: RouteContext) {
     }
 
     const message = error instanceof Error ? error.message : String(error);
-
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

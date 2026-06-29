@@ -199,7 +199,7 @@ function createPublicCrawlPlan(
     guardrails: [
       "public_web 模式只处理公开 http/https URL。",
       "不绕过登录、验证码、付费墙，不采集私人数据、支付信息或联系方式。",
-      "mock:// 搜索、CSV 和手动文本会保留为补充链路，不进入真实 public_web crawl plan。",
+      "非公开补充输入会保留为补充链路，不进入真实 public_web crawl plan。",
       "未验证的 Shopify、RSS 和产品 JSON 猜测路径不会直接进入真实抓取；只有用户明确输入或从首页、robots、sitemap 发现的公开 URL 才会抓取。",
       "公开网页抽取出的结构化结论必须人工复核。",
     ],
@@ -241,11 +241,13 @@ export async function runPublicIndustryResearchWorkflow(
   );
   const enhancedSourceDiscoveryPlan = {
     ...sourceDiscoveryPlan,
-    candidates: [
-      ...sourceDiscoveryPlan.candidates,
-      ...publicSourceDiscovery.candidates,
+    candidates: publicSourceDiscovery.candidates,
+    notes: [
+      "public_web 模式仅保留真实公开网页发现结果；演示候选不会进入真实采集计划。",
+      ...publicSourceDiscovery.notes.filter(
+        (note) => !note.toLowerCase().includes("mock"),
+      ),
     ],
-    notes: [...sourceDiscoveryPlan.notes, ...publicSourceDiscovery.notes],
   };
   const crawlPlan = {
     ...publicCrawlPlan,
@@ -338,7 +340,7 @@ export async function runPublicIndustryResearchWorkflow(
     ],
     workflowSteps: ecommerceCompetitorResearchTemplate.workflowSteps.map(
       (step) =>
-        step.id === "mock_crawl_sources"
+        step.id === "crawl_sources"
           ? {
               ...step,
               title: "采集公开资料",

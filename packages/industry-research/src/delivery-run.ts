@@ -7,6 +7,8 @@ import type {
   IndustryResearchDatabaseName,
   RawDocument,
   ResearchReviewItem,
+  ResearchRunCanonicalMode,
+  ResearchRunMetadata,
   ResearchSource,
   ResearchWorkflowInput,
   ResearchWorkflowResult,
@@ -14,9 +16,9 @@ import type {
 } from "./types";
 
 export type IndustryResearchDeliveryRunMode =
-  | "public_web_deepseek"
-  | "public_web_9router"
-  | "public_web_local_fallback";
+  | "public_web"
+  | "public_web_llm"
+  | "llm_only";
 
 export type IndustryResearchDeliveryDatabases = Record<
   IndustryResearchDatabaseName,
@@ -111,9 +113,11 @@ export type IndustryResearchDeliveryPackageManifest = {
   };
   mode: IndustryResearchDeliveryRunMode;
   llmStatus: IndustryResearchRunLog["llmStatus"];
+  providerMetadata: ResearchRunMetadata;
   counts: IndustryResearchRunLog["counts"];
   reviewSummary: IndustryResearchRunLog["reviewSummary"];
   sourceQualitySummary: SourceQualitySummary;
+  credibility: IndustryResearchRunLog["credibility"];
   files: IndustryResearchDeliveryPackageFile[];
   runDetailApiPath: string;
   downloadPackageApiPath: string;
@@ -126,7 +130,22 @@ export type IndustryResearchRunLog = {
   startedAt: string;
   finishedAt: string;
   durationMs: number;
-  llmStatus: "deepseek" | "9router" | "fallback" | "local";
+  llmStatus:
+    | "deepseek"
+    | "9router"
+    | "openai_compatible"
+    | "fallback"
+    | "local";
+  providerMetadata: ResearchRunMetadata;
+  credibility: {
+    crawledDocuments: number;
+    effectiveEvidence: number;
+    confirmedFindings: number;
+    needsReviewFindings: number;
+    lowQualitySources: number;
+    crawlFailures: number;
+    llmFallback: boolean;
+  };
   reportTitle: string;
   crawlMode: string;
   counts: {
@@ -233,42 +252,48 @@ function createDatabaseSnapshot(
   };
 }
 
-function detectLlmStatus(result: ResearchWorkflowResult) {
-  const report = result.research_reports[0];
-  const text = `${report?.title ?? ""}\n${report?.content ?? ""}`;
+function defaultRunMetadata(
+  result: ResearchWorkflowResult,
+): ResearchRunMetadata {
+  const crawlMode = result.crawl_plans[0]?.mode;
+  const canonicalMode: ResearchRunCanonicalMode =
+    crawlMode === "public_web" ? "public_web" : "llm_only";
 
-  if (
-    text.includes("本地回退") ||
-    text.includes("OpenAI-compatible provider 报告节点暂时失败") ||
-    text.includes("DeepSeek 报告节点暂时失败") ||
-    text.includes("9router 报告节点暂时失败")
-  ) {
+  return {
+    canonicalMode,
+    provider: "none",
+    llmUsed: canonicalMode !== "public_web",
+  };
+}
+
+function runMetadata(result: ResearchWorkflowResult) {
+  return result.runMetadata ?? defaultRunMetadata(result);
+}
+
+function detectLlmStatus(result: ResearchWorkflowResult) {
+  const metadata = runMetadata(result);
+
+  if (metadata.provider === "local_fallback" || metadata.fallbackReason) {
     return "fallback" as const;
   }
 
-  if (text.includes("9router") || text.includes("OpenAI-compatible")) {
+  if (metadata.provider === "9router") {
     return "9router" as const;
   }
 
-  if (text.includes("DeepSeek") || text.includes("deepseek")) {
+  if (metadata.provider === "deepseek") {
     return "deepseek" as const;
+  }
+
+  if (metadata.provider === "openai_compatible") {
+    return "openai_compatible" as const;
   }
 
   return "local" as const;
 }
 
 function resolveDeliveryMode(result: ResearchWorkflowResult) {
-  const llmStatus = detectLlmStatus(result);
-
-  if (llmStatus === "deepseek") {
-    return "public_web_deepseek";
-  }
-
-  if (llmStatus === "9router") {
-    return "public_web_9router";
-  }
-
-  return "public_web_local_fallback";
+  return runMetadata(result).canonicalMode;
 }
 
 function evidenceSourceFor(
@@ -294,6 +319,7 @@ function evidenceSourceFor(
     sourceQuality: rawDocument?.sourceQuality,
     quote: evidence.quote,
     note: evidence.note,
+    validation: evidence.validation,
   };
 }
 
@@ -323,10 +349,14 @@ function createEvidenceFormatter(result: ResearchWorkflowResult) {
 
         return [
           `- ${evidence.evidenceId}`,
+          `  - rawDocumentId：${evidence.rawDocumentId || "待补充"}`,
           `  - URL：${evidence.url || "待补充"}`,
           `  - 标题：${evidence.rawDocumentTitle}`,
           `  - 数据源质量：${evidence.sourceQuality ? `${evidence.sourceQuality.sourceType} / relevance=${evidence.sourceQuality.sourceRelevance} / confidence=${evidence.sourceQuality.sourceConfidence} / accepted=${evidence.sourceQuality.acceptedForReport}` : "未评分"}`,
-          `  - 摘录：${evidence.excerpt || evidence.quote}`,
+          `  - quote：${evidence.quote}`,
+          `  - quoteMatched：${evidence.validation?.quoteMatched ?? "unknown"}`,
+          `  - sourceAccepted：${evidence.validation?.sourceAccepted ?? evidence.sourceQuality?.acceptedForReport ?? "unknown"}`,
+          `  - 摘录：${evidence.excerpt || "待补充"}`,
           `  - 备注：${evidence.note}`,
         ].join("\n");
       })
@@ -646,8 +676,51 @@ function acceptedEvidenceIds(
       (document) => document.id === evidence?.rawDocumentId,
     );
 
-    return rawDocument?.sourceQuality.acceptedForReport;
+    const validation = evidence?.validation;
+
+    return (
+      rawDocument?.sourceQuality.acceptedForReport &&
+      validation?.quoteMatched !== false &&
+      validation?.sourceAccepted !== false
+    );
   });
+}
+
+function canConfirmReviewItem(
+  result: ResearchWorkflowResult,
+  item: ResearchReviewItem,
+) {
+  return (
+    item.status === "approved" &&
+    acceptedEvidenceIds(result, evidenceIdsForReviewItem(result, item)).length >
+      0
+  );
+}
+
+function createCredibilityMetrics(
+  result: ResearchWorkflowResult,
+  reviewItems: ResearchReviewItem[] = result.reviewItems,
+) {
+  const sourceQualitySummary = summarizeSourceQuality(result.raw_documents);
+  const confirmedFindings = reviewItems.filter((item) =>
+    canConfirmReviewItem(result, item),
+  ).length;
+  const needsReviewFindings = reviewItems.filter(
+    (item) => item.status !== "rejected" && !canConfirmReviewItem(result, item),
+  ).length;
+
+  return {
+    crawledDocuments: result.raw_documents.length,
+    effectiveEvidence: result.evidence.filter((evidence) =>
+      acceptedEvidenceIds(result, [evidence.id]).includes(evidence.id),
+    ).length,
+    confirmedFindings,
+    needsReviewFindings,
+    lowQualitySources: sourceQualitySummary.lowQualityDocumentIds.length,
+    crawlFailures: result.crawl_runs.filter((run) => run.status === "failed")
+      .length,
+    llmFallback: detectLlmStatus(result) === "fallback",
+  };
 }
 
 function formatReviewedItems(
@@ -657,11 +730,23 @@ function formatReviewedItems(
 ) {
   const formatEvidence = createEvidenceFormatter(result);
   const sections = reviewItems
-    .filter((item) => item.status === status)
+    .filter((item) => {
+      const canConfirm = canConfirmReviewItem(result, item);
+
+      if (status === "approved") {
+        return canConfirm;
+      }
+
+      if (status === "needs_review") {
+        return item.status !== "rejected" && !canConfirm;
+      }
+
+      return item.status === status;
+    })
     .map((item) => {
       const evidenceIds = evidenceIdsForReviewItem(result, item);
       const acceptedIds = acceptedEvidenceIds(result, evidenceIds);
-      const canConfirm = item.status === "approved" && acceptedIds.length > 0;
+      const canConfirm = canConfirmReviewItem(result, item);
 
       return [
         `### ${reviewItemTitle(result, item)}`,
@@ -689,6 +774,7 @@ export function createReviewedIndustryResearchReport(
   }
 
   const summary = createReviewSummary(reviewItems);
+  const credibility = createCredibilityMetrics(result, reviewItems);
 
   return [
     `# ${project.name} - 已审核版行业竞品研究轻量版报告`,
@@ -698,6 +784,8 @@ export function createReviewedIndustryResearchReport(
     `- confirmed：${summary.approved}`,
     `- needs_review：${summary.needs_review}`,
     `- rejected：${summary.rejected}`,
+    `- confirmedFindings：${credibility.confirmedFindings}`,
+    `- needsReviewFindings：${credibility.needsReviewFindings}`,
     "- 规则：只有人工标记 approved 且证据对应数据源 `acceptedForReport=true` 的结论，才进入已确认发现。",
     "- 注意：本报告仍不承诺 100% 自动事实判断，交付客户前需由负责人最终复核。",
     "",
@@ -705,11 +793,11 @@ export function createReviewedIndustryResearchReport(
     "",
     formatReviewedItems(result, reviewItems, "approved"),
     "",
-    "## 证据不足但可能成立的发现",
+    "## 候选发现",
     "",
     formatReviewedItems(result, reviewItems, "needs_review"),
     "",
-    "## 已驳回发现",
+    "## 不确定 / 阻塞项",
     "",
     formatReviewedItems(result, reviewItems, "rejected"),
     "",
@@ -738,6 +826,8 @@ export function createIndustryResearchDeliveryReport(
       "Cannot create delivery report without project and report.",
     );
   }
+  const metadata = runMetadata(result);
+  const credibility = createCredibilityMetrics(result);
 
   return [
     `# ${project.name} - 最小交付级 Agent 运行报告`,
@@ -751,9 +841,23 @@ export function createIndustryResearchDeliveryReport(
     `- 目标：${project.goal}`,
     `- 采集模式：${result.crawl_plans[0]?.mode ?? "unknown"}`,
     `- LLM 状态：${detectLlmStatus(result)}`,
+    `- 运行模式：${metadata.canonicalMode}`,
+    `- Provider：${metadata.provider}`,
+    `- Model：${metadata.model ?? "未使用或未配置"}`,
+    `- Fallback：${metadata.fallbackReason ?? "无"}`,
     `- raw_documents：${result.raw_documents.length}`,
     `- evidence：${result.evidence.length}`,
     "- 审核说明：review_items 是交付前人工审核入口，不代表最终客户签字确认。",
+    "",
+    "## 可信度仪表盘",
+    "",
+    `- 采集网页数：${credibility.crawledDocuments}`,
+    `- 有效证据数：${credibility.effectiveEvidence}`,
+    `- 已确认结论数：${credibility.confirmedFindings}`,
+    `- 待复核结论数：${credibility.needsReviewFindings}`,
+    `- 低质量来源数：${credibility.lowQualitySources}`,
+    `- 抓取失败数：${credibility.crawlFailures}`,
+    `- LLM fallback：${credibility.llmFallback ? "是" : "否"}`,
     "",
     "## 九类数据库数量",
     "",
@@ -767,11 +871,11 @@ export function createIndustryResearchDeliveryReport(
     "",
     formatConfirmedFindings(result),
     "",
-    "## 证据不足但可能成立的发现",
+    "## 候选发现",
     "",
     formatLikelyFindings(result),
     "",
-    "## 阻塞项",
+    "## 不确定 / 阻塞项",
     "",
     formatBlockedClaims(result),
     "",
@@ -833,9 +937,11 @@ export function createIndustryResearchDeliveryManifest(
     },
     mode: runLog.mode,
     llmStatus: runLog.llmStatus,
+    providerMetadata: runLog.providerMetadata,
     counts: runLog.counts,
     reviewSummary: runLog.reviewSummary,
     sourceQualitySummary: runLog.sourceQualitySummary,
+    credibility: runLog.credibility,
     files: industryResearchDeliveryPackageFiles.map((file) => ({
       ...file,
       required: true,
@@ -864,6 +970,8 @@ export function createIndustryResearchDeliveryArtifacts({
   const reviewSummary = createReviewSummary(result.reviewItems);
   const reportTitle = result.research_reports[0]?.title ?? "";
   const sourceQualitySummary = summarizeSourceQuality(result.raw_documents);
+  const providerMetadata = runMetadata(result);
+  const credibility = createCredibilityMetrics(result);
   const crawlFailures = result.crawl_runs
     .filter((run) => run.status === "failed")
     .map((run) => ({
@@ -888,6 +996,8 @@ export function createIndustryResearchDeliveryArtifacts({
         ? Math.max(0, finishMs - startMs)
         : 0,
     llmStatus: detectLlmStatus(result),
+    providerMetadata,
+    credibility,
     reportTitle,
     crawlMode: result.crawl_plans[0]?.mode ?? "unknown",
     counts: {

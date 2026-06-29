@@ -20,6 +20,70 @@
     {
       "parameters": {
         "method": "POST",
+        "url": "https://research.playgamelab.cn/api/industry-research/webhooks/n8n-run-complete",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{JSON.stringify({ runId: $json.body?.runId || $json.runId || $execution.id, status: 'queued', n8nExecutionId: $execution.id, message: 'n8n accepted industry research intake and queued the run.' })}}",
+        "options": {}
+      },
+      "id": "notify-agent-factory-queued",
+      "name": "Notify Industry Research Queued",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [360, 0],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "industryResearchN8nWebhookHeader",
+          "name": "Industry Research n8n Webhook Header"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://research.playgamelab.cn/api/industry-research/webhooks/n8n-run-complete",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{JSON.stringify({ runId: $('Webhook Intake').item.json.body?.runId || $('Webhook Intake').item.json.runId || $execution.id, status: 'running', n8nExecutionId: $execution.id, message: 'n8n started the protected industry research run API call.' })}}",
+        "options": {}
+      },
+      "id": "notify-agent-factory-running",
+      "name": "Notify Industry Research Running",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [720, 0],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "industryResearchN8nWebhookHeader",
+          "name": "Industry Research n8n Webhook Header"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
         "url": "https://research.playgamelab.cn/api/industry-research/run",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
@@ -41,11 +105,74 @@
       "name": "Run Industry Research",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [360, 0],
+      "position": [1080, 0],
       "credentials": {
         "httpHeaderAuth": {
           "id": "industryResearchInternalHeader",
           "name": "Industry Research Internal Header"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "run-id-present",
+              "leftValue": "={{Boolean($json.deliveryPackage?.runId || $json.result?.research_projects?.[0]?.id)}}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-run-succeeded",
+      "name": "If Run Succeeded",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [1440, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://research.playgamelab.cn/api/industry-research/webhooks/n8n-run-complete",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{JSON.stringify({ runId: $json.deliveryPackage?.runId || $json.result?.research_projects?.[0]?.id || $execution.id, status: 'completed', n8nExecutionId: $execution.id, deliveryPackageApiPath: '/api/industry-research/runs/' + ($json.deliveryPackage?.runId || $json.result?.research_projects?.[0]?.id || $execution.id) + '/download', message: 'n8n completed industry research run.' })}}",
+        "options": {}
+      },
+      "id": "notify-agent-factory-completed",
+      "name": "Notify Industry Research Completed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1800, -120],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "industryResearchN8nWebhookHeader",
+          "name": "Industry Research n8n Webhook Header"
         }
       }
     },
@@ -66,14 +193,14 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{JSON.stringify({ runId: $json.deliveryPackage?.runId || $json.result?.research_projects?.[0]?.id || $execution.id, status: 'completed', n8nExecutionId: $execution.id, deliveryPackageApiPath: '/api/industry-research/runs/' + ($json.deliveryPackage?.runId || $json.result?.research_projects?.[0]?.id || $execution.id) + '/download', message: 'n8n completed industry research run through the configured OpenAI-compatible provider.' })}}",
+        "jsonBody": "={{JSON.stringify({ runId: $('Webhook Intake').item.json.body?.runId || $('Webhook Intake').item.json.runId || $execution.id, status: 'failed', n8nExecutionId: $execution.id, message: $json.message || $json.error?.message || 'n8n failed before a delivery package was created.' })}}",
         "options": {}
       },
-      "id": "notify-agent-factory",
-      "name": "Notify Industry Research",
+      "id": "notify-agent-factory-failed",
+      "name": "Notify Industry Research Failed",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
-      "position": [720, 0],
+      "position": [1800, 120],
       "credentials": {
         "httpHeaderAuth": {
           "id": "industryResearchN8nWebhookHeader",
@@ -84,6 +211,28 @@
   ],
   "connections": {
     "Webhook Intake": {
+      "main": [
+        [
+          {
+            "node": "Notify Industry Research Queued",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Industry Research Queued": {
+      "main": [
+        [
+          {
+            "node": "Notify Industry Research Running",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify Industry Research Running": {
       "main": [
         [
           {
@@ -98,7 +247,25 @@
       "main": [
         [
           {
-            "node": "Notify Industry Research",
+            "node": "If Run Succeeded",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Run Succeeded": {
+      "main": [
+        [
+          {
+            "node": "Notify Industry Research Completed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify Industry Research Failed",
             "type": "main",
             "index": 0
           }
@@ -111,6 +278,6 @@
   },
   "meta": {
     "templateCredsSetupCompleted": true,
-    "description": "Production n8n intake for industry research. Calls the protected run API with n8n Header Auth credentials, then posts the completion callback."
+    "description": "Production n8n intake for industry research. Emits queued/running/completed/failed events, calls the protected run API with Header Auth credentials, and keeps workflow JSON free of secrets."
   }
 }

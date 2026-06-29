@@ -5,6 +5,15 @@ import {
   parseRunRequest,
   RequestValidationError,
 } from "../../_lib/run-core";
+import {
+  issueRunStreamToken,
+  RunSecurityError,
+  readJsonBodyWithLimit,
+  runTimeoutMs,
+  sanitizeRunError,
+  validateRunStreamPostRequest,
+  validateRunStreamTokenRequest,
+} from "../../_lib/run-security";
 import { loadServerEnv } from "../../_lib/server-env";
 
 export const runtime = "nodejs";
@@ -20,7 +29,7 @@ export const runtime = "nodejs";
 const PHASE_STEPS: Record<"discover" | "crawl" | "build" | "report", string[]> =
   {
     discover: ["create_project", "discover_sources", "generate_crawl_plan"],
-    crawl: ["mock_crawl_sources"],
+    crawl: ["crawl_sources"],
     build: [
       "build_industry_databases",
       "supplement_sources",
@@ -88,39 +97,78 @@ function translateProgress(
   }
 }
 
+function timeoutAfter<T>(promise: Promise<T>, timeoutMs: number) {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error(`run_timeout_after_${timeoutMs}ms`));
+    }, timeoutMs);
+
+    promise.then(resolve, reject).finally(() => clearTimeout(timeout));
+  });
+}
+
+export function GET(request: Request) {
+  const env = loadServerEnv();
+
+  try {
+    validateRunStreamTokenRequest(request, env);
+    const token = issueRunStreamToken();
+
+    return NextResponse.json({
+      schemaVersion: "industry_research_run_stream_token.v1",
+      ...token,
+    });
+  } catch (error) {
+    const status = error instanceof RunSecurityError ? error.status : 500;
+    return NextResponse.json({ error: sanitizeRunError(error) }, { status });
+  }
+}
+
 export async function POST(request: Request) {
   const env = loadServerEnv();
 
   let parsed: ReturnType<typeof parseRunRequest>;
   try {
-    parsed = parseRunRequest(await request.json().catch(() => null));
+    validateRunStreamPostRequest(request, env);
+    parsed = parseRunRequest(await readJsonBodyWithLimit(request, env));
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const status = error instanceof RequestValidationError ? 400 : 500;
-    return NextResponse.json({ error: message }, { status });
+    const status =
+      error instanceof RunSecurityError
+        ? error.status
+        : error instanceof RequestValidationError
+          ? 400
+          : 500;
+    return NextResponse.json({ error: sanitizeRunError(error) }, { status });
   }
   const { input, mode } = parsed;
 
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      let closed = false;
       const send = (frame: unknown) => {
+        if (closed) {
+          return;
+        }
         controller.enqueue(
           encoder.encode(`data: ${JSON.stringify(frame)}\n\n`),
         );
       };
       try {
-        const { result, deliveryPackage } = await executeIndustryResearchRun({
-          input,
-          mode,
-          env,
-          onProgress: (event) => translateProgress(event, send),
-        });
+        const { result, deliveryPackage } = await timeoutAfter(
+          executeIndustryResearchRun({
+            input,
+            mode,
+            env,
+            onProgress: (event) => translateProgress(event, send),
+          }),
+          runTimeoutMs(env),
+        );
         send({ control: "result", result, deliveryPackage });
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        send({ control: "error", message });
+        send({ control: "error", message: sanitizeRunError(error) });
       } finally {
+        closed = true;
         controller.close();
       }
     },

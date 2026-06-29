@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 import {
   type IndustryResearchDeliveryArtifacts,
   type IndustryResearchDeliveryPackageFileKind,
+  type IndustryResearchDeliveryPackageManifest,
   type IndustryResearchRunLog,
   industryResearchDeliveryPackageFiles,
   type ResearchWorkflowInput,
@@ -259,7 +260,13 @@ export type SupabaseRunRecord = {
   run_id: string;
   input: ResearchWorkflowInput;
   run_log: IndustryResearchRunLog | null;
-  manifest: unknown;
+  manifest: IndustryResearchDeliveryPackageManifest | null;
+};
+
+type SupabaseArtifactRecord = {
+  kind: IndustryResearchDeliveryPackageFileKind;
+  json_content: unknown;
+  text_content: string | null;
 };
 
 export async function fetchIndustryResearchSupabaseRun({
@@ -284,4 +291,175 @@ export async function fetchIndustryResearchSupabaseRun({
   throwSupabaseError("run read", error);
 
   return data as SupabaseRunRecord | null;
+}
+
+async function fetchSupabaseArtifacts(runId: string, client: SupabaseClient) {
+  const { data, error } = await client
+    .from("industry_research_artifacts")
+    .select("kind,json_content,text_content")
+    .eq("run_id", runId);
+
+  throwSupabaseError("artifact read", error);
+
+  return (data ?? []) as SupabaseArtifactRecord[];
+}
+
+function artifactMap(artifacts: SupabaseArtifactRecord[]) {
+  return new Map(
+    artifacts.map((artifact) => [artifact.kind, artifact] as const),
+  );
+}
+
+function apiPaths(runId: string) {
+  const encodedRunId = encodeURIComponent(runId);
+  return {
+    detailApiPath: `/api/industry-research/runs/${encodedRunId}`,
+    downloadPackageApiPath: `/api/industry-research/runs/${encodedRunId}/download`,
+  };
+}
+
+export async function listIndustryResearchSupabaseRuns({
+  limit = 50,
+  env = loadServerEnv(),
+}: {
+  limit?: number;
+  env?: Record<string, string | undefined>;
+}) {
+  const client = createIndustryResearchSupabaseAdminClient(env);
+
+  if (!client) {
+    return null;
+  }
+
+  const { data, error } = await client
+    .from("industry_research_runs")
+    .select(
+      "run_id,project_name,status,started_at,finished_at,mode,llm_status,counts,source_quality_summary,manifest,run_log",
+    )
+    .order("finished_at", { ascending: false, nullsFirst: false })
+    .limit(limit);
+
+  throwSupabaseError("run list read", error);
+
+  return (data ?? []).map((row) => {
+    const runLog = row.run_log as IndustryResearchRunLog | null;
+    const manifest =
+      row.manifest as IndustryResearchDeliveryPackageManifest | null;
+    const runId = String(row.run_id);
+
+    return {
+      runId,
+      relativeOutputDir: `supabase://industry_research_runs/${runId}`,
+      startedAt: String(row.started_at ?? runLog?.startedAt ?? ""),
+      finishedAt: String(row.finished_at ?? runLog?.finishedAt ?? ""),
+      mode: runLog?.mode ?? row.mode,
+      llmStatus: runLog?.llmStatus ?? row.llm_status,
+      reportTitle: runLog?.reportTitle ?? "",
+      projectName: String(row.project_name ?? runId),
+      counts: runLog?.counts ?? row.counts,
+      reviewSummary: runLog?.reviewSummary ?? {
+        approved: 0,
+        needs_review: 0,
+        rejected: 0,
+      },
+      sourceQualitySummary:
+        runLog?.sourceQualitySummary ?? row.source_quality_summary,
+      crawlFailureCount: (runLog?.crawlFailures ?? []).length,
+      extractionNeedsReviewCount: (runLog?.extractionNeedsReview ?? []).length,
+      status: manifest?.status ?? row.status,
+      manifestAvailable: Boolean(manifest),
+      filesAvailable: Object.fromEntries(
+        industryResearchDeliveryPackageFiles.map((file) => [file.kind, true]),
+      ),
+      ...apiPaths(runId),
+      storage: "supabase",
+    };
+  });
+}
+
+export async function getIndustryResearchSupabaseRunDetail({
+  runId,
+  env = loadServerEnv(),
+}: {
+  runId: string;
+  env?: Record<string, string | undefined>;
+}) {
+  const client = createIndustryResearchSupabaseAdminClient(env);
+
+  if (!client) {
+    return null;
+  }
+
+  const run = await fetchIndustryResearchSupabaseRun({ runId, env });
+  if (!run?.run_log) {
+    return null;
+  }
+
+  const artifacts = artifactMap(await fetchSupabaseArtifacts(runId, client));
+  const paths = apiPaths(runId);
+
+  return {
+    runId,
+    relativeOutputDir: `supabase://industry_research_runs/${runId}`,
+    startedAt: run.run_log.startedAt,
+    finishedAt: run.run_log.finishedAt,
+    mode: run.run_log.mode,
+    llmStatus: run.run_log.llmStatus,
+    reportTitle: run.run_log.reportTitle,
+    projectName: run.input.projectName,
+    counts: run.run_log.counts,
+    reviewSummary: run.run_log.reviewSummary,
+    sourceQualitySummary: run.run_log.sourceQualitySummary,
+    crawlFailureCount: (run.run_log.crawlFailures ?? []).length,
+    extractionNeedsReviewCount: (run.run_log.extractionNeedsReview ?? [])
+      .length,
+    status: run.manifest?.status ?? "legacy_run",
+    manifestAvailable: Boolean(run.manifest),
+    filesAvailable: Object.fromEntries(
+      industryResearchDeliveryPackageFiles.map((file) => [
+        file.kind,
+        artifacts.has(file.kind),
+      ]),
+    ),
+    ...paths,
+    manifest: run.manifest,
+    run_log: run.run_log,
+    input: run.input,
+    reportMarkdown: artifacts.get("report")?.text_content ?? null,
+    reviewedReportMarkdown:
+      artifacts.get("reviewed_report")?.text_content ?? null,
+    storage: "supabase",
+  };
+}
+
+export async function getIndustryResearchSupabaseDownloadPackage({
+  runId,
+  env = loadServerEnv(),
+}: {
+  runId: string;
+  env?: Record<string, string | undefined>;
+}) {
+  const detail = await getIndustryResearchSupabaseRunDetail({ runId, env });
+  const client = createIndustryResearchSupabaseAdminClient(env);
+
+  if (!detail || !client) {
+    return null;
+  }
+
+  const artifacts = artifactMap(await fetchSupabaseArtifacts(runId, client));
+
+  return {
+    schemaVersion: "industry_research_delivery_package_download.v1",
+    generatedAt: new Date().toISOString(),
+    runId,
+    manifest: detail.manifest,
+    input: artifacts.get("input")?.json_content ?? detail.input,
+    raw_documents: artifacts.get("raw_documents")?.json_content ?? null,
+    databases: artifacts.get("databases")?.json_content ?? null,
+    review_items: artifacts.get("review_items")?.json_content ?? null,
+    reportMarkdown: detail.reportMarkdown,
+    reviewedReportMarkdown: detail.reviewedReportMarkdown,
+    run_log: detail.run_log,
+    storage: "supabase",
+  };
 }

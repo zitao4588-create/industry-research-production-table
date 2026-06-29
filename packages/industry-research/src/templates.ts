@@ -54,10 +54,10 @@ export const ecommerceCompetitorResearchTemplate: IndustryResearchTemplate = {
       status: "pending",
     },
     {
-      id: "mock_crawl_sources",
-      title: "mock 执行采集",
+      id: "crawl_sources",
+      title: "执行采集",
       description:
-        "第一版不抓真实网页，只生成 crawl job、crawl run 和 raw document。",
+        "执行公开网页或演示采集，生成 crawl job、crawl run 和 raw document。",
       status: "pending",
     },
     {

@@ -27,7 +27,7 @@ export const researchConsoleFixture: UIResearchModel = {
       desc: "规划公开搜索、官网、Shopify、sitemap、RSS、CSV",
     },
     {
-      id: "mock_crawl_sources",
+      id: "crawl_sources",
       title: "执行采集",
       desc: "生成 crawl job、crawl run 与 raw document",
     },

@@ -11,6 +11,44 @@
   - 同步修正 `supabase/migrations/20260629_industry_research_infra.sql`。
 - 验证：修正后 `anon` / `authenticated` 对 sequence 的 USAGE/SELECT/UPDATE 全部 false，`service_role` 为 true。
 
+## 已处理：真实 public_web 报告仍泄漏演示/模板语义
+
+- 现象：本轮 public_web smoke 初次复测生成 8 文件交付包，但 `report.md` / `run_log.json` 仍出现 `mock` 说明；代码里旧 lean 分支还保留 `头部竞品 A`、`Starter Kit`、`Subscription Pack`、`mock 周报` 等不可达模板结论。
+- 原因：真实 lean 路径虽然已提前返回空业务结论，但旧模板代码仍在文件中；workflow step id / guardrail 文案也沿用了 `mock_crawl_sources` 和 mock 候选说明。
+- 处理：
+  - 删除不可达旧 lean 模板代码。
+  - 将 workflow step id 从 `mock_crawl_sources` 改为 `crawl_sources`。
+  - public_web guardrail / notes 改为“非公开补充输入 / 演示候选”口径。
+  - 增加测试，断言 public_web 不产出模板竞品/产品/机会，且报告/数据库不包含 forbidden strings。
+- 验证：`pnpm sample:public-web` 生成 `v03-public-web-smoke-2026-06-29T07-24-34-465Z`；`report.md` / `reviewed_report.md` / `databases.json` 检查未出现 `mock`、`头部竞品 A`、`Starter Kit`、`Subscription Pack`、`mock 周报`、`mock：`。
+
+## 已处理：SSE run stream 缺少同源安全边界
+
+- 现象：`POST /api/industry-research/run/stream` 原本可被同源 UI 直接调用，但缺少 Origin/Host 白名单、CSRF token、body cap、timeout、rate limit 和错误脱敏。
+- 风险：无登录产品可以保留同源轻入口，但如果没有这些边界，公网环境中更容易被跨站或大请求滥用，也可能把本地/服务器路径或 secret 片段暴露到错误帧。
+- 处理：
+  - 新增 `run-security.ts`。
+  - `GET /api/industry-research/run/stream` 签发一次性 run token。
+  - `POST` 校验 Host/Origin/token/rate limit/body size，并给单次 run 加 timeout。
+  - 前端 `SimpleResearch` 和高级控制台在发起 SSE POST 前先取 token。
+  - 错误消息统一脱敏。
+- 验证：`pnpm check` 和 `pnpm build` 通过；REST `/api/industry-research/run` 仍保留内部 key 鉴权。
+
+## 已处理：zvec 每次全量 upsert，缺少增量状态
+
+- 现象：旧 `pnpm zvec:index` 只按本地交付包目录全量生成 chunks，没有状态文件，也不能显式选择从 Supabase artifacts 重建。
+- 处理：
+  - 新增 zvec index state：默认 `.cache/industry-research-zvec/index-state.json`，也可用 `AGENT_FACTORY_ZVEC_STATE_FILE` 指定。
+  - 支持 `AGENT_FACTORY_ZVEC_SOURCE=auto|local|supabase` 或 `--source=...`。
+  - 记录每个 run 的 chunk signatures、artifactKinds、source 和 indexedAt；非 `--force` 时只 upsert 变化 chunk。
+- 验证：本轮首次 `pnpm zvec:index` 写入 328 chunks；第二次复跑 `upsertedChunkCount=0`、`unchangedChunkCount=328`。
+
+## 验收备注：本机 Supabase smoke 安全跳过
+
+- 现象：本机运行 `pnpm supabase:doctor` 返回 `disabled`；`pnpm supabase:smoke` 返回 `skipped_supabase_not_ready` 并 exit 2。
+- 判断：本机没有 `AGENT_FACTORY_SUPABASE_PROJECT_REF`、`NEXT_PUBLIC_SUPABASE_URL` 和 `SUPABASE_SERVICE_ROLE_KEY`，这是预期安全状态。`supabase:smoke` 在 service role 配好时会写入并读回 run/artifact，因此本轮没有为了验收伪造或访问生产 Supabase。
+- 处理：最终验收记录为 skipped；需要服务器真实复测时必须在轻量服务器带 service role 环境单独运行。
+
 ## 已处理：轻量服务器 Supabase service role key 被粘贴成双 JWT
 
 - 现象：轻量服务器读取 env 后调用 Supabase REST 返回 `401 Invalid API key`，但脱敏诊断能解出 `role=service_role` 和 project ref。

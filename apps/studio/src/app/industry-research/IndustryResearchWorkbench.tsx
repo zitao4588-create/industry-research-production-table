@@ -55,6 +55,7 @@ import {
   reviewReportAction,
   runIndustryResearchAction,
 } from "./actions";
+import { fetchRunStreamToken } from "./run-stream-token";
 
 type CSSVars = CSSProperties & Record<string, string | number>;
 type Phase = "setup" | "running" | "done";
@@ -98,11 +99,11 @@ const DEFAULT_INPUT: ResearchWorkflowInput = {
 };
 
 /** UI 运行模式 → 真实 API 模式（Mock 留本地，不走 API）。 */
-type UiRealMode = "9router" | "public_web" | "public_web_9router";
+type UiRealMode = "llm_only" | "public_web" | "public_web_llm";
 const REAL_RUN_MODE: Record<Exclude<RunMode, "Mock">, UiRealMode> = {
-  "9router": "9router",
+  "9router": "llm_only",
   "Public Web": "public_web",
-  "Public + 9router": "public_web_9router",
+  "Public + 9router": "public_web_llm",
 };
 
 function normalizeRunMode(value: unknown): RunMode {
@@ -425,9 +426,13 @@ export default function IndustryResearchWorkbench({
       // ---- 完整版:流式订阅 ----
       try {
         setIndeterminate(false);
+        const runToken = await fetchRunStreamToken();
         const response = await fetch("/api/industry-research/run/stream", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-industry-research-run-token": runToken,
+          },
           body: JSON.stringify({ mode, input: finalInput }),
         });
         if (!response.ok || !response.body) {

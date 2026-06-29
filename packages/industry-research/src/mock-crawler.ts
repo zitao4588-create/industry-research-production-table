@@ -51,6 +51,10 @@ export function createResearchSourcesFromPlan(
   discoveryPlan: SourceDiscoveryPlan,
   crawlPlan: CrawlPlan,
 ): ResearchSource[] {
+  const automationSuffix =
+    crawlPlan.mode === "mock"
+      ? "（mock 执行；真实模式可接爬虫/RSS/sitemap/CSV adapter）"
+      : "（public_web 执行；仅处理公开 http/https URL，不绕过登录、验证码或付费墙）";
   const automatedSources = crawlPlan.targets.map((target, index) => {
     const candidate = findCandidate(discoveryPlan, target);
 
@@ -60,7 +64,7 @@ export function createResearchSourcesFromPlan(
       type: sourceTypeForTarget(target),
       title: candidate?.title ?? target.reason,
       value: target.target,
-      automationHint: `${target.reason}（mock 执行；真实模式可接爬虫/RSS/sitemap/CSV adapter）`,
+      automationHint: `${target.reason}${automationSuffix}`,
       discoveryCandidateId: target.candidateId,
       priority: candidate?.priority ?? "medium",
     } satisfies ResearchSource;

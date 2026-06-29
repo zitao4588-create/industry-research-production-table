@@ -1,4 +1,10 @@
 import {
+  type EvidenceQuoteValidation,
+  mergeReviewStatus,
+  validateEvidenceQuotes,
+  validationNote,
+} from "./extraction-validator";
+import {
   callDeepSeekChatCompletion,
   type GlmFetch,
   type GlmRuntimeEnv,
@@ -320,72 +326,40 @@ export async function generateGlmStructuredExtraction({
 function createEvidenceBuilder(result: ResearchWorkflowResult) {
   let index = 0;
   const project = result.research_projects[0];
-  const fallbackRawDocument = result.raw_documents[0];
 
   if (!project) {
     throw new Error("Cannot build GLM extraction evidence without project.");
   }
 
-  const findRawDocumentForQuote = (quote: string) => {
-    const normalizedQuote = quote.trim().toLowerCase();
+  return (validatedQuotes: EvidenceQuoteValidation[], note: string) => {
+    return validatedQuotes
+      .filter((quote) => quote.quoteMatched && quote.rawDocumentId)
+      .map((quote) => {
+        index += 1;
+        const rawDocument = result.raw_documents.find(
+          (document) => document.id === quote.rawDocumentId,
+        );
+        const sourceId =
+          rawDocument?.sourceId ??
+          result.research_sources[0]?.id ??
+          "source-unknown";
 
-    if (!normalizedQuote) {
-      return fallbackRawDocument;
-    }
-
-    return (
-      result.raw_documents.find((document) => {
-        const haystack = [
-          document.title,
-          document.excerpt,
-          document.extractedText.slice(0, 8000),
-        ]
-          .join("\n")
-          .toLowerCase();
-
-        return haystack.includes(normalizedQuote);
-      }) ?? fallbackRawDocument
-    );
+        return {
+          id: `evidence-deepseek-${index}`,
+          projectId: project.id,
+          sourceId,
+          rawDocumentId: rawDocument?.id,
+          quote: quote.quote.slice(0, 500),
+          note,
+          validation: {
+            quoteMatched: quote.quoteMatched,
+            sourceAccepted: quote.sourceAccepted,
+            matchedRawDocumentId: quote.matchedRawDocumentId,
+            failureReason: quote.failureReason,
+          },
+        } satisfies Evidence;
+      });
   };
-
-  return (quotes: string[], note: string) => {
-    const normalizedQuotes =
-      quotes.length > 0
-        ? quotes
-        : [
-            fallbackRawDocument?.excerpt ??
-              "LLM 抽取结果缺少直接引用，需人工复核。",
-          ];
-
-    return normalizedQuotes.map((quote) => {
-      index += 1;
-      const rawDocument = findRawDocumentForQuote(quote);
-      const sourceId =
-        rawDocument?.sourceId ??
-        result.research_sources[0]?.id ??
-        "source-unknown";
-
-      return {
-        id: `evidence-deepseek-${index}`,
-        projectId: project.id,
-        sourceId,
-        rawDocumentId: rawDocument?.id,
-        quote: quote.slice(0, 500),
-        note,
-      } satisfies Evidence;
-    });
-  };
-}
-
-function totalOpportunityScore(opportunity: GlmExtractedOpportunity) {
-  return Math.round(
-    (clampScore(opportunity.demandScore, 60) +
-      clampScore(opportunity.competitionScore, 50) +
-      clampScore(opportunity.contentGapScore, 60) +
-      clampScore(opportunity.businessValueScore, 60) +
-      clampScore(opportunity.evidenceQualityScore, 50)) /
-      5,
-  );
 }
 
 function uniqueValues(values: string[]) {
@@ -414,29 +388,48 @@ export function applyGlmStructuredExtraction(
 
   const buildEvidence = createEvidenceBuilder(result);
   const evidence: Evidence[] = [];
-  const evidenceIdsFor = (quotes: string[], note: string) => {
-    const items = buildEvidence(quotes, note);
+  const evidenceIdsFor = (
+    validation: ReturnType<typeof validateEvidenceQuotes>,
+    note: string,
+  ) => {
+    const items = buildEvidence(validation.matchedQuotes, note);
     evidence.push(...items);
     return items.map((item) => item.id);
   };
 
-  const competitors: Competitor[] = extraction.competitors.map(
-    (competitor, index) => ({
-      id: `deepseek-competitor-${index + 1}`,
-      projectId: project.id,
-      name: asString(competitor.name, `${project.category} 竞品 ${index + 1}`),
-      channel: asString(competitor.channel, project.market),
-      websiteStructure: asStringArray(competitor.websiteStructure),
-      collectionSignals: asStringArray(competitor.collectionSignals),
-      positioning: asString(
-        competitor.positioning,
-        "OpenAI-compatible provider 从公开资料抽取，等待人工复核。",
-      ),
-      evidenceIds: evidenceIdsFor(
+  const competitors: Competitor[] = extraction.competitors.flatMap(
+    (competitor, index) => {
+      const validation = validateEvidenceQuotes(
         asStringArray(competitor.evidenceQuotes),
-        "OpenAI-compatible provider 竞品抽取证据。",
-      ),
-    }),
+        result.raw_documents,
+      );
+
+      if (validation.status === "rejected") {
+        return [];
+      }
+
+      return [
+        {
+          id: `deepseek-competitor-${index + 1}`,
+          projectId: project.id,
+          name: asString(
+            competitor.name,
+            `${project.category} 竞品 ${index + 1}`,
+          ),
+          channel: asString(competitor.channel, project.market),
+          websiteStructure: asStringArray(competitor.websiteStructure),
+          collectionSignals: asStringArray(competitor.collectionSignals),
+          positioning: asString(
+            competitor.positioning,
+            "OpenAI-compatible provider 从公开资料抽取，等待人工复核。",
+          ),
+          evidenceIds: evidenceIdsFor(
+            validation,
+            `OpenAI-compatible provider 竞品抽取证据。${validationNote(validation)}`,
+          ),
+        } satisfies Competitor,
+      ];
+    },
   );
   const fallbackCompetitor = competitors[0] ?? result.competitors[0];
   const competitorIdsByName = new Map(
@@ -445,77 +438,150 @@ export function applyGlmStructuredExtraction(
       competitor.id,
     ]),
   );
-  const productSignals: ProductSignal[] = extraction.productSignals.map(
+  const productSignals: ProductSignal[] = extraction.productSignals.flatMap(
     (signal, index) => {
       const competitorName = asString(signal.competitorName).toLowerCase();
+      const validation = validateEvidenceQuotes(
+        asStringArray(signal.evidenceQuotes),
+        result.raw_documents,
+      );
 
-      return {
-        id: `deepseek-product-signal-${index + 1}`,
-        projectId: project.id,
-        competitorId:
-          competitorIdsByName.get(competitorName) ??
-          fallbackCompetitor?.id ??
-          "deepseek-competitor-1",
-        category: asString(signal.category, project.category),
-        signal: asString(
-          signal.signal,
-          "OpenAI-compatible provider 抽取到产品信号，等待人工复核。",
-        ),
-        tags: asStringArray(signal.tags),
-        evidenceIds: evidenceIdsFor(
-          asStringArray(signal.evidenceQuotes),
-          "OpenAI-compatible provider 产品信号抽取证据。",
-        ),
-      };
+      if (validation.status === "rejected") {
+        return [];
+      }
+
+      return [
+        {
+          id: `deepseek-product-signal-${index + 1}`,
+          projectId: project.id,
+          competitorId:
+            competitorIdsByName.get(competitorName) ??
+            fallbackCompetitor?.id ??
+            "deepseek-competitor-1",
+          category: asString(signal.category, project.category),
+          signal: asString(
+            signal.signal,
+            "OpenAI-compatible provider 抽取到产品信号，等待人工复核。",
+          ),
+          tags: asStringArray(signal.tags),
+          evidenceIds: evidenceIdsFor(
+            validation,
+            `OpenAI-compatible provider 产品信号抽取证据。${validationNote(validation)}`,
+          ),
+        } satisfies ProductSignal,
+      ];
     },
   );
-  const painPoints: PainPoint[] = extraction.painPoints.map((point, index) => ({
-    id: `deepseek-pain-point-${index + 1}`,
-    projectId: project.id,
-    theme: asString(point.theme, `用户痛点 ${index + 1}`),
-    userNeed: asString(point.userNeed, "需要人工补充用户需求解释。"),
-    frequency: normalizeFrequency(point.frequency),
-    evidenceIds: evidenceIdsFor(
-      asStringArray(point.evidenceQuotes),
-      "OpenAI-compatible provider 用户痛点抽取证据。",
-    ),
-  }));
-  const contentSignals: ContentSignal[] = extraction.contentSignals.map(
-    (signal, index) => ({
-      id: `deepseek-content-signal-${index + 1}`,
-      projectId: project.id,
-      platform: asString(signal.platform, "Public Web"),
-      topic: asString(signal.topic, `内容信号 ${index + 1}`),
-      contentType: normalizeContentType(signal.contentType),
-      whyItWorks: asString(signal.whyItWorks, "等待人工复核内容价值。"),
-      evidenceIds: evidenceIdsFor(
-        asStringArray(signal.evidenceQuotes),
-        "OpenAI-compatible provider 内容信号抽取证据。",
-      ),
-    }),
+  const painPoints: PainPoint[] = extraction.painPoints.flatMap(
+    (point, index) => {
+      const validation = validateEvidenceQuotes(
+        asStringArray(point.evidenceQuotes),
+        result.raw_documents,
+      );
+
+      if (validation.status === "rejected") {
+        return [];
+      }
+
+      return [
+        {
+          id: `deepseek-pain-point-${index + 1}`,
+          projectId: project.id,
+          theme: asString(point.theme, `用户痛点 ${index + 1}`),
+          userNeed: asString(point.userNeed, "需要人工补充用户需求解释。"),
+          frequency: normalizeFrequency(point.frequency),
+          evidenceIds: evidenceIdsFor(
+            validation,
+            `OpenAI-compatible provider 用户痛点抽取证据。${validationNote(validation)}`,
+          ),
+        } satisfies PainPoint,
+      ];
+    },
   );
-  const opportunities: Opportunity[] = extraction.opportunities.map(
-    (opportunity, index) => ({
-      id: `deepseek-opportunity-${index + 1}`,
-      projectId: project.id,
-      title: asString(opportunity.title, `机会 ${index + 1}`),
-      summary: asString(opportunity.summary, "等待人工补充机会说明。"),
-      demandScore: clampScore(opportunity.demandScore, 60),
-      competitionScore: clampScore(opportunity.competitionScore, 50),
-      contentGapScore: clampScore(opportunity.contentGapScore, 60),
-      businessValueScore: clampScore(opportunity.businessValueScore, 60),
-      evidenceQualityScore: clampScore(opportunity.evidenceQualityScore, 50),
-      totalScore: totalOpportunityScore(opportunity),
-      reviewStatus: normalizeReviewStatus(opportunity.reviewStatus),
-      reviewNote: asString(
-        opportunity.reviewNote,
-        "OpenAI-compatible provider 抽取，需人工复核。",
-      ),
-      evidenceIds: evidenceIdsFor(
+  const contentSignals: ContentSignal[] = extraction.contentSignals.flatMap(
+    (signal, index) => {
+      const validation = validateEvidenceQuotes(
+        asStringArray(signal.evidenceQuotes),
+        result.raw_documents,
+      );
+
+      if (validation.status === "rejected") {
+        return [];
+      }
+
+      return [
+        {
+          id: `deepseek-content-signal-${index + 1}`,
+          projectId: project.id,
+          platform: asString(signal.platform, "Public Web"),
+          topic: asString(signal.topic, `内容信号 ${index + 1}`),
+          contentType: normalizeContentType(signal.contentType),
+          whyItWorks: asString(signal.whyItWorks, "等待人工复核内容价值。"),
+          evidenceIds: evidenceIdsFor(
+            validation,
+            `OpenAI-compatible provider 内容信号抽取证据。${validationNote(validation)}`,
+          ),
+        } satisfies ContentSignal,
+      ];
+    },
+  );
+  const opportunities: Opportunity[] = extraction.opportunities.flatMap(
+    (opportunity, index) => {
+      const validation = validateEvidenceQuotes(
         asStringArray(opportunity.evidenceQuotes),
-        "OpenAI-compatible provider 机会评分抽取证据。",
-      ),
-    }),
+        result.raw_documents,
+      );
+
+      if (validation.status === "rejected") {
+        return [];
+      }
+
+      const reviewStatus = mergeReviewStatus(
+        normalizeReviewStatus(opportunity.reviewStatus),
+        validation.status,
+      );
+      const evidenceQualityScore =
+        validation.confirmedEvidenceCount > 0
+          ? clampScore(opportunity.evidenceQualityScore, 50)
+          : 25;
+
+      return [
+        {
+          id: `deepseek-opportunity-${index + 1}`,
+          projectId: project.id,
+          title: asString(opportunity.title, `机会 ${index + 1}`),
+          summary: asString(opportunity.summary, "等待人工补充机会说明。"),
+          demandScore: clampScore(opportunity.demandScore, 60),
+          competitionScore: clampScore(opportunity.competitionScore, 50),
+          contentGapScore: clampScore(opportunity.contentGapScore, 60),
+          businessValueScore: clampScore(opportunity.businessValueScore, 60),
+          evidenceQualityScore,
+          totalScore: Math.round(
+            (clampScore(opportunity.demandScore, 60) +
+              clampScore(opportunity.competitionScore, 50) +
+              clampScore(opportunity.contentGapScore, 60) +
+              clampScore(opportunity.businessValueScore, 60) +
+              evidenceQualityScore) /
+              5,
+          ),
+          reviewStatus,
+          reviewNote: [
+            asString(
+              opportunity.reviewNote,
+              "OpenAI-compatible provider 抽取，需人工复核。",
+            ),
+            validationNote(validation),
+            "为什么值得做：候选机会来自公开 raw documents 的可匹配证据。",
+            "为什么还不能直接下结论：仍需人工复核价格、销量、评论和供应链可行性。",
+            "下一步验证动作：补充竞品产品页、评论和价格来源后再确认。",
+          ].join(" "),
+          evidenceIds: evidenceIdsFor(
+            validation,
+            `OpenAI-compatible provider 机会评分抽取证据。${validationNote(validation)}`,
+          ),
+        } satisfies Opportunity,
+      ];
+    },
   );
   const competitorDatabase: CompetitorDatabaseEntry[] = competitors.map(
     (competitor) => ({
@@ -624,7 +690,7 @@ export function applyGlmStructuredExtraction(
 
   return {
     ...result,
-    evidence,
+    evidence: [...result.evidence, ...evidence],
     competitors: competitors.length > 0 ? competitors : result.competitors,
     product_signals:
       productSignals.length > 0 ? productSignals : result.product_signals,

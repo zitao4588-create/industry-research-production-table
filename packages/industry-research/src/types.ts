@@ -111,6 +111,14 @@ export type Evidence = {
   rawDocumentId?: string;
   quote: string;
   note: string;
+  validation?: EvidenceValidation;
+};
+
+export type EvidenceValidation = {
+  quoteMatched: boolean;
+  sourceAccepted: boolean;
+  matchedRawDocumentId?: string;
+  failureReason?: string;
 };
 
 export type SourceDiscoveryCandidate = {
@@ -387,7 +395,7 @@ export type ResearchWorkflowStep = {
     | "create_project"
     | "discover_sources"
     | "generate_crawl_plan"
-    | "mock_crawl_sources"
+    | "crawl_sources"
     | "build_industry_databases"
     | "supplement_sources"
     | "extract_competitors"
@@ -454,10 +462,37 @@ export type ResearchWorkflowDataset = {
   weekly_intelligence_reports: WeeklyIntelligenceReportEntry[];
 };
 
+export type ResearchRunCanonicalMode =
+  | "public_web"
+  | "public_web_llm"
+  | "llm_only";
+
+export type ResearchRunProvider =
+  | "none"
+  | "9router"
+  | "deepseek"
+  | "openai_compatible"
+  | "local_fallback";
+
+export type ResearchRunMetadata = {
+  requestedMode?: string;
+  canonicalMode: ResearchRunCanonicalMode;
+  provider: ResearchRunProvider;
+  model?: string;
+  baseUrlHost?: string;
+  fallbackReason?: string;
+  llmUsed: boolean;
+  timings?: {
+    crawlMs?: number;
+    llmMs?: number;
+  };
+};
+
 export type ResearchWorkflowResult = ResearchWorkflowDataset & {
   research_reports: ResearchReport[];
   workflowSteps: ResearchWorkflowStep[];
   reviewItems: ResearchReviewItem[];
+  runMetadata?: ResearchRunMetadata;
 };
 
 export type EcommerceCompetitorResearchOutput = ResearchWorkflowResult;

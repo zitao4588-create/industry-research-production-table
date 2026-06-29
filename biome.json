@@ -9,6 +9,10 @@
     "ignoreUnknown": true,
     "includes": [
       "**",
+      "!.claude",
+      "!.codebuddy",
+      "!.workbuddy",
+      "!remotion-videos",
       "!docs/design_handoff_research_console/prototype",
       "!docs/design_handoff_research_console 2/porting",
       "!docs/porting/source",

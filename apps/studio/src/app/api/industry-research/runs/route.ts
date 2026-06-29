@@ -4,6 +4,7 @@ import {
   authorizeIndustryResearchRequest,
   loadServerEnv,
 } from "../_lib/server-env";
+import { listIndustryResearchSupabaseRuns } from "../_lib/supabase-run-store";
 
 export const runtime = "nodejs";
 
@@ -26,10 +27,13 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
 
-  const runs = await listLocalIndustryResearchRuns(parseLimit(request));
+  const limit = parseLimit(request);
+  const supabaseRuns = await listIndustryResearchSupabaseRuns({ limit, env });
+  const runs = supabaseRuns ?? (await listLocalIndustryResearchRuns(limit));
 
   return NextResponse.json({
     schemaVersion: "industry_research_run_list.v1",
+    storage: supabaseRuns ? "supabase" : "local_json_markdown",
     runs,
   });
 }

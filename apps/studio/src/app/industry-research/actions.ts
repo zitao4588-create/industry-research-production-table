@@ -27,11 +27,14 @@ import {
   parseRunMode,
 } from "../api/industry-research/_lib/run-core";
 import { loadServerEnv } from "../api/industry-research/_lib/server-env";
+import { getIndustryResearchSupabaseDownloadPackage } from "../api/industry-research/_lib/supabase-run-store";
 
 /** Real run modes the UI can trigger (Mock stays local, never hits this). */
 type UiRunMode =
-  | "9router"
   | "public_web"
+  | "public_web_llm"
+  | "llm_only"
+  | "9router"
   | "public_web_9router"
   | "deepseek"
   | "public_web_deepseek"
@@ -113,8 +116,10 @@ export async function downloadDeliveryPackageAction(
       return { ok: false, error: "缺少 runId，无法下载交付包。" };
     }
 
+    const env = loadServerEnv();
     const deliveryPackage =
-      await getLocalIndustryResearchDownloadPackage(runId);
+      (await getIndustryResearchSupabaseDownloadPackage({ runId, env })) ??
+      (await getLocalIndustryResearchDownloadPackage(runId));
 
     return {
       ok: true,

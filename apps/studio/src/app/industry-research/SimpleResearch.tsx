@@ -16,7 +16,7 @@ import type {
  *
  * 后端不动：复用 actions.ts 的 server action、`/api/.../run/stream` 的 SSE、
  * adapters 里的 createModelFromInput / adaptRun / deriveRunState、extras 的
- * renderMarkdown。默认运行模式固定为 public_web_9router（真实采集 + AI 提炼）。
+ * renderMarkdown。默认运行模式固定为 public_web，先保证无 LLM 成本也能稳定交付。
  * ===========================================================================*/
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { runIndustryResearchAction } from "./actions";
@@ -35,10 +35,11 @@ import {
 import { Icon } from "./components/components";
 import { renderMarkdown, showToast, Toaster } from "./components/extras";
 import IndustryResearchWorkbench from "./IndustryResearchWorkbench";
+import { fetchRunStreamToken } from "./run-stream-token";
 
 const ACCENT = "#34dcc0";
-/** 简化版唯一的运行模式（用户确认）：真实公开采集 + AI 提炼。 */
-const DEFAULT_MODE = "public_web_9router" as const;
+/** 简化版唯一的运行模式：真实公开采集；LLM 交付放到高级模式显式启用。 */
+const DEFAULT_MODE = "public_web" as const;
 
 type Phase = "input" | "running" | "error" | "done";
 
@@ -199,9 +200,13 @@ export default function SimpleResearch() {
 
     // ---- 优先订阅 SSE 流式进度 ----
     try {
+      const runToken = await fetchRunStreamToken();
       const response = await fetch("/api/industry-research/run/stream", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-industry-research-run-token": runToken,
+        },
         body: JSON.stringify({ mode: DEFAULT_MODE, input }),
       });
       if (!response.ok || !response.body) {

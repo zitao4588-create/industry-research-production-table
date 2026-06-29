@@ -104,16 +104,30 @@
   - 远端 `pnpm build` 通过。
   - `industry-research.service` 已重启，状态 active。
   - 公网 `/industry-research` 已返回新 UI 文案和「高级模式」入口。
+- [x] 2026-06-29 P0/P1/P2 准生产优化完成：
+  - 新增 GitHub Actions CI，固定 `pnpm install --frozen-lockfile`、`pnpm check`、`pnpm build`。
+  - SSE run stream 增加 Host/Origin 白名单、一次性 token、body cap、timeout、rate limit、错误脱敏；REST run API 内部 key 边界不变。
+  - 运行模式对外收敛为 `public_web` / `public_web_llm` / `llm_only`，legacy provider mode 保留兼容；provider/model/fallback 写入 metadata。
+  - 真实 public_web 去模板化；Mock rich demo 与真实 lean 路径隔离。
+  - 新增 evidence quote validator，quote 匹配失败或来源质量不足时降级为 needs_review/rejected。
+  - 报告分为已确认发现、候选发现、不确定/阻塞项，并补齐 evidenceId/rawDocumentId/URL/quote/质量字段。
+  - Supabase run list/detail/download 改为 Supabase-first + 本地 fallback；新增内部 replay API。
+  - n8n workflow 扩展 queued/running/completed/failed 四态事件。
+  - zvec index 增加增量状态文件和 local/supabase/auto 来源模式。
+  - 可信度指标进入 run_log、manifest 和报告。
+  - 验证：`pnpm check`、`pnpm build`、`pnpm sample:public-web`、本地安全版 `pnpm server:doctor`、`pnpm zvec:index`、`pnpm zvec:search --query=taobao` 均通过；Supabase 本机无密钥时 doctor disabled、smoke skipped。
 
 ## 待处理
 
 - 9router free 模型的最终可用性需要在服务器带 `AGENT_FACTORY_LLM_API_KEY` / `NINE_ROUTER_API_KEY` 的环境运行 `pnpm probe:9router` 复核；本地当前没有 provider key，不能确认 live chat 成功。
 - 后续如果要把 2026-06-24 的历史本地 run 也变成 Supabase 权威记录，需要单独写 backfill 脚本导入 run + artifacts，再重新跑 zvec metadata；当前不影响新 run。
+- 本轮 n8n workflow JSON 已扩展四态事件，但还没有导入 n8n UI 做真实执行复测；导入前需复核 `If Run Succeeded` 和 `onError: continueRegularOutput` 在当前 n8n 版本里的兼容性。
+- 本轮未部署到轻量服务器，未使用 provider 额度，未写生产 Supabase；如要上线这些改动，需要单独走服务器同步、env 复核和 smoke。
 
 ## 下一步建议
 
 1. 先把 n8n 业务流继续稳定在 `public_web`，保证无 LLM 也能产出 8 文件交付包。
 2. 需要 LLM 交付时，在服务器运行 `pnpm probe:9router`；若没有 usable model，切换自付费 OpenAI-compatible provider 后再启用 `public_web_9router`。
 3. 生产上线前复核内部 API key、n8n Header Auth credentials、robots / 公开数据边界和 provider 成本。
-4. Supabase、zvec、轻量服务器 API 和简化 UI 都已完成第一版闭环；下一步可以接 n8n 回调事件和真实业务 run 监控。
+4. Supabase、zvec、轻量服务器 API 和简化 UI 都已完成第一版闭环；下一步可以把本轮四态 n8n workflow 导入轻量服务器 n8n 并做真实执行复测。
 5. 如果要使用 LLM 交付，先在服务器运行 provider 探测，确认可用的自付费 OpenAI-compatible provider。

@@ -152,7 +152,7 @@ export function createMockRunEventTimeline(
       });
     }
 
-    if (step.id === "mock_crawl_sources") {
+    if (step.id === "crawl_sources") {
       const total = model.stats.crawlJobs;
       [3, 6, 9, total].forEach((completed, crawlIndex) => {
         push(

@@ -96,9 +96,32 @@
   - API smoke 生成本地 8 文件交付包，并写入 Supabase run + 8 类 artifacts。
   - zvec 已索引 5 个历史/新 run、74 个 chunk；deployment smoke run 写入 14 行 Supabase zvec metadata，并可通过 `pnpm zvec:search --query=deployment-api-smoke` 检索到。
   - 历史本地 run 仍有 60 个 chunk 只存在于 zvec 本地缓存，未写 Supabase metadata；这是因为这些旧 run 不存在于 Supabase 权威表，脚本会计入 `skippedMissingRuns`。
+- 2026-06-29 本轮 P0/P1/P2 准生产收敛已完成代码侧实现：
+  - 新增 GitHub Actions CI：`pnpm install --frozen-lockfile`、`pnpm check`、`pnpm build`。
+  - SSE `/api/industry-research/run/stream` 增加 Host / Origin 白名单、一次性 run token、请求体大小限制、超时、按 IP 简单限流和错误脱敏；REST `/api/industry-research/run` 的内部 key 鉴权保持不变。
+  - 对外运行模式收敛为 `public_web` / `public_web_llm` / `llm_only`；`9router`、`public_web_9router`、`deepseek`、`glm` 等保留 legacy alias，并把 provider / model / fallbackReason 写入 `runMetadata`。
+  - 真实 `public_web` lean 路径不再生成模板竞品、模板产品、模板机会和 mock 周报；rich demo 数据只留在 Mock 模式。
+  - 新增 `validateEvidenceQuotes`，LLM 结构化抽取必须能把 quote 匹配到 raw document；不匹配、低质量来源或未 acceptedForReport 的结论只能进入 `needs_review` / `rejected`。
+  - 报告统一分层为“已确认发现 / 候选发现 / 不确定 / 阻塞项”，正式证据索引包含 evidenceId、rawDocumentId、URL、quote、quoteMatched、sourceAccepted 和来源质量。
+  - run list / detail / download 改为 Supabase-first、本地交付包 fallback；新增内部 replay API：`POST /api/industry-research/runs/<runId>/replay`。
+  - n8n workflow JSON 扩展 queued / running / completed / failed 四态事件，继续使用 Header Auth credentials，不把 secret 写进 workflow。
+  - zvec index 新增 `.cache/industry-research-zvec/index-state.json` 增量状态，支持 `AGENT_FACTORY_ZVEC_SOURCE=local|supabase|auto`，可从本地交付包或 Supabase artifact 重建。
+  - 可信度指标已写入 `run_log.json` / `manifest.json` / 报告：采集网页数、有效证据数、已确认结论数、待复核结论数、低质量来源数、抓取失败数、LLM fallback。
+  - Biome 排除了本地工具/草稿目录 `.claude`、`.codebuddy`、`.workbuddy`、`remotion-videos`，避免未跟踪外部产物阻塞项目代码检查。
 
 ## 验证结果
 
+- 2026-06-29 本轮 P0/P1/P2 准生产收敛验证：
+  - `pnpm check`：通过，workspace typecheck / Vitest / Biome 全部通过；当前为 3 个测试文件、36 条测试。
+  - `pnpm build`：通过，Next.js 生产构建成功，并包含 `/api/industry-research/runs/[runId]/replay`。
+  - `pnpm sample:public-web`：通过，生成 `v03-public-web-smoke-2026-06-29T07-24-34-465Z`，8 个交付文件齐全，rawDocuments 3、acceptedForReport 1、crawlFailures 0。
+  - public_web 新样例报告检查：`report.md` / `reviewed_report.md` / `databases.json` 未出现 `mock`、`头部竞品 A`、`Starter Kit`、`Subscription Pack`、`mock 周报`、`mock：` 等模板结论；报告包含三层结构和证据索引。
+  - `pnpm server:doctor`：用本地临时目录和占位非密钥 env 通过，未写 `/var` 或生产服务器。
+  - `pnpm supabase:doctor`：本机无 Supabase env，按预期返回 `disabled`。
+  - `pnpm supabase:smoke`：本机无 Supabase service role，按预期 `skipped_supabase_not_ready` 并 exit 2；未访问远端、未写生产库。
+  - `pnpm zvec:index`：通过，首次本轮写入 328 chunks，随后复跑显示 `upsertedChunkCount=0`、`unchangedChunkCount=328`，确认增量状态生效。
+  - `pnpm zvec:search --query=taobao`：通过，返回本地历史与最新 public_web run 的 raw document chunk。
+  - 未验证：未在本轮调用真实 provider、未部署、未应用数据库 migration、未写生产 Supabase。
 - 2026-06-26 待办收敛验证：
   - `pnpm check`：通过
   - `pnpm build`：通过，Next.js 生产构建成功，`/industry-research` 静态预渲染成功

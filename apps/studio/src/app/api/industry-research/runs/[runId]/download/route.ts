@@ -7,6 +7,7 @@ import {
   authorizeIndustryResearchRequest,
   loadServerEnv,
 } from "../../../_lib/server-env";
+import { getIndustryResearchSupabaseDownloadPackage } from "../../../_lib/supabase-run-store";
 
 export const runtime = "nodejs";
 
@@ -33,7 +34,8 @@ export async function GET(request: Request, context: RouteContext) {
   try {
     const { runId } = await routeParams(context);
     const deliveryPackage =
-      await getLocalIndustryResearchDownloadPackage(runId);
+      (await getIndustryResearchSupabaseDownloadPackage({ runId, env })) ??
+      (await getLocalIndustryResearchDownloadPackage(runId));
 
     return new NextResponse(`${JSON.stringify(deliveryPackage, null, 2)}\n`, {
       headers: {

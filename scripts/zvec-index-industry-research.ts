@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import {
   type ZVecCollection,
@@ -15,6 +15,8 @@ import {
 import { loadServerEnv } from "../apps/studio/src/app/api/industry-research/_lib/server-env.ts";
 import {
   createIndustryResearchSupabaseAdminClient,
+  getIndustryResearchSupabaseDownloadPackage,
+  listIndustryResearchSupabaseRuns,
   resolveSupabaseInfraConfig,
 } from "../apps/studio/src/app/api/industry-research/_lib/supabase-run-store.ts";
 
@@ -32,6 +34,13 @@ type RawDocumentLike = {
   extractedText?: string;
 };
 
+type RunSourceKind = "local" | "supabase";
+
+type RunSourceTarget = {
+  runId: string;
+  source: RunSourceKind;
+};
+
 type Chunk = {
   id: string;
   runId: string;
@@ -43,6 +52,24 @@ type Chunk = {
   relativePath: string;
 };
 
+type ZvecIndexState = {
+  schemaVersion: "industry_research_zvec_index_state.v1";
+  collectionPath: string;
+  collectionName: string;
+  sourceMode: "auto" | "local" | "supabase";
+  updatedAt: string;
+  runs: Record<
+    string,
+    {
+      source: RunSourceKind;
+      chunkCount: number;
+      chunkSignatures: string[];
+      artifactKinds: string[];
+      indexedAt: string;
+    }
+  >;
+};
+
 function argValue(name: string) {
   const prefix = `--${name}=`;
   return process.argv
@@ -50,10 +77,27 @@ function argValue(name: string) {
     ?.slice(prefix.length);
 }
 
+function flagEnabled(name: string) {
+  return process.argv.includes(`--${name}`);
+}
+
 function zvecCollectionPath() {
   return resolve(
     env.AGENT_FACTORY_ZVEC_DIR || ".cache/industry-research-zvec/chunks",
   );
+}
+
+function zvecStatePath() {
+  return resolve(
+    env.AGENT_FACTORY_ZVEC_STATE_FILE ||
+      join(dirname(zvecCollectionPath()), "index-state.json"),
+  );
+}
+
+function zvecSourceMode(): ZvecIndexState["sourceMode"] {
+  const value = argValue("source") || env.AGENT_FACTORY_ZVEC_SOURCE || "auto";
+
+  return value === "local" || value === "supabase" ? value : "auto";
 }
 
 function runsRoot() {
@@ -110,6 +154,16 @@ async function readJson<T>(path: string): Promise<T | null> {
   }
 }
 
+async function readIndexState(): Promise<ZvecIndexState | null> {
+  return readJson<ZvecIndexState>(zvecStatePath());
+}
+
+async function writeIndexState(state: ZvecIndexState) {
+  const path = zvecStatePath();
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+}
+
 async function readText(path: string) {
   try {
     return await readFile(path, "utf8");
@@ -140,12 +194,20 @@ function createChunk({
   };
 }
 
-async function chunksForRun(runId: string): Promise<Chunk[]> {
-  const runDir = join(runsRoot(), runId);
+function chunksFromPayload({
+  runId,
+  rawDocuments,
+  reportMarkdown,
+  reviewedReportMarkdown,
+  pathForFile,
+}: {
+  runId: string;
+  rawDocuments: RawDocumentLike[];
+  reportMarkdown: string | null;
+  reviewedReportMarkdown: string | null;
+  pathForFile: (fileName: string) => string;
+}): Chunk[] {
   const chunks: Chunk[] = [];
-  const rawDocuments =
-    (await readJson<RawDocumentLike[]>(join(runDir, "raw_documents.json"))) ??
-    [];
 
   rawDocuments.forEach((document, index) => {
     const title = document.title || document.url || `raw document ${index + 1}`;
@@ -161,16 +223,21 @@ async function chunksForRun(runId: string): Promise<Chunk[]> {
           chunkIndex: index * 1000 + chunkIndex,
           title,
           text: chunkText,
-          relativePath: artifactPath(runId, "raw_documents.json"),
+          relativePath: pathForFile("raw_documents.json"),
         }),
       );
     });
   });
 
+  const markdownByKind = {
+    report: reportMarkdown,
+    reviewed_report: reviewedReportMarkdown,
+  };
+
   for (const artifactKind of ["report", "reviewed_report"] as const) {
     const fileName =
       artifactKind === "report" ? "report.md" : "reviewed_report.md";
-    const markdown = await readText(join(runDir, fileName));
+    const markdown = markdownByKind[artifactKind];
 
     if (!markdown) {
       continue;
@@ -184,13 +251,50 @@ async function chunksForRun(runId: string): Promise<Chunk[]> {
           chunkIndex,
           title: `${runId} ${fileName}`,
           text,
-          relativePath: artifactPath(runId, fileName),
+          relativePath: pathForFile(fileName),
         }),
       );
     });
   }
 
   return chunks;
+}
+
+async function chunksForLocalRun(runId: string): Promise<Chunk[]> {
+  const runDir = join(runsRoot(), runId);
+  const rawDocuments =
+    (await readJson<RawDocumentLike[]>(join(runDir, "raw_documents.json"))) ??
+    [];
+
+  return chunksFromPayload({
+    runId,
+    rawDocuments,
+    reportMarkdown: await readText(join(runDir, "report.md")),
+    reviewedReportMarkdown: await readText(join(runDir, "reviewed_report.md")),
+    pathForFile: (fileName) => artifactPath(runId, fileName),
+  });
+}
+
+async function chunksForSupabaseRun(runId: string): Promise<Chunk[]> {
+  const deliveryPackage = await getIndustryResearchSupabaseDownloadPackage({
+    runId,
+    env,
+  });
+
+  if (!deliveryPackage) {
+    return [];
+  }
+
+  return chunksFromPayload({
+    runId,
+    rawDocuments: Array.isArray(deliveryPackage.raw_documents)
+      ? (deliveryPackage.raw_documents as RawDocumentLike[])
+      : [],
+    reportMarkdown: deliveryPackage.reportMarkdown,
+    reviewedReportMarkdown: deliveryPackage.reviewedReportMarkdown,
+    pathForFile: (fileName) =>
+      `supabase://industry_research_runs/${runId}/${fileName}`,
+  });
 }
 
 function collectionSchema() {
@@ -257,6 +361,54 @@ async function listRunIds() {
     .filter((entry) => entry.isDirectory())
     .map((entry) => entry.name)
     .sort();
+}
+
+async function listLocalRunTargets(): Promise<RunSourceTarget[]> {
+  return (await listRunIds()).map((runId) => ({ runId, source: "local" }));
+}
+
+async function listSupabaseRunTargets(): Promise<RunSourceTarget[]> {
+  const requestedRunId = argValue("run-id");
+
+  if (requestedRunId) {
+    return [{ runId: requestedRunId, source: "supabase" }];
+  }
+
+  const limit = Number(argValue("limit") ?? 500);
+  const runs = await listIndustryResearchSupabaseRuns({
+    limit: Number.isFinite(limit) && limit > 0 ? limit : 500,
+    env,
+  });
+
+  return (runs ?? []).map((run) => ({
+    runId: run.runId,
+    source: "supabase" as const,
+  }));
+}
+
+async function listRunTargets(): Promise<RunSourceTarget[]> {
+  const sourceMode = zvecSourceMode();
+
+  if (sourceMode === "local") {
+    return listLocalRunTargets();
+  }
+
+  if (sourceMode === "supabase") {
+    return listSupabaseRunTargets();
+  }
+
+  const supabaseTargets = await listSupabaseRunTargets();
+  return supabaseTargets.length > 0 ? supabaseTargets : listLocalRunTargets();
+}
+
+function chunkSignature(chunk: Chunk) {
+  return `${chunk.id}:${chunk.textHash}`;
+}
+
+function previousChunkSignatures(state: ZvecIndexState | null) {
+  return new Set(
+    Object.values(state?.runs ?? {}).flatMap((run) => run.chunkSignatures),
+  );
 }
 
 async function upsertChunkMetadata(chunks: Chunk[]) {
@@ -330,16 +482,34 @@ async function upsertChunkMetadata(chunks: Chunk[]) {
 
 async function main() {
   const collection = await openCollection();
-  const runIds = await listRunIds();
+  const sourceMode = zvecSourceMode();
+  const previousState = await readIndexState();
+  const previousSignatures = previousChunkSignatures(previousState);
+  const runTargets = await listRunTargets();
+  const chunksByRun: Array<{ target: RunSourceTarget; chunks: Chunk[] }> = [];
   const allChunks: Chunk[] = [];
   const warnings: string[] = [];
 
-  for (const runId of runIds) {
-    allChunks.push(...(await chunksForRun(runId)));
+  for (const target of runTargets) {
+    const chunks =
+      target.source === "supabase"
+        ? await chunksForSupabaseRun(target.runId)
+        : await chunksForLocalRun(target.runId);
+    chunksByRun.push({ target, chunks });
+    allChunks.push(...chunks);
   }
 
-  if (allChunks.length > 0) {
-    collection.upsertSync(allChunks.map(chunkToDoc));
+  const shouldForce =
+    flagEnabled("force") ||
+    previousState?.collectionPath !== zvecCollectionPath();
+  const chunksToUpsert = shouldForce
+    ? allChunks
+    : allChunks.filter(
+        (chunk) => !previousSignatures.has(chunkSignature(chunk)),
+      );
+
+  if (chunksToUpsert.length > 0) {
+    collection.upsertSync(chunksToUpsert.map(chunkToDoc));
     try {
       collection.createIndexSync({
         fieldName: "text",
@@ -365,7 +535,32 @@ async function main() {
     }
   }
 
-  const supabaseMetadata = await upsertChunkMetadata(allChunks);
+  const supabaseMetadata = await upsertChunkMetadata(chunksToUpsert);
+  const indexedAt = new Date().toISOString();
+  const indexState: ZvecIndexState = {
+    schemaVersion: "industry_research_zvec_index_state.v1",
+    collectionPath: zvecCollectionPath(),
+    collectionName: COLLECTION_NAME,
+    sourceMode,
+    updatedAt: indexedAt,
+    runs: {
+      ...(previousState?.runs ?? {}),
+    },
+  };
+
+  for (const { target, chunks } of chunksByRun) {
+    indexState.runs[target.runId] = {
+      source: target.source,
+      chunkCount: chunks.length,
+      chunkSignatures: chunks.map(chunkSignature),
+      artifactKinds: Array.from(
+        new Set(chunks.map((chunk) => chunk.artifactKind)),
+      ),
+      indexedAt,
+    };
+  }
+
+  await writeIndexState(indexState);
 
   console.log(
     JSON.stringify(
@@ -373,8 +568,12 @@ async function main() {
         status: "ok",
         collectionPath: zvecCollectionPath(),
         collectionName: COLLECTION_NAME,
-        runCount: runIds.length,
+        statePath: zvecStatePath(),
+        sourceMode,
+        runCount: runTargets.length,
         chunkCount: allChunks.length,
+        upsertedChunkCount: chunksToUpsert.length,
+        unchangedChunkCount: allChunks.length - chunksToUpsert.length,
         zvecStats: collection.stats,
         supabaseMetadata,
         warnings,
