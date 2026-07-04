@@ -42,6 +42,7 @@ const emptyTypeCounts = {
   manual_text: 0,
   csv: 0,
   rss: 0,
+  content_api: 0,
   unknown: 0,
 } satisfies Record<SourceQualityType, number>;
 

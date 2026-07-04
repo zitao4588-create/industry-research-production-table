@@ -2,10 +2,12 @@ import { readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
+  buildHistoricalContextFromDatabases,
   createIndustryResearchDeliveryArtifacts,
   type ResearchWorkflowInput,
   runPublicDeepSeekIndustryResearchWorkflow,
 } from "../packages/industry-research/src/index.ts";
+import { findPreviousLocalRun } from "./lib/find-previous-run.ts";
 
 function loadLocalEnv() {
   let envText = "";
@@ -76,9 +78,17 @@ async function main() {
   const started = new Date();
   const runId = `pet-probiotics-dtc-${timestampForPath(started)}`;
   const input = createRealSampleInput();
+  const runsRootDir = join("outputs", "industry-research-runs");
+  const previousRun = await findPreviousLocalRun(runsRootDir, input);
   const result = await runPublicDeepSeekIndustryResearchWorkflow(input, {
     env: process.env,
     now: started.toISOString(),
+    historicalContext: previousRun
+      ? buildHistoricalContextFromDatabases(
+          previousRun.runId,
+          previousRun.databases,
+        )
+      : undefined,
   });
   const finished = new Date();
   const artifacts = createIndustryResearchDeliveryArtifacts({
@@ -87,8 +97,9 @@ async function main() {
     runId,
     startedAt: started.toISOString(),
     finishedAt: finished.toISOString(),
+    previousRun,
   });
-  const outputDir = join("outputs", "industry-research-runs", runId);
+  const outputDir = join(runsRootDir, runId);
 
   await mkdir(outputDir, { recursive: true });
   await writeJson(join(outputDir, "input.json"), artifacts.input);

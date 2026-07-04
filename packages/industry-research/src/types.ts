@@ -56,6 +56,7 @@ export type SourceQualityType =
   | "manual_text"
   | "csv"
   | "rss"
+  | "content_api"
   | "unknown";
 
 export type SourceQuality = {

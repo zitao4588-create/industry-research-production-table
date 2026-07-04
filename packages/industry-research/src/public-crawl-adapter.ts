@@ -29,6 +29,13 @@ export type PublicCrawlAdapterOptions = {
   input?: ResearchWorkflowInput;
   now?: string;
   maxTextLength?: number;
+  /**
+   * 同域连续请求的礼貌间隔。未显式设置时：真实网络（默认 fetcher）为
+   * defaultPerHostDelayMs，注入 fetcher（测试/mock）为 0。
+   */
+  perHostDelayMs?: number;
+  /** 单次 run 的抓取目标硬上限，超出的目标标记 skipped 不请求。 */
+  maxTargets?: number;
 };
 
 export type PublicCrawlAdapterResult = {
@@ -40,6 +47,20 @@ export type PublicCrawlAdapterResult = {
 
 const defaultNow = "2026-06-06T00:00:00.000Z";
 const defaultMaxTextLength = 12_000;
+const defaultPerHostDelayMs = 1_000;
+const defaultMaxTargets = 60;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function hostnameFor(value: string) {
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
 const fallbackQualityInput: ResearchWorkflowInput = {
   projectName: "未命名行业研究",
   industry: "",
@@ -241,10 +262,14 @@ export async function runPublicCrawler(
   const fetcher = options.fetcher ?? defaultFetcher();
   const now = options.now ?? defaultNow;
   const maxTextLength = options.maxTextLength ?? defaultMaxTextLength;
+  const perHostDelayMs =
+    options.perHostDelayMs ?? (options.fetcher ? 0 : defaultPerHostDelayMs);
+  const maxTargets = options.maxTargets ?? defaultMaxTargets;
   const jobs: CrawlJob[] = [];
   const runs: CrawlRun[] = [];
   const rawDocuments: RawDocument[] = [];
   const extractionJobs: ExtractionJob[] = [];
+  const lastFetchAtByHost = new Map<string, number>();
 
   for (const [index, target] of crawlPlan.targets.entries()) {
     const jobId = `public-crawl-job-${index + 1}`;
@@ -257,6 +282,25 @@ export async function runPublicCrawler(
       plannedAction: `Fetch public ${target.kind} target: ${target.target}`,
       toolCandidateId: "agent-factory-public-crawl-adapter",
     });
+
+    if (index >= maxTargets) {
+      jobs[index] = {
+        ...jobs[index],
+        status: "failed",
+        plannedAction: `Skip target beyond per-run cap (${maxTargets}): ${target.target}`,
+      };
+      runs.push({
+        id: runId,
+        projectId,
+        jobId,
+        status: "failed",
+        startedAt: now,
+        finishedAt: now,
+        documentsCreated: 0,
+        summary: `TARGET_CAP_EXCEEDED: 单次 run 目标数超过上限 ${maxTargets}，此目标未请求。`,
+      });
+      continue;
+    }
 
     if (!canUsePublicCrawlerTarget(target)) {
       jobs[index] = {
@@ -295,6 +339,21 @@ export async function runPublicCrawler(
     }
 
     try {
+      const host = hostnameFor(target.target);
+
+      if (perHostDelayMs > 0 && host) {
+        const lastFetchAt = lastFetchAtByHost.get(host);
+        const waitMs = lastFetchAt
+          ? perHostDelayMs - (Date.now() - lastFetchAt)
+          : 0;
+
+        if (waitMs > 0) {
+          await sleep(waitMs);
+        }
+
+        lastFetchAtByHost.set(host, Date.now());
+      }
+
       const response = await fetcher(target.target, {
         headers: {
           "User-Agent":

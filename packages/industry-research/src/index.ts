@@ -4,6 +4,11 @@ export {
   generateSourceDiscoveryPlan,
   requiredIndustryResearchDatabases,
 } from "./collection-plan";
+export type {
+  ContentApiCollectionResult,
+  ContentApiOptions,
+} from "./content-api-adapter";
+export { collectContentApiSignals } from "./content-api-adapter";
 export { buildIndustryResearchDatabases } from "./database-builder";
 export type {
   IndustryResearchCrawlFailureReason,
@@ -13,6 +18,7 @@ export type {
   IndustryResearchDeliveryPackageFileKind,
   IndustryResearchDeliveryPackageManifest,
   IndustryResearchDeliveryRunMode,
+  IndustryResearchPreviousRunRef,
   IndustryResearchRunLog,
 } from "./delivery-run";
 export {
@@ -62,12 +68,20 @@ export {
   resolveDeepSeekConfig,
   resolveOpenAICompatibleConfig,
 } from "./glm-client";
-export type { GlmStructuredExtraction } from "./glm-extraction";
+export type {
+  BatchedExtractionResult,
+  ExtractionBatchOptions,
+  GlmStructuredExtraction,
+} from "./glm-extraction";
 export {
   applyGlmStructuredExtraction,
   createGlmStructuredExtractionMessages,
+  extractionBatchDefaults,
   generateGlmStructuredExtraction,
+  generateGlmStructuredExtractionBatched,
+  mergeGlmStructuredExtractions,
   parseGlmStructuredExtraction,
+  planExtractionBatches,
 } from "./glm-extraction";
 export {
   run9RouterIndustryResearchWorkflow,
@@ -115,6 +129,27 @@ export type {
 } from "./public-workflow";
 export { runPublicIndustryResearchWorkflow } from "./public-workflow";
 export { generateResearchMarkdownReport } from "./report";
+export type {
+  IndustryResearchRunDiff,
+  OpportunityScoreChange,
+  RunDiffDatabases,
+} from "./run-diff";
+export {
+  buildHistoricalContextFromDatabases,
+  coerceRunDiffDatabases,
+  createBaselineWeeklyIntelligenceReport,
+  createWeeklyIntelligenceReportFromDiff,
+  diffIndustryResearchDatabases,
+  formatRunDiffMarkdownSection,
+} from "./run-diff";
+export type {
+  SearchProviderConfig,
+  SearchProviderName,
+} from "./search-providers";
+export {
+  resolveSearchProviderConfig,
+  searchWithApiProvider,
+} from "./search-providers";
 export {
   assessSourceQuality,
   type SourceQualitySummary,

@@ -9,6 +9,13 @@
   - 动作：调用行业研究 `POST /api/industry-research/run`
   - 回调：调用行业研究 `POST /api/industry-research/webhooks/n8n-run-complete`
   - 状态：2026-06-29 四态版本已导入轻量服务器 n8n，同 id 更新 `industryResearchV03Intake`，并验证 `public_web` 默认业务流可跑通。
+- `industry-research-weekly-rerun.json`（T7 订阅模式）
+  - 入口：Schedule Trigger，每周一 09:00（n8n 实例时区）。
+  - 动作：读取 Code 节点内嵌的订阅品类清单，逐项 POST 到生产 intake webhook；复用现有四态 intake workflow，不直接调用 run API，因此本 workflow 不需要任何凭据。
+  - 周报：交付层会把本次 run 与上一次同项目（industry+category+market）run 的 databases.json 做 diff，写入 `weekly_intelligence_reports` 和报告的「本期新增与变化」节。
+  - 状态：JSON 已入库，**默认 `active: false`，尚未导入生产 n8n**。
+  - 导入步骤（沿用 DECISIONS 2026-06-29 的同 id 流程）：先备份现有 workflow → 导入本 JSON（新 id `industryResearchWeeklyRerun`，不会与 intake 冲突）→ 编辑 `Subscription List` Code 节点里的订阅清单 → publish → 手动执行一次验证 intake webhook 接收成功 → 确认无误后再 activate。
+  - 回滚：deactivate 该 workflow 即停止定时触发，不影响 intake workflow。
 
 默认模式：
 

@@ -1,6 +1,6 @@
 # 项目上下文
 
-更新时间：2026-06-29
+更新时间：2026-07-05
 
 ## 当前项目目标
 
@@ -18,6 +18,15 @@
 
 ## 当前真实状态
 
+- 2026-07-05 「研究价值」阶段（`docs/CODEX_RESEARCH_VALUE_HANDOFF.md` 的 P0–P3）已全部落地代码侧：
+  - LLM：本机 `.env.local` 配置自付费 DeepSeek 官方 API（`AGENT_FACTORY_LLM_*`，`deepseek-v4-flash`）；`pnpm verify:9router` 真实通过。**服务器 env 尚未写入这三个变量，生产 LLM 仍待部署。**
+  - 真实品类首跑 `pet-probiotics-dtc-2026-07-04T13-53-36-077Z`：25 raw docs、36 evidence、九库全部非空（32/3/3/3/16/3/3/3/1）、quoteMatched 65 true / 0 false；竞品 Finn / Native Pet / Pet Honesty 带定位与证据链。
+  - 抽取改分批 map-reduce：修复旧实现只取前 12 文档的静默覆盖损失；单批失败按文档降级，全失败才回退。
+  - 采集面：搜索 3 query（brave/serper API 抽象 + DDG fallback）；发现层按类硬配额 + robots Disallow 过滤 + 同域 1s 礼貌间隔 + 60 目标上限；YouTube/Reddit 官方 API 适配器就绪（缺 key 静默跳过）。
+  - 订阅模式打通：第二次 run `pet-probiotics-dtc-2026-07-04T16-50-36-292Z` 自动 diff 上一次 run，`weekly_intelligence_reports` 产出真实对比条目（新增关键词 17、新增机会 1、机会分变化 1），报告新增「本期新增与变化」节；LLM 抽取注入上一次 run 结论摘要作对比上下文；新增 n8n 每周 re-run workflow JSON（inactive，未导入生产）。
+  - 已知信号噪音：两次 run 的 LLM 关键词语言不稳定（中文↔英文），diff 会把语言漂移记为新增+消失（均标待复核）；后续可做关键词归一。
+  - 工程：`run-security.test.ts` 12 条安全单测；`deploy/lightweight-server/deploy.sh`（默认 dry-run）；`.gitignore` 收纳工具目录；测试从 36 条增至 84 条。
+  - 待用户动作：Brave/YouTube/Reddit key 注册配置、deploy.sh --execute 生产部署、n8n 周报 workflow 导入、真实用户付费验证（见 TODO）。
 - 已从 `agent-factory` 同步行业研究 v0.3 核心边界：
   - OpenAI-compatible provider 抽取 / 报告节点（旧 `deepseek` mode 保留为兼容别名）
   - public_web 保守采集
@@ -131,6 +140,14 @@
 
 ## 验证结果
 
+- 2026-07-05 研究价值阶段验证（全部本机）：
+  - `pnpm verify:9router`：通过，DeepSeek 官方 API 生成 7570 字符真实报告，`usesLocalFallback=false`。
+  - `pnpm sample:deepseek` 第一次（改造前基线）：`pet-probiotics-dtc-2026-07-04T13-53-36-077Z`，8 文件齐全，九库 32/3/3/3/16/3/3/3/1，quoteMatched 65/0。
+  - `pnpm sample:deepseek` 第二次（全部改造后集成验证）：`pet-probiotics-dtc-2026-07-04T16-50-36-292Z`，16 raw docs（按类配额把 13 个 sitemap 噪音压到 4）、46 evidence、review approved 3 / needs_review 3、周报库 2 条（LLM 种子 + 真实 diff 条目）、报告含「本期新增与变化」节。
+  - `pnpm check`：通过，typecheck + 84 条 Vitest（8 文件）+ Biome 84 文件。
+  - `pnpm build`：通过，Next.js 生产构建成功。
+  - `bash -n deploy/lightweight-server/deploy.sh`：语法通过；dry-run 的远端 rsync 预览在 ssh 不可达时自动跳过。本轮未连接生产服务器、未执行真实部署、未导入 n8n workflow。
+  - 未验证项：Brave/Serper、YouTube、Reddit 真实 API 调用（无 key，仅 fixture 测试）；服务器侧 DeepSeek env 未配置。
 - 2026-06-29 本轮 P0/P1/P2 准生产收敛验证：
   - `pnpm check`：通过，workspace typecheck / Vitest / Biome 全部通过；当前为 3 个测试文件、36 条测试。
   - `pnpm build`：通过，Next.js 生产构建成功，并包含 `/api/industry-research/runs/[runId]/replay`。
@@ -260,7 +277,7 @@
 - 远端最小同步和本轮 P0/P1/P2 完整部署均已完成；server/Supabase/zvec/API/health 验收均通过。
 - GitHub `main` 已包含 Claude Code 简化 UI，且轻量服务器生产服务已部署该 UI。
 - 生产运行和 API 固定在轻量服务器；不要把正式运行态拆到 Vercel、本机或其他托管面。
-- 生产 / 付费交付必须使用自付费 provider；当前服务器实测 9router free/MiMo 无 usable model，不适合承诺 LLM 交付。
+- 生产 / 付费交付必须使用自付费 provider；9router free/MiMo 实测无 usable model。2026-07-05 起本机已用自付费 DeepSeek 官方 API 跑通完整 LLM 链路；服务器 env 尚未配置 `AGENT_FACTORY_LLM_*`，生产 LLM 交付待部署后生效。
 - 真实 run 已接入：工作台经同源 server action / 流式路由发真实 `public_web` / `9router` / `public_web_9router`（legacy `deepseek` / `public_web_deepseek` 仍兼容）。**P0-A 完整版 SSE 已落地且覆盖全部真实模式**：经 `POST /api/industry-research/run/stream` 逐阶段流式上报进度，`public_web` 发现阶段真实耗时 ~5.3s，LLM 系 emit discover/crawl/build done + report start，流式不可用时回退非流式 server action。
 - n8n 已在轻量服务器接入默认 `public_web` 业务流；生产 workflow 已更新为 queued / running / completed / failed 四态事件，并通过真实 webhook smoke 验证。
 - 前端功能接线已完成：P0-C 表单校验、P0-A 真实 run（含完整 SSE）、P0-B 失败态/空态/Skeleton、P1-D 下载/审核回写/导出 CSV、P1-E 证据溯源弹层、P1-F 无障碍（键盘可达 + canvas 文字替代）、P1-G 刷新持久化、P2-H 移动端抽屉、P2-J 导航解耦、Mock 数据密度恢复（rich profile）、运行期表格逐格骨架与 phase×view 派生收敛。

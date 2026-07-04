@@ -1,4 +1,9 @@
 import type { PublicCrawlerFetch } from "./public-crawl-adapter";
+import {
+  resolveSearchProviderConfig,
+  type SearchProviderConfig,
+  searchWithApiProvider,
+} from "./search-providers";
 import type {
   CrawlPlan,
   CrawlPlanTarget,
@@ -18,6 +23,10 @@ export type PublicSourceDiscoveryOptions = {
   maxSearchResultsPerQuery?: number;
   requestTimeoutMs?: number;
   searchEndpoint?: string;
+  /** 搜索 provider 解析用 env；核心包不读 process.env，由调用方显式传入。 */
+  env?: Record<string, string | undefined>;
+  /** 显式指定搜索 provider（测试或调用方覆盖 env 解析）。 */
+  searchProvider?: SearchProviderConfig;
 };
 
 export type PublicSourceDiscoveryResult = {
@@ -34,13 +43,24 @@ type FetchResult = {
   contentType: string;
 };
 
-const defaultMaxDiscoveredTargets = 24;
+const defaultMaxDiscoveredTargets = 32;
 const defaultMaxProbeUrls = 24;
-const defaultMaxSitemapUrls = 12;
-const defaultMaxSearchQueries = 1;
-const defaultMaxSearchResultsPerQuery = 3;
+const defaultMaxSitemapUrls = 20;
+const defaultMaxSearchQueries = 3;
+const defaultMaxSearchResultsPerQuery = 5;
 const defaultRequestTimeoutMs = 8_000;
 const defaultSearchEndpoint = "https://duckduckgo.com/html/";
+// 平衡各类目标的入选上限，避免 homepage/robots/sitemap 按 rank 排序时
+// 把 product/collection/blog 全部挤出 maxDiscoveredTargets。
+const perKindDiscoveryCaps: Partial<Record<CrawlTargetKind, number>> = {
+  homepage: 6,
+  robots: 4,
+  sitemap: 4,
+  product: 8,
+  collection: 8,
+  blog: 6,
+  rss: 4,
+};
 const trackingSearchParams = new Set([
   "utm_source",
   "utm_medium",
@@ -383,6 +403,59 @@ function extractRobotsSitemaps(body: string, baseUrl: string) {
     .filter(Boolean);
 }
 
+/**
+ * 解析 robots.txt 的 Disallow 路径前缀（对所有 User-agent 一律尊重，
+ * 比只看 `*` 更保守）。带通配符的规则截断到首个 `*`；截断后不足以构成
+ * 有效前缀的规则跳过，避免把整站误判为禁抓。
+ */
+function extractRobotsDisallows(body: string) {
+  return body
+    .split(/\r?\n/)
+    .map((line) => /^disallow:\s*(.*)$/i.exec(line.trim())?.[1]?.trim() ?? "")
+    .map((path) => path.split("*")[0] ?? "")
+    .filter((path) => path.startsWith("/") && path.length > 1);
+}
+
+function isDisallowedByRobots(
+  url: string,
+  disallowsByOrigin: Map<string, string[]>,
+) {
+  try {
+    const parsed = new URL(url);
+    const disallows = disallowsByOrigin.get(parsed.origin) ?? [];
+    return disallows.some((prefix) => parsed.pathname.startsWith(prefix));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 按类平衡选择发现结果：perKindDiscoveryCaps 是每类硬上限，
+ * 保证 product/collection/blog/rss 的多样性，不被单一类目挤占，
+ * 也控制单域抓取体量；总量不超过 maxTotal。
+ */
+function selectBalancedDiscoveredUrls(urls: string[], maxTotal: number) {
+  const selected: string[] = [];
+  const kindCounts: Partial<Record<CrawlTargetKind, number>> = {};
+
+  for (const url of urls) {
+    if (selected.length >= maxTotal) {
+      break;
+    }
+
+    const kind = inferTargetKind(url);
+    const cap = perKindDiscoveryCaps[kind] ?? maxTotal;
+    const count = kindCounts[kind] ?? 0;
+
+    if (count < cap) {
+      kindCounts[kind] = count + 1;
+      selected.push(url);
+    }
+  }
+
+  return selected;
+}
+
 function extractXmlLocUrls(body: string) {
   return [...body.matchAll(/<loc[^>]*>([\s\S]*?)<\/loc>/gi)]
     .map((match) => cleanText(match[1] ?? ""))
@@ -516,6 +589,26 @@ async function fetchPublicUrl(
   }
 }
 
+async function searchQueryWithDuckDuckGoHtml(
+  query: string,
+  endpoint: string,
+  fetcher: PublicCrawlerFetch,
+  requestTimeoutMs: number,
+  maxResults: number,
+) {
+  const searchUrl = createSearchUrl(query, endpoint);
+  const result = await fetchPublicUrl(searchUrl, fetcher, requestTimeoutMs);
+
+  if (!result.ok) {
+    return { ok: false as const, urls: [] };
+  }
+
+  return {
+    ok: true as const,
+    urls: extractSearchResultUrls(result.body, result.url).slice(0, maxResults),
+  };
+}
+
 async function discoverSearchResultUrls(
   input: ResearchWorkflowInput,
   fetcher: PublicCrawlerFetch,
@@ -524,35 +617,72 @@ async function discoverSearchResultUrls(
   const maxSearchQueries = options.maxSearchQueries ?? defaultMaxSearchQueries;
   const maxSearchResultsPerQuery =
     options.maxSearchResultsPerQuery ?? defaultMaxSearchResultsPerQuery;
-  const searchEndpoint = options.searchEndpoint ?? defaultSearchEndpoint;
   const requestTimeoutMs = options.requestTimeoutMs ?? defaultRequestTimeoutMs;
+  const providerConfig =
+    options.searchProvider ?? resolveSearchProviderConfig(options.env ?? {});
+  const ddgEndpoint = options.searchEndpoint ?? defaultSearchEndpoint;
   const queries = createSearchQueries(input).slice(0, maxSearchQueries);
   const discoveredUrls: string[] = [];
   const notes: string[] = [];
+  let usedApiProvider = false;
+  let usedDdgFallback = false;
+
+  if (providerConfig.fallbackReason) {
+    notes.push(`public_search_discovery：${providerConfig.fallbackReason}`);
+  }
 
   for (const query of queries) {
-    const searchUrl = createSearchUrl(query, searchEndpoint);
-    const result = await fetchPublicUrl(searchUrl, fetcher, requestTimeoutMs);
+    if (providerConfig.provider !== "duckduckgo_html") {
+      const apiResult = await searchWithApiProvider(
+        providerConfig,
+        query,
+        fetcher,
+        { maxResults: maxSearchResultsPerQuery, timeoutMs: requestTimeoutMs },
+      );
 
-    if (!result.ok) {
+      if (apiResult.ok) {
+        usedApiProvider = true;
+        discoveredUrls.push(
+          ...apiResult.urls
+            .map(normalizeDiscoveredUrl)
+            .filter(isUsefulPublicCandidateUrl),
+        );
+        continue;
+      }
+
+      notes.push(
+        `public_search_discovery ${providerConfig.provider} 查询失败（${apiResult.error ?? "unknown"}），该 query 回退 DDG HTML：${query}`,
+      );
+    }
+
+    const ddgResult = await searchQueryWithDuckDuckGoHtml(
+      query,
+      ddgEndpoint,
+      fetcher,
+      requestTimeoutMs,
+      maxSearchResultsPerQuery,
+    );
+
+    if (!ddgResult.ok) {
       notes.push(`public_search_discovery 搜索失败：${query}`);
       continue;
     }
 
-    discoveredUrls.push(
-      ...extractSearchResultUrls(result.body, result.url).slice(
-        0,
-        maxSearchResultsPerQuery,
-      ),
-    );
+    usedDdgFallback = true;
+    discoveredUrls.push(...ddgResult.urls);
   }
 
   const uniqueDiscoveredUrls = unique(discoveredUrls);
+  const providerLabel = usedApiProvider
+    ? usedDdgFallback
+      ? `${providerConfig.provider}+duckduckgo_html`
+      : providerConfig.provider
+    : "duckduckgo_html";
 
   notes.push(
     uniqueDiscoveredUrls.length > 0
-      ? `public_search_discovery 自动发现 ${uniqueDiscoveredUrls.length} 个候选公开 URL，后续只保守探测公开首页、robots 和 sitemap；RSS、collection、product、blog 仅从页面或 sitemap 真实链接进入采集。`
-      : "public_search_discovery 未发现可用候选 URL；需要补充种子 URL 或接入更稳定的搜索 API。",
+      ? `public_search_discovery 自动发现 ${uniqueDiscoveredUrls.length} 个候选公开 URL（provider=${providerLabel}），后续只保守探测公开首页、robots 和 sitemap；RSS、collection、product、blog 仅从页面或 sitemap 真实链接进入采集。`
+      : `public_search_discovery 未发现可用候选 URL（provider=${providerLabel}）；需要补充种子 URL 或接入更稳定的搜索 API。`,
   );
 
   return {
@@ -643,6 +773,7 @@ export async function discoverPublicSources(
   );
   const discoveredUrls: string[] = [];
   const notes: string[] = [];
+  const robotsDisallowsByOrigin = new Map<string, string[]>();
   let reachableProbeCount = 0;
   let failedProbeCount = 0;
 
@@ -659,6 +790,12 @@ export async function discoverPublicSources(
 
     if (result.url.endsWith("/robots.txt")) {
       discoveredUrls.push(...extractRobotsSitemaps(result.body, result.url));
+
+      const origin = new URL(result.url).origin;
+      robotsDisallowsByOrigin.set(origin, [
+        ...(robotsDisallowsByOrigin.get(origin) ?? []),
+        ...extractRobotsDisallows(result.body),
+      ]);
     }
 
     if (
@@ -686,7 +823,7 @@ export async function discoverPublicSources(
     }
   }
 
-  const normalizedDiscoveredUrls = unique(
+  const rankedDiscoveredUrls = unique(
     discoveredUrls.map(normalizeDiscoveredUrl),
   )
     .filter(isUsefulPublicCandidateUrl)
@@ -696,8 +833,22 @@ export async function discoverPublicSources(
         discoveryRank(left) - discoveryRank(right) ||
         left.length - right.length ||
         left.localeCompare(right),
-    )
-    .slice(0, maxDiscoveredTargets);
+    );
+  const robotsAllowedUrls = rankedDiscoveredUrls.filter(
+    (url) => !isDisallowedByRobots(url, robotsDisallowsByOrigin),
+  );
+  const robotsFilteredCount =
+    rankedDiscoveredUrls.length - robotsAllowedUrls.length;
+  const normalizedDiscoveredUrls = selectBalancedDiscoveredUrls(
+    robotsAllowedUrls,
+    maxDiscoveredTargets,
+  );
+
+  if (robotsFilteredCount > 0) {
+    notes.push(
+      `public_source_discovery 依据 robots.txt Disallow 跳过 ${robotsFilteredCount} 个发现 URL。`,
+    );
+  }
   const candidates: SourceDiscoveryCandidate[] = [];
   const targets: CrawlPlanTarget[] = [];
 

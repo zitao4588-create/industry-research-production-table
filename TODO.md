@@ -1,6 +1,6 @@
 # TODO
 
-更新时间：2026-06-29
+更新时间：2026-07-05
 
 ## 已完成
 
@@ -133,12 +133,34 @@
   - 修复 n8n Run 节点表达式，避免 callback ack 覆盖原始 webhook input。
   - zvec optimize warning 已通过显式开关处理：默认不跑 optimize，生产复测 `warnings=[]`；需要维护压缩时再显式传 `--optimize`。
 
+- [x] 2026-07-05 交接文档 P0–P3 全部落地（按 `docs/CODEX_RESEARCH_VALUE_HANDOFF.md`）：
+  - T1：DeepSeek 官方 API 接入本机 `.env.local`，`pnpm verify:9router` 通过（真实 7570 字符报告，无本地回退）；真实品类 run `pet-probiotics-dtc-2026-07-04T13-53-36-077Z` 九库全部非空（32/3/3/3/16/3/3/3/1），quoteMatched 65/0。
+  - T2：抽取分批 map-reduce（`generateGlmStructuredExtractionBatched`），高可信来源优先、稳定键合并去重、单批失败按文档降级；修复旧实现只取前 12 文档的覆盖损失。
+  - T3：搜索 provider 抽象（brave/serper API + DDG fallback），搜索默认 3 query×5 结果；env 见 `.env.example`。
+  - T4：发现层按类硬配额（product/collection/blog 各 6-8）、robots.txt Disallow 解析过滤、同域 ≥1s 礼貌间隔、单 run 60 目标上限。
+  - T5：RSS alternate 链接发现已有链路保留；新增 YouTube/Reddit 官方 API 内容适配器（`content_api` sourceType），缺 key 静默跳过。
+  - T6：跨 run diff → 真实周报（`run-diff.ts` + `previousRun` 参数 + 报告「本期新增与变化」节）；studio 与 CLI 都接了上一 run 查找。
+  - T7：新增 `workflows/n8n/industry-research-weekly-rerun.json`（每周一触发订阅品类 re-run），默认 inactive 只入库；合约测试防 secret 入 JSON。
+  - T8：LLM 抽取注入上一次 run 结论摘要（`buildHistoricalContextFromDatabases`），prompt 声明不得作证据；zvec 检索抽成 `scripts/lib/zvec-search-core.ts`。
+  - T9：`run-security.test.ts` 12 条单测（token/白名单/限流/body 上限/脱敏）。
+  - T10：`deploy/lightweight-server/deploy.sh`（默认 dry-run，排除清单对齐 DECISIONS）。
+  - T11：`.gitignore` 收纳工具目录与 remotion 产物。
+  - T12：DECISIONS 补记单进程限流假设等本轮决策。
+  - 验证：`pnpm check` 通过（typecheck + 84 条 Vitest + Biome 84 文件）。
+
 ## 待处理
 
-- 当前没有可由代码继续完成的阻塞项。
-- LLM 生产交付仍需要用户决策：接入自付费 OpenAI-compatible provider 或给 9router 配置可用 provider credentials 后，再运行 `pnpm probe:9router` / `pnpm verify:9router` 复核。
+- 需要用户注册/决策的外部凭据（代码侧已就绪，配好即生效）：
+  - Brave Search API key（或 Serper）→ `AGENT_FACTORY_SEARCH_PROVIDER=brave` + `AGENT_FACTORY_SEARCH_API_KEY`，替换脆弱的 DDG HTML 抓取。
+  - YouTube Data API v3 key → `AGENT_FACTORY_YOUTUBE_API_KEY`，填充内容库。
+  - Reddit OAuth token → `AGENT_FACTORY_REDDIT_ACCESS_TOKEN`，填充痛点库。
+- 生产部署（用户触发）：`deploy/lightweight-server/deploy.sh --dry-run` 复核后 `--execute`；DeepSeek 三个 `AGENT_FACTORY_LLM_*` 变量写入服务器 env（先备份）。
+- n8n 周报 workflow 导入（用户按同 id 流程执行）：见 `workflows/n8n/README.md` 的导入步骤；导入后先手动执行一次再 activate。
+- P4 用户验证：找 1–3 个电商卖家用真实品类各跑一轮，以「愿不愿意为这份报告付费」为验收。
 
 ## 下一步建议
+
+> 2026-07-04 起，下一阶段任务底稿移至 `docs/CODEX_RESEARCH_VALUE_HANDOFF.md`（全面审查后的 P0–P2 执行清单：LLM provider 接入、采集面扩展、订阅循环、工程收尾）。以下 4 条为历史建议，与该文档一致的部分以该文档为准。
 
 1. 先把 n8n 业务流继续稳定在 `public_web`，保证无 LLM 也能产出 8 文件交付包。
 2. 需要 LLM 交付时，先接入自付费 OpenAI-compatible provider；当前服务器探测没有 usable free model。

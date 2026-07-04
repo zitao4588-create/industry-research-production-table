@@ -1,4 +1,11 @@
 import {
+  coerceRunDiffDatabases,
+  createBaselineWeeklyIntelligenceReport,
+  createWeeklyIntelligenceReportFromDiff,
+  diffIndustryResearchDatabases,
+  formatRunDiffMarkdownSection,
+} from "./run-diff";
+import {
   type SourceQualitySummary,
   summarizeSourceQuality,
 } from "./source-quality";
@@ -14,6 +21,17 @@ import type {
   ResearchWorkflowResult,
   ResearchWorkflowStep,
 } from "./types";
+
+/**
+ * 上一次同项目 run 的引用（T6 周报 diff 用）：
+ * - `undefined`：调用方未启用 diff（兼容旧行为）。
+ * - `null`：调用方查找过但没有历史 run，本期作为基线留档。
+ * - 有值：与该 run 的 databases.json 做差异，产出真实周报条目。
+ */
+export type IndustryResearchPreviousRunRef = {
+  runId: string;
+  databases: unknown;
+};
 
 export type IndustryResearchDeliveryRunMode =
   | "public_web"
@@ -954,17 +972,62 @@ export function createIndustryResearchDeliveryManifest(
 
 export function createIndustryResearchDeliveryArtifacts({
   input,
-  result,
+  result: baseResult,
   runId,
   startedAt,
   finishedAt,
+  previousRun,
 }: {
   input: ResearchWorkflowInput;
   result: ResearchWorkflowResult;
   runId: string;
   startedAt: string;
   finishedAt: string;
+  previousRun?: IndustryResearchPreviousRunRef | null;
 }): IndustryResearchDeliveryArtifacts {
+  let result = baseResult;
+  let runDiffSection = "";
+
+  if (previousRun !== undefined) {
+    const projectId = baseResult.research_projects[0]?.id ?? "project-unknown";
+    const weekOf = finishedAt.slice(0, 10);
+
+    if (previousRun === null) {
+      result = {
+        ...baseResult,
+        weekly_intelligence_reports: [
+          ...baseResult.weekly_intelligence_reports,
+          createBaselineWeeklyIntelligenceReport({
+            projectId,
+            category: input.category,
+            weekOf,
+            runId,
+          }),
+        ],
+      };
+      runDiffSection = formatRunDiffMarkdownSection(null, runId);
+    } else {
+      const diff = diffIndustryResearchDatabases(
+        coerceRunDiffDatabases(previousRun.databases),
+        coerceRunDiffDatabases(createDatabaseSnapshot(baseResult)),
+        previousRun.runId,
+      );
+      result = {
+        ...baseResult,
+        weekly_intelligence_reports: [
+          ...baseResult.weekly_intelligence_reports,
+          createWeeklyIntelligenceReportFromDiff({
+            projectId,
+            category: input.category,
+            weekOf,
+            diff,
+          }),
+        ],
+      };
+      runDiffSection = formatRunDiffMarkdownSection(diff);
+    }
+  }
+
   const startMs = new Date(startedAt).getTime();
   const finishMs = new Date(finishedAt).getTime();
   const reviewSummary = createReviewSummary(result.reviewItems);
@@ -1039,7 +1102,9 @@ export function createIndustryResearchDeliveryArtifacts({
       summary: reviewSummary,
       items: result.reviewItems,
     },
-    reportMarkdown: createIndustryResearchDeliveryReport(result),
+    reportMarkdown: runDiffSection
+      ? `${createIndustryResearchDeliveryReport(result)}\n${runDiffSection}\n`
+      : createIndustryResearchDeliveryReport(result),
     reviewedReportMarkdown: createReviewedIndustryResearchReport(result),
     run_log: runLog,
   };

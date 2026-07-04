@@ -8,4 +8,12 @@ coverage
 .cache
 .DS_Store
 outputs
-.claude/worktrees/
+
+# 本地工具状态目录，不属于项目代码（Biome 同步排除）
+.claude/
+.codebuddy/
+.workbuddy/
+
+# Remotion 营销视频：源码入库，依赖与渲染产物不入库
+remotion-videos/node_modules/
+remotion-videos/output/

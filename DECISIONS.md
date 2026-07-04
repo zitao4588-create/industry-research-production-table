@@ -1,6 +1,62 @@
 # 决策记录
 
-更新时间：2026-06-29
+更新时间：2026-07-05
+
+## 2026-07-05：生产 LLM provider 确定为自付费 DeepSeek 官方 API
+
+- 决策：`AGENT_FACTORY_LLM_*` 指向 DeepSeek 官方 API（`https://api.deepseek.com` / `deepseek-v4-flash`），本机 `.env.local` 已配置（key 来自 agent-factory 时期已有的付费账号）。9router free 路线继续只作探索，不进生产。
+- 原因：服务器实测 9router `no_usable_model_found`；DeepSeek 官方 API 每 run 只有数次 chat 调用，成本可忽略；`resolveOpenAICompatibleConfig` 本就以 `AGENT_FACTORY_LLM_*` 为最高优先级，无需改代码。
+- 影响：
+  - 真实品类完整 run（宠物益生菌/美国 DTC）已在本机跑通：九类数据库全部非空、证据 quoteMatched 100%。
+  - 服务器启用时，只需把同样三个变量写入 `/opt/playgamelab/industry-research/industry-research.env`（改前先备份，防止再发生双 JWT 粘贴事故）。
+
+## 2026-07-05：结构化抽取改为分批 map-reduce
+
+- 决策：`generateGlmStructuredExtractionBatched` 按「可确认来源优先 + 每批 12 文档 / 36k 字符 + 总量 36 文档」切批，逐批抽取后按稳定键合并去重（竞品按名、产品信号按竞品+信号、痛点按主题、内容按平台+话题、机会按标题）；单批失败只把该批文档的 extraction jobs 降级为 needs_review，全部批次失败才抛错走原有 workflow 降级。旧 `generateGlmStructuredExtraction` 保留为兼容包装。
+- 原因：旧实现只取前 12 个文档、每个截 4000 字符——采集面扩大后（本轮真实 run 25+ 文档）会静默丢弃过半原料；一次性塞入也会撞 context 上限。
+- 影响：抽取覆盖全部高质量 raw documents；批次进度经 `onProgress` 以 log 事件透出；`glm-extraction.test.ts` 覆盖切批/合并/部分失败/全失败。
+
+## 2026-07-05：搜索发现抽象为 provider，内容生态只走官方 API
+
+- 决策：新增 `search-providers.ts`（`brave` / `serper` JSON API + `duckduckgo_html` 无 key fallback，env：`AGENT_FACTORY_SEARCH_PROVIDER/_API_KEY/_BASE_URL`）；新增 `content-api-adapter.ts`（YouTube Data API v3 + Reddit OAuth，env：`AGENT_FACTORY_YOUTUBE_API_KEY` / `AGENT_FACTORY_REDDIT_ACCESS_TOKEN`），产出 `content_api` 类型的 RawDocument 直接进既有抽取与证据管道。核心包不读 `process.env`，env 由调用方显式传入。
+- 原因：DDG HTML 抓取脆弱且单 query 太窄（旧默认 1 query×3 结果）；社媒/Amazon 在爬虫排除名单里是对的，但这恰是方法论里内容生态/痛点的主来源——官方 API 是合规路径。
+- 影响：
+  - 搜索默认 3 query×5 结果；API provider 失败时按 query 回退 DDG 并记 note。
+  - 无任何 key 时行为与旧版一致（DDG），content_api 静默跳过——**Brave/YouTube/Reddit key 仍待用户注册后配置**（原 D2/D3 决策项）。
+  - `SourceQualityType` 新增 `content_api`；Supabase 相关列为 text，无 migration 需求。
+
+## 2026-07-05：发现层配额、robots Disallow 与抓取礼貌控制
+
+- 决策：发现结果按类硬上限选择（homepage 6 / robots 4 / sitemap 4 / product 8 / collection 8 / blog 6 / rss 4，总量 32）；发现阶段解析 robots.txt 的 Disallow（对所有 UA 一律尊重，通配规则截断到首个 `*`，无法保守应用的规则跳过）并过滤同源 URL；采集适配器加同域 ≥1s 礼貌间隔（注入 fetcher 的测试路径默认 0）和单 run 60 目标硬上限。
+- 原因：旧 rank 排序会让 homepage/robots/sitemap 挤掉 product/collection/blog（拆赚钱方式的原料）；此前未解析 robots Disallow，扩大抓取面前必须先把合规边界补硬。
+- 影响：单域抓取体量有界、种类均衡；`public-source-discovery.test.ts` 覆盖 provider 回退、robots 过滤、配额与目标上限。
+
+## 2026-07-05：周报 = 跨 run diff；历史上下文来自上一次 run 而非 zvec 运行时
+
+- 决策：`createIndustryResearchDeliveryArtifacts` 接收 `previousRun?: {runId, databases} | null`（undefined=不启用；null=写基线条目；有值=diff 出真实周报条目 + 报告「本期新增与变化」节）。diff 只用跨 run 稳定键：竞品名/关键词/内容(平台|话题)/痛点主题/机会标题+总分；product_database 的 name 是位置生成的（"<品类> 信号 N"），产品维度改用标签集合。T8 的 LLM 历史上下文同样取自上一次 run 的 databases（`buildHistoricalContextFromDatabases`），prompt 中显式声明不得作为 evidenceQuotes 来源。
+- 原因：这是方法论「从搜索模式到订阅模式」的落地最短路径；zvec 是原生模块，进 Next 运行时有构建/部署风险，而「上一次 run 的结构化结论」对抽取对比恰恰是最相关的历史认知。zvec 检索逻辑已抽成 `scripts/lib/zvec-search-core.ts` 供 CLI 复用，运行时接入留给后续需要跨多 run 检索时再评估。
+- 影响：
+  - 真实模式 `weekly_intelligence_reports` 不再恒空；mock 结果不参与 diff（rich demo 会污染基线）。
+  - 上一 run 查找：studio 侧 `findPreviousLocalIndustryResearchRun`（服务器也用本地交付包目录，Supabase-first 留作后续）；CLI 侧 `scripts/lib/find-previous-run.ts`。查找失败静默降级，不阻塞交付。
+  - 新增 n8n `industry-research-weekly-rerun.json`（Schedule Trigger → 内嵌订阅清单 → POST intake webhook），默认 `active:false` 只入库不导入，导入按同 id 流程由用户执行。
+
+## 2026-07-05：run-security 的内存 token / 限流是单进程假设
+
+- 决策：SSE 一次性 token 和按 IP 限流桶继续用模块级内存 Map，不引入 Redis 等外部依赖；在此明确记录该实现依赖「单 systemd 进程」部署形态。
+- 原因：当前生产就是单进程 `industry-research.service`；多实例或频繁重启会让 token/限流静默失效——这是扩容前必须回来改的点，而不是现在引入基础设施的理由。
+- 影响：`run-security.test.ts` 补齐 token 一次性/过期、Host/Origin 白名单、限流 429、body 上限（含 content-length 谎报）、错误脱敏共 12 条单测。
+
+## 2026-07-05：部署 runbook 固化为 deploy.sh，默认 dry-run
+
+- 决策：新增 `deploy/lightweight-server/deploy.sh`：git archive HEAD → 远端备份 → 非删除式 rsync（排除清单对齐 2026-06-29 决策）→ install → build → doctor → restart → health。默认 `--dry-run` 只打印计划与 rsync -n 预览；真实执行需显式 `--execute`。
+- 原因：手工 runbook 已经咬过一次（服务器缺 `SimpleResearch.tsx`）；排除清单靠记忆不可靠。
+- 影响：脚本永不带 `--delete`，不读不打印密钥；本轮只编写与 dry-run 验证，真实部署仍由用户触发。
+
+## 2026-07-05：仓库卫生收口
+
+- 决策：`.claude/`、`.codebuddy/`、`.workbuddy/` 全目录进 `.gitignore`（与 Biome 排除一致）；`remotion-videos/` 源码入库但 `node_modules/`、`output/` 忽略；`overview.md`（营销视频交付说明）入库。
+- 原因：这些路径长期 untracked，容易在同步/部署时产生歧义；营销视频源码是可复用资产应该入库，渲染产物和依赖不应该。
+- 影响：`git status` 干净；deploy.sh 的 rsync 排除清单同步包含这些目录。
 
 ## 2026-06-29：生产运行面固定为轻量服务器
 

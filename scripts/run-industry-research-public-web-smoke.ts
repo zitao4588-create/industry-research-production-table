@@ -5,6 +5,7 @@ import {
   type ResearchWorkflowInput,
   runPublicIndustryResearchWorkflow,
 } from "../packages/industry-research/src/index.ts";
+import { findPreviousLocalRun } from "./lib/find-previous-run.ts";
 
 function timestampForPath(date: Date) {
   return date.toISOString().replace(/[:.]/g, "-");
@@ -39,16 +40,20 @@ async function main() {
     maxSitemapUrls: 4,
     requestTimeoutMs: 8_000,
     now: started.toISOString(),
+    env: process.env,
   });
   const finished = new Date();
+  const runsRootDir = join("outputs", "industry-research-runs");
+  const previousRun = await findPreviousLocalRun(runsRootDir, input);
   const artifacts = createIndustryResearchDeliveryArtifacts({
     input,
     result,
     runId,
     startedAt: started.toISOString(),
     finishedAt: finished.toISOString(),
+    previousRun,
   });
-  const outputDir = join("outputs", "industry-research-runs", runId);
+  const outputDir = join(runsRootDir, runId);
 
   await mkdir(outputDir, { recursive: true });
   await writeJson(join(outputDir, "input.json"), artifacts.input);

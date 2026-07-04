@@ -1,4 +1,5 @@
 import {
+  buildHistoricalContextFromDatabases,
   type ResearchRunMetadata,
   type ResearchWorkflowInput,
   type ResearchWorkflowResult,
@@ -8,6 +9,7 @@ import {
   type WorkflowProgressHandler,
 } from "@industry-research/core";
 import { persistIndustryResearchDeliveryPackage } from "./delivery-package-writer";
+import { findPreviousLocalIndustryResearchRun } from "./local-runs";
 
 /**
  * Shared run core for the industry-research workflow.
@@ -280,13 +282,30 @@ export async function executeIndustryResearchRun({
   const canonicalMode = canonicalModeFor(mode);
   const metadata = createRunMetadata({ mode, env });
 
+  // T8 历史认知回灌：public_web_llm 抽取时带上一次同项目 run 的结论摘要，
+  // 让模型能对比延续性；查找失败静默降级为无历史上下文。
+  const historicalContext =
+    canonicalMode === "public_web_llm"
+      ? await findPreviousLocalIndustryResearchRun(input)
+          .then((previousRun) =>
+            previousRun
+              ? buildHistoricalContextFromDatabases(
+                  previousRun.runId,
+                  previousRun.databases,
+                )
+              : undefined,
+          )
+          .catch(() => undefined)
+      : undefined;
+
   const result =
     canonicalMode === "public_web"
-      ? await runPublicIndustryResearchWorkflow(input, { onProgress })
+      ? await runPublicIndustryResearchWorkflow(input, { onProgress, env })
       : canonicalMode === "public_web_llm"
         ? await runPublicDeepSeekIndustryResearchWorkflow(input, {
             env,
             onProgress,
+            historicalContext,
           })
         : await runDeepSeekIndustryResearchWorkflow(input, { env, onProgress });
   const resultWithMetadata = withRunMetadata(result, metadata);

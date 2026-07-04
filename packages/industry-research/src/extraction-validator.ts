@@ -37,7 +37,7 @@ function documentHaystack(document: RawDocument) {
   );
 }
 
-function canConfirmWithSource(document: RawDocument) {
+export function canConfirmWithSource(document: RawDocument) {
   return (
     document.sourceQuality.acceptedForReport &&
     document.sourceQuality.sourceType !== "robots" &&

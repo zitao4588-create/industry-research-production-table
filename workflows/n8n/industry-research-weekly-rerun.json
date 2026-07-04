@@ -1,0 +1,93 @@
+{
+  "name": "industry-research-weekly-rerun",
+  "id": "industryResearchWeeklyRerun",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "weeks",
+              "triggerAtDay": [1],
+              "triggerAtHour": 9,
+              "triggerAtMinute": 0
+            }
+          ]
+        }
+      },
+      "id": "weekly-schedule-trigger",
+      "name": "Weekly Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// 订阅品类清单（第一版直接内嵌在 workflow 里）。\n// 每周一为每个订阅项触发一次 public_web re-run；\n// 交付层会自动与上一次同项目 run 做 diff 并写周报。\n// 编辑此清单即可增删订阅品类；不要在这里写任何 secret。\nconst subscriptions = [\n  {\n    projectName: '美国 DTC 宠物益生菌品牌竞品研究',\n    industry: '宠物健康电商',\n    category: '宠物肠胃益生菌',\n    market: '美国 DTC 电商',\n    researchGoal: '每周跟踪竞品、关键词、内容与机会变化，产出周报 diff。',\n    templateId: 'ecommerce_competitor_research',\n    urls: [\n      'https://nativepet.com/products/probiotic',\n      'https://www.petfinn.com/products/probiotics',\n      'https://www.pethonesty.com/products/probiotics',\n    ],\n    csvText: '',\n    manualText: '每周定时 re-run，由 n8n weekly workflow 触发。',\n  },\n];\n\nreturn subscriptions.map((subscription) => ({\n  json: {\n    ...subscription,\n    mode: 'public_web',\n    trigger: 'n8n_weekly_rerun',\n  },\n}));"
+      },
+      "id": "subscription-list",
+      "name": "Subscription List",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [360, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://n8n.playgamelab.cn/webhook/industry-research/intake",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{JSON.stringify($json)}}",
+        "options": {
+          "timeout": 590000
+        }
+      },
+      "id": "trigger-intake-webhook",
+      "name": "Trigger Intake Webhook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [720, 0]
+    }
+  ],
+  "connections": {
+    "Weekly Schedule": {
+      "main": [
+        [
+          {
+            "node": "Subscription List",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Subscription List": {
+      "main": [
+        [
+          {
+            "node": "Trigger Intake Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "description": "Weekly scheduled re-run for subscribed industry research categories. Posts each subscription to the production intake webhook so the existing four-state intake workflow handles run + callbacks; delivery layer diffs against the previous run of the same project and emits a weekly intelligence entry. Imported inactive by design; activate manually after review."
+  }
+}

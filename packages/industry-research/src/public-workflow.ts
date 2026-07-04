@@ -3,6 +3,7 @@ import {
   generateSourceDiscoveryPlan,
   requiredIndustryResearchDatabases,
 } from "./collection-plan";
+import { collectContentApiSignals } from "./content-api-adapter";
 import { buildIndustryResearchDatabases } from "./database-builder";
 import {
   createResearchDocumentsFromRawDocuments,
@@ -67,6 +68,8 @@ type PublicWorkflowOptions = {
   maxSitemapUrls?: number;
   requestTimeoutMs?: number;
   onProgress?: WorkflowProgressHandler;
+  /** 搜索 provider / 内容 API 凭据解析用 env；核心包不读 process.env，由调用方显式传入。 */
+  env?: Record<string, string | undefined>;
 };
 
 function normalizeUrls(urls: string[]) {
@@ -237,6 +240,7 @@ export async function runPublicIndustryResearchWorkflow(
       maxProbeUrls: options.maxProbeUrls,
       maxSitemapUrls: options.maxSitemapUrls,
       requestTimeoutMs: options.requestTimeoutMs,
+      env: options.env,
     },
   );
   const enhancedSourceDiscoveryPlan = {
@@ -270,17 +274,43 @@ export async function runPublicIndustryResearchWorkflow(
   emit({ type: "phase", phase: "discover", status: "done", at: ts() });
   emit({ type: "phase", phase: "crawl", status: "start", at: ts() });
 
-  const sources = createResearchSourcesFromPlan(
+  const plannedSources = createResearchSourcesFromPlan(
     project.id,
     input,
     enhancedSourceDiscoveryPlan,
     crawlPlan,
   );
-  const crawlerResult = await runPublicCrawler(project.id, crawlPlan, sources, {
+  const publicCrawlerResult = await runPublicCrawler(
+    project.id,
+    crawlPlan,
+    plannedSources,
+    {
+      fetcher: options.fetcher,
+      input,
+      now: options.now,
+    },
+  );
+  const contentApiResult = await collectContentApiSignals(project.id, input, {
+    env: options.env,
     fetcher: options.fetcher,
-    input,
-    now: options.now,
   });
+
+  for (const note of contentApiResult.notes) {
+    emit({ type: "log", at: ts(), message: note });
+  }
+
+  const sources = [...plannedSources, ...contentApiResult.sources];
+  const crawlerResult = {
+    ...publicCrawlerResult,
+    raw_documents: [
+      ...publicCrawlerResult.raw_documents,
+      ...contentApiResult.raw_documents,
+    ],
+    extraction_jobs: [
+      ...publicCrawlerResult.extraction_jobs,
+      ...contentApiResult.extraction_jobs,
+    ],
+  };
   emit({
     type: "crawl",
     at: ts(),
@@ -316,7 +346,15 @@ export async function runPublicIndustryResearchWorkflow(
 
   const dataset = {
     research_projects: [project],
-    source_discovery_plans: [enhancedSourceDiscoveryPlan],
+    source_discovery_plans: [
+      {
+        ...enhancedSourceDiscoveryPlan,
+        notes: [
+          ...enhancedSourceDiscoveryPlan.notes,
+          ...contentApiResult.notes,
+        ],
+      },
+    ],
     crawl_plans: [crawlPlan],
     ...crawlerResult,
     research_sources: sources,

@@ -195,6 +195,78 @@ async function readRunSummary(
   };
 }
 
+function normalizedProjectKey(input: {
+  industry: string;
+  category: string;
+  market: string;
+}) {
+  return [input.industry, input.category, input.market]
+    .map((value) => value.toLowerCase().replace(/\s+/g, " ").trim())
+    .join("|");
+}
+
+/**
+ * 查找同一研究项目（industry+category+market 归一）最近一次本地 run，
+ * 返回其 runId 和 databases.json（T6 周报 diff 的基线）。没有历史 run
+ * 时返回 null；目录不可读等异常也返回 null（diff 是增强，不阻塞交付）。
+ */
+export async function findPreviousLocalIndustryResearchRun(input: {
+  industry: string;
+  category: string;
+  market: string;
+}): Promise<{ runId: string; databases: unknown } | null> {
+  const targetKey = normalizedProjectKey(input);
+  let entries: Dirent[];
+
+  try {
+    entries = await readdir(industryResearchRunsRootDir(), {
+      withFileTypes: true,
+    });
+  } catch {
+    return null;
+  }
+
+  let latest: { runId: string; finishedAt: string } | null = null;
+
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !RUN_ID_PATTERN.test(entry.name)) {
+      continue;
+    }
+
+    const directory = join(industryResearchRunsRootDir(), entry.name);
+    const runInput = await readJsonFile<ResearchWorkflowInput>(
+      join(directory, "input.json"),
+    );
+
+    if (!runInput || normalizedProjectKey(runInput) !== targetKey) {
+      continue;
+    }
+
+    const runLog = await readJsonFile<IndustryResearchRunLog>(
+      join(directory, "run_log.json"),
+    );
+    const finishedAt = runLog?.finishedAt ?? "";
+
+    if (!finishedAt) {
+      continue;
+    }
+
+    if (!latest || finishedAt > latest.finishedAt) {
+      latest = { runId: entry.name, finishedAt };
+    }
+  }
+
+  if (!latest) {
+    return null;
+  }
+
+  const databases = await readJsonFile<unknown>(
+    join(industryResearchRunsRootDir(), latest.runId, "databases.json"),
+  );
+
+  return databases === null ? null : { runId: latest.runId, databases };
+}
+
 export async function listLocalIndustryResearchRuns(limit = 50) {
   let entries: Dirent[];
 

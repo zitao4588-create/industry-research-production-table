@@ -1,4 +1,5 @@
 import {
+  canConfirmWithSource,
   type EvidenceQuoteValidation,
   mergeReviewStatus,
   validateEvidenceQuotes,
@@ -22,6 +23,7 @@ import type {
   PainPointDatabaseEntry,
   ProductDatabaseEntry,
   ProductSignal,
+  RawDocument,
   ResearchReviewStatus,
   ResearchWorkflowResult,
   WebsiteStructureDatabaseEntry,
@@ -166,7 +168,76 @@ export function parseGlmStructuredExtraction(
   }
 }
 
-function createExtractionInput(dataset: ResearchWorkflowResult) {
+export const extractionBatchDefaults: {
+  maxDocsPerBatch: number;
+  maxCharsPerBatch: number;
+  maxDocChars: number;
+  maxTotalDocs: number;
+} = {
+  maxDocsPerBatch: 12,
+  maxCharsPerBatch: 36_000,
+  maxDocChars: 4_000,
+  maxTotalDocs: 36,
+};
+
+export type ExtractionBatchOptions = Partial<typeof extractionBatchDefaults>;
+
+/**
+ * 分批计划：高可信来源优先进入抽取（同 validator 的可确认口径），
+ * 再按每批文档数 + 字符预算切批，整体受 maxTotalDocs 成本上限约束。
+ */
+export function planExtractionBatches(
+  rawDocuments: RawDocument[],
+  options: ExtractionBatchOptions = {},
+): RawDocument[][] {
+  const { maxDocsPerBatch, maxCharsPerBatch, maxDocChars, maxTotalDocs } = {
+    ...extractionBatchDefaults,
+    ...options,
+  };
+  const rank = (document: RawDocument) =>
+    canConfirmWithSource(document)
+      ? 0
+      : document.sourceQuality.acceptedForReport
+        ? 1
+        : 2;
+  const ordered = rawDocuments
+    .map((document, index) => ({ document, index }))
+    .sort((a, b) => rank(a.document) - rank(b.document) || a.index - b.index)
+    .map((item) => item.document)
+    .slice(0, maxTotalDocs);
+  const batches: RawDocument[][] = [];
+  let current: RawDocument[] = [];
+  let currentChars = 0;
+
+  for (const document of ordered) {
+    const docChars = Math.min(document.extractedText.length, maxDocChars);
+
+    if (
+      current.length > 0 &&
+      (current.length >= maxDocsPerBatch ||
+        currentChars + docChars > maxCharsPerBatch)
+    ) {
+      batches.push(current);
+      current = [];
+      currentChars = 0;
+    }
+
+    current.push(document);
+    currentChars += docChars;
+  }
+
+  if (current.length > 0) {
+    batches.push(current);
+  }
+
+  return batches;
+}
+
+function createExtractionInput(
+  dataset: ResearchWorkflowResult,
+  documents?: RawDocument[],
+  maxDocChars = extractionBatchDefaults.maxDocChars,
+) {
   const project = dataset.research_projects[0];
 
   if (!project) {
@@ -175,25 +246,53 @@ function createExtractionInput(dataset: ResearchWorkflowResult) {
     );
   }
 
+  const selected =
+    documents ??
+    dataset.raw_documents.slice(0, extractionBatchDefaults.maxDocsPerBatch);
+
   return {
     project,
     crawlMode: dataset.crawl_plans[0]?.mode ?? "mock",
-    rawDocuments: dataset.raw_documents.slice(0, 12).map((document) => ({
+    rawDocuments: selected.map((document) => ({
       id: document.id,
       sourceId: document.sourceId,
       url: document.url,
       title: document.title,
       contentType: document.contentType,
       excerpt: document.excerpt,
-      text: document.extractedText.slice(0, 4000),
+      text: document.extractedText.slice(0, maxDocChars),
       databaseTargets: document.databaseTargets,
     })),
   };
 }
 
+type ExtractionMessageOptions = {
+  documents?: RawDocument[];
+  batchIndex?: number;
+  batchCount?: number;
+  maxDocChars?: number;
+  /** 上一次 run 的结论摘要；只用于对比提示，不得作为证据来源。 */
+  historicalContext?: string[];
+};
+
 export function createGlmStructuredExtractionMessages(
   dataset: ResearchWorkflowResult,
+  options: ExtractionMessageOptions = {},
 ) {
+  const batchNote =
+    options.batchCount && options.batchCount > 1
+      ? `这是全部公开采集资料的第 ${(options.batchIndex ?? 0) + 1}/${options.batchCount} 批 raw documents；只基于本批文档抽取，不要推测其他批次内容。`
+      : "";
+  const historicalContext = options.historicalContext ?? [];
+  const historicalNote =
+    historicalContext.length > 0
+      ? [
+          "历史研究上下文（上一次 run 的结构化结论摘要，仅用于对比与延续性判断）：",
+          ...historicalContext.map((line) => `- ${line}`),
+          "历史上下文约束：不得把历史内容当成本次采集事实，evidenceQuotes 仍只能来自本次 rawDocuments；如与历史结论有明显变化，可在 summary / reviewNote 中说明变化。",
+        ].join("\n")
+      : "";
+
   return [
     {
       role: "system" as const,
@@ -204,6 +303,8 @@ export function createGlmStructuredExtractionMessages(
       role: "user" as const,
       content: [
         "请基于公开采集 raw documents 抽取电商竞品研究结构化数据。",
+        ...(batchNote ? [batchNote] : []),
+        ...(historicalNote ? [historicalNote] : []),
         "",
         "只输出这个 JSON 结构：",
         JSON.stringify(
@@ -269,22 +370,29 @@ export function createGlmStructuredExtractionMessages(
         "- 不要编造价格、销量、私人信息或登录后数据。",
         "- evidenceQuotes 必须是 rawDocuments 里的短句或摘要片段。",
         "",
-        JSON.stringify(createExtractionInput(dataset), null, 2),
+        JSON.stringify(
+          createExtractionInput(
+            dataset,
+            options.documents,
+            options.maxDocChars,
+          ),
+          null,
+          2,
+        ),
       ].join("\n"),
     },
   ];
 }
 
-export async function generateGlmStructuredExtraction({
-  dataset,
+async function requestStructuredExtraction({
+  messages,
   env,
   fetcher,
 }: {
-  dataset: ResearchWorkflowResult;
+  messages: ReturnType<typeof createGlmStructuredExtractionMessages>;
   env: GlmRuntimeEnv;
   fetcher?: GlmFetch;
 }) {
-  const messages = createGlmStructuredExtractionMessages(dataset);
   const response = await callDeepSeekChatCompletion({
     env,
     fetcher,
@@ -321,6 +429,265 @@ export async function generateGlmStructuredExtraction({
 
     return parseGlmStructuredExtraction(retryResponse.content);
   }
+}
+
+function normalizeKey(...parts: Array<string | undefined>) {
+  return parts
+    .map((part) => (part ?? "").toLowerCase().replace(/\s+/g, " ").trim())
+    .join("|");
+}
+
+function unionStrings(a?: string[], b?: string[]) {
+  return [
+    ...new Set(
+      [...(a ?? []), ...(b ?? [])].map((item) => item.trim()).filter(Boolean),
+    ),
+  ];
+}
+
+function preferLonger(a?: string, b?: string) {
+  const left = a?.trim() ?? "";
+  const right = b?.trim() ?? "";
+  return right.length > left.length ? right : left;
+}
+
+const frequencyRank = { low: 0, medium: 1, high: 2 } as const;
+
+function mergeInto<T>(
+  map: Map<string, T>,
+  key: string,
+  item: T,
+  merge: (existing: T, incoming: T) => T,
+) {
+  const existing = map.get(key);
+  map.set(key, existing ? merge(existing, item) : item);
+}
+
+/**
+ * 多批抽取结果合并：竞品按名称、产品信号按(竞品+信号)、痛点按主题、
+ * 内容信号按(平台+话题)、机会按标题去重；证据 quotes 取并集，
+ * 文本字段保留更充实的一侧。
+ */
+export function mergeGlmStructuredExtractions(
+  extractions: GlmStructuredExtraction[],
+): GlmStructuredExtraction {
+  const competitors = new Map<string, GlmExtractedCompetitor>();
+  const productSignals = new Map<string, GlmExtractedProductSignal>();
+  const painPoints = new Map<string, GlmExtractedPainPoint>();
+  const contentSignals = new Map<string, GlmExtractedContentSignal>();
+  const opportunities = new Map<string, GlmExtractedOpportunity>();
+
+  for (const extraction of extractions) {
+    for (const item of extraction.competitors) {
+      mergeInto(
+        competitors,
+        normalizeKey(item.name),
+        item,
+        (existing, incoming) => ({
+          ...existing,
+          channel: preferLonger(existing.channel, incoming.channel),
+          positioning: preferLonger(existing.positioning, incoming.positioning),
+          websiteStructure: unionStrings(
+            existing.websiteStructure,
+            incoming.websiteStructure,
+          ),
+          collectionSignals: unionStrings(
+            existing.collectionSignals,
+            incoming.collectionSignals,
+          ),
+          evidenceQuotes: unionStrings(
+            existing.evidenceQuotes,
+            incoming.evidenceQuotes,
+          ),
+        }),
+      );
+    }
+
+    for (const item of extraction.productSignals) {
+      mergeInto(
+        productSignals,
+        normalizeKey(item.competitorName, item.signal),
+        item,
+        (existing, incoming) => ({
+          ...existing,
+          tags: unionStrings(existing.tags, incoming.tags),
+          evidenceQuotes: unionStrings(
+            existing.evidenceQuotes,
+            incoming.evidenceQuotes,
+          ),
+        }),
+      );
+    }
+
+    for (const item of extraction.painPoints) {
+      mergeInto(
+        painPoints,
+        normalizeKey(item.theme),
+        item,
+        (existing, incoming) => ({
+          ...existing,
+          userNeed: preferLonger(existing.userNeed, incoming.userNeed),
+          frequency:
+            (frequencyRank[incoming.frequency ?? "medium"] ?? 1) >
+            (frequencyRank[existing.frequency ?? "medium"] ?? 1)
+              ? incoming.frequency
+              : existing.frequency,
+          evidenceQuotes: unionStrings(
+            existing.evidenceQuotes,
+            incoming.evidenceQuotes,
+          ),
+        }),
+      );
+    }
+
+    for (const item of extraction.contentSignals) {
+      mergeInto(
+        contentSignals,
+        normalizeKey(item.platform, item.topic),
+        item,
+        (existing, incoming) => ({
+          ...existing,
+          whyItWorks: preferLonger(existing.whyItWorks, incoming.whyItWorks),
+          evidenceQuotes: unionStrings(
+            existing.evidenceQuotes,
+            incoming.evidenceQuotes,
+          ),
+        }),
+      );
+    }
+
+    for (const item of extraction.opportunities) {
+      mergeInto(
+        opportunities,
+        normalizeKey(item.title),
+        item,
+        (existing, incoming) => ({
+          ...existing,
+          summary: preferLonger(existing.summary, incoming.summary),
+          reviewNote: preferLonger(existing.reviewNote, incoming.reviewNote),
+          evidenceQuotes: unionStrings(
+            existing.evidenceQuotes,
+            incoming.evidenceQuotes,
+          ),
+        }),
+      );
+    }
+  }
+
+  return {
+    competitors: [...competitors.values()],
+    productSignals: [...productSignals.values()],
+    painPoints: [...painPoints.values()],
+    contentSignals: [...contentSignals.values()],
+    opportunities: [...opportunities.values()],
+  };
+}
+
+export type BatchedExtractionResult = {
+  extraction: GlmStructuredExtraction;
+  batchCount: number;
+  failedBatchCount: number;
+  failedBatchDocumentIds: string[];
+  failureMessages: string[];
+};
+
+/**
+ * 分批 map-reduce 抽取：逐批请求 provider，单批失败只降级该批文档，
+ * 全部批次失败才抛错（保持外层 workflow 的整体降级行为不变）。
+ */
+export async function generateGlmStructuredExtractionBatched({
+  dataset,
+  env,
+  fetcher,
+  batchOptions,
+  historicalContext,
+  onBatch,
+}: {
+  dataset: ResearchWorkflowResult;
+  env: GlmRuntimeEnv;
+  fetcher?: GlmFetch;
+  batchOptions?: ExtractionBatchOptions;
+  /** 上一次 run 的结论摘要；只用于对比提示，不得作为证据来源。 */
+  historicalContext?: string[];
+  onBatch?: (event: {
+    batchIndex: number;
+    batchCount: number;
+    status: "done" | "failed";
+    documentIds: string[];
+  }) => void;
+}): Promise<BatchedExtractionResult> {
+  const batches = planExtractionBatches(dataset.raw_documents, batchOptions);
+  const maxDocChars =
+    batchOptions?.maxDocChars ?? extractionBatchDefaults.maxDocChars;
+  const extractions: GlmStructuredExtraction[] = [];
+  const failedBatchDocumentIds: string[] = [];
+  const failureMessages: string[] = [];
+
+  for (const [batchIndex, documents] of batches.entries()) {
+    const messages = createGlmStructuredExtractionMessages(dataset, {
+      documents,
+      batchIndex,
+      batchCount: batches.length,
+      maxDocChars,
+      historicalContext,
+    });
+
+    try {
+      extractions.push(
+        await requestStructuredExtraction({ messages, env, fetcher }),
+      );
+      onBatch?.({
+        batchIndex,
+        batchCount: batches.length,
+        status: "done",
+        documentIds: documents.map((document) => document.id),
+      });
+    } catch (error) {
+      failureMessages.push(
+        error instanceof Error ? error.message : String(error),
+      );
+      failedBatchDocumentIds.push(...documents.map((document) => document.id));
+      onBatch?.({
+        batchIndex,
+        batchCount: batches.length,
+        status: "failed",
+        documentIds: documents.map((document) => document.id),
+      });
+    }
+  }
+
+  if (batches.length > 0 && extractions.length === 0) {
+    throw new Error(
+      `OpenAI-compatible provider 结构化抽取全部批次失败（${batches.length} 批）：${failureMessages[0] ?? "unknown"}`,
+    );
+  }
+
+  return {
+    extraction: mergeGlmStructuredExtractions(extractions),
+    batchCount: batches.length,
+    failedBatchCount: batches.length - extractions.length,
+    failedBatchDocumentIds,
+    failureMessages,
+  };
+}
+
+/** 兼容入口：保留原单结果签名，内部走分批 map-reduce。 */
+export async function generateGlmStructuredExtraction({
+  dataset,
+  env,
+  fetcher,
+}: {
+  dataset: ResearchWorkflowResult;
+  env: GlmRuntimeEnv;
+  fetcher?: GlmFetch;
+}) {
+  const batched = await generateGlmStructuredExtractionBatched({
+    dataset,
+    env,
+    fetcher,
+  });
+
+  return batched.extraction;
 }
 
 function createEvidenceBuilder(result: ResearchWorkflowResult) {

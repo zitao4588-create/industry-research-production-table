@@ -7,6 +7,7 @@ import {
   type ResearchWorkflowResult,
 } from "@industry-research/core";
 import {
+  findPreviousLocalIndustryResearchRun,
   industryResearchRunOutputLabel,
   industryResearchRunsRootDir,
 } from "./local-runs";
@@ -71,12 +72,19 @@ export async function persistIndustryResearchDeliveryPackage({
   const startedDate = new Date(startedAt);
   const runId = `${slugifyRunId(input.projectName)}-${timestampForPath(startedDate)}`;
   const outputDir = join(industryResearchRunsRootDir(env), runId);
+  // T6 周报 diff：真实 public_web 系 run 以上一次同项目本地 run 为基线；
+  // mock 结果不参与 diff（rich demo 数据会污染基线）。
+  const previousRun =
+    result.crawl_plans[0]?.mode === "public_web"
+      ? await findPreviousLocalIndustryResearchRun(input)
+      : undefined;
   const artifacts = createIndustryResearchDeliveryArtifacts({
     input,
     result,
     runId,
     startedAt,
     finishedAt,
+    previousRun,
   });
 
   await mkdir(outputDir, { recursive: true });

@@ -5,7 +5,7 @@ import {
 } from "./glm-client";
 import {
   applyGlmStructuredExtraction,
-  generateGlmStructuredExtraction,
+  generateGlmStructuredExtractionBatched,
 } from "./glm-extraction";
 import {
   createResearchReviewItems,
@@ -134,6 +134,8 @@ export async function runPublicDeepSeekIndustryResearchWorkflow(
     maxSitemapUrls?: number;
     now?: string;
     onProgress?: WorkflowProgressHandler;
+    /** 上一次 run 的结论摘要（T8）；只作为抽取对比提示，不得作为证据来源。 */
+    historicalContext?: string[];
   },
 ): Promise<ResearchWorkflowResult> {
   const emit = options.onProgress ?? (() => {});
@@ -143,6 +145,7 @@ export async function runPublicDeepSeekIndustryResearchWorkflow(
     maxDiscoveredTargets: options.maxDiscoveredTargets,
     maxSitemapUrls: options.maxSitemapUrls,
     now: options.now,
+    env: options.env,
     // 内层 public 的 discover/crawl/build 直接透传;report 阶段抑制掉,
     // 因为 public + LLM 的真正报告由下面的 provider 抽取 + 生成承担。
     onProgress: options.onProgress
@@ -157,14 +160,42 @@ export async function runPublicDeepSeekIndustryResearchWorkflow(
 
   if (publicResult.raw_documents.length > 0) {
     try {
+      const batched = await generateGlmStructuredExtractionBatched({
+        dataset: publicResult,
+        env: options.env,
+        fetcher: options.fetcher,
+        historicalContext: options.historicalContext,
+        onBatch: options.onProgress
+          ? (event) =>
+              emit({
+                type: "log",
+                at: ts(),
+                message: `结构化抽取批次 ${event.batchIndex + 1}/${event.batchCount} ${
+                  event.status === "done" ? "完成" : "失败"
+                }（${event.documentIds.length} 个文档）`,
+              })
+          : undefined,
+      });
       structuredResult = applyGlmStructuredExtraction(
         publicResult,
-        await generateGlmStructuredExtraction({
-          dataset: publicResult,
-          env: options.env,
-          fetcher: options.fetcher,
-        }),
+        batched.extraction,
       );
+
+      if (batched.failedBatchCount > 0) {
+        const failedDocumentIds = new Set(batched.failedBatchDocumentIds);
+        structuredResult = {
+          ...structuredResult,
+          extraction_jobs: structuredResult.extraction_jobs.map((job) =>
+            failedDocumentIds.has(job.rawDocumentId)
+              ? {
+                  ...job,
+                  status: "needs_review",
+                  summary: `${job.summary} 注意：该文档所在抽取批次失败（${batched.failedBatchCount}/${batched.batchCount} 批失败），结构化结果未覆盖此文档。`,
+                }
+              : job,
+          ),
+        };
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       structuredResult = {
