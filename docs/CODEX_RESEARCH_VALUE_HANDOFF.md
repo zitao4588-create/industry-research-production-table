@@ -1,5 +1,8 @@
 # Codex 交接文档 · 从「基建闭环」到「有料的持续行业情报」
 
+> **状态同步（2026-07-05）**：本文档的 P0–P3 全部任务已由 Claude Code 完成并推送 `origin/main`（`7c07af5` + `a77d519`）：DeepSeek 接入与两次真实品类 run、分批抽取、搜索 provider、robots/配额/礼貌控制、内容 API 适配器、跨 run diff 周报、历史上下文回灌、n8n 周报 workflow JSON、run-security 单测、deploy 脚本与仓库卫生。测试 36→84，check/build 全绿。
+> 剩余的**生产侧动作**（SSH 部署三部曲、n8n 导入、外部 key 接线、用户验证准备）移至 `docs/CODEX_PRODUCTION_ROLLOUT_HANDOFF.md`，以那份为准；本文档保留为方法论与验收依据。§3.6「不要主动 SSH」的纪律已被新文档的显式授权覆盖。
+
 > **更新时间**：2026-07-04
 > **受众**：Codex / 接手下一阶段的开发者
 > **性质**：2026-07-04 全面审查（Claude Code）之后排出的下一阶段执行清单。审查范围：全部根目录状态文档、核心包与 API 源码、安全模块、Supabase migration、CI、测试，以及最近一次真实 `public_web` run 的交付包。

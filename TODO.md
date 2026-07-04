@@ -151,9 +151,7 @@
 ## 待处理
 
 - [x] 2026-07-05 GitHub 推送完成：`origin/main` 已包含研究价值阶段提交（`7c07af5`）。
-- 生产部署与 n8n 导入（**已备好一键脚本，但 Claude Code 自动模式被权限策略禁止 SSH 生产服务器**，需用户执行或授权）：
-  - 三个脚本见 `deploy/lightweight-server/README.md` 的「一键脚本」节：`configure-llm-env.sh`（写 DeepSeek env，自动备份）→ `deploy.sh`（部署）→ `import-weekly-workflow.sh`（n8n 周报 workflow 导入+激活+smoke）。全部默认 dry-run、不回显密钥。
-  - 如希望 Claude Code 代跑：在 `.claude/settings.local.json` 的 permissions.allow 加 `Bash(ssh lighthouse-lab*)`、`Bash(scp * lighthouse-lab:*)`、`Bash(rsync * lighthouse-lab:*)`、`Bash(bash deploy/lightweight-server/*)` 后再发起。
+- 生产部署与 n8n 导入：已整理为 **`docs/CODEX_PRODUCTION_ROLLOUT_HANDOFF.md`**（R1 侦察 → R2 写 LLM env → R3 部署 → R4 生产 LLM 复核 → R5 n8n 导入+smoke → R6 zvec 增量 → R7 回写，含护栏/验收/回滚），由 Codex 或用户执行；Claude Code 自动模式被权限策略禁止 SSH 生产服务器。三个一键脚本在 `deploy/lightweight-server/`，全部默认 dry-run、不回显密钥。
 - 需要用户注册的外部凭据（代码侧已就绪，配好即生效；涉及账号/支付信息，无法代注册）：
   - Brave Search API key（brave.com/search/api，free 档也要绑卡）或 Serper（serper.dev）→ `AGENT_FACTORY_SEARCH_PROVIDER=brave|serper` + `AGENT_FACTORY_SEARCH_API_KEY`。
   - YouTube Data API v3 key（console.cloud.google.com → 建项目 → 启用 YouTube Data API v3 → 凭据 → API key）→ `AGENT_FACTORY_YOUTUBE_API_KEY`。
