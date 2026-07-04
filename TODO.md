@@ -150,12 +150,14 @@
 
 ## 待处理
 
-- 需要用户注册/决策的外部凭据（代码侧已就绪，配好即生效）：
-  - Brave Search API key（或 Serper）→ `AGENT_FACTORY_SEARCH_PROVIDER=brave` + `AGENT_FACTORY_SEARCH_API_KEY`，替换脆弱的 DDG HTML 抓取。
-  - YouTube Data API v3 key → `AGENT_FACTORY_YOUTUBE_API_KEY`，填充内容库。
-  - Reddit OAuth token → `AGENT_FACTORY_REDDIT_ACCESS_TOKEN`，填充痛点库。
-- 生产部署（用户触发）：`deploy/lightweight-server/deploy.sh --dry-run` 复核后 `--execute`；DeepSeek 三个 `AGENT_FACTORY_LLM_*` 变量写入服务器 env（先备份）。
-- n8n 周报 workflow 导入（用户按同 id 流程执行）：见 `workflows/n8n/README.md` 的导入步骤；导入后先手动执行一次再 activate。
+- [x] 2026-07-05 GitHub 推送完成：`origin/main` 已包含研究价值阶段提交（`7c07af5`）。
+- 生产部署与 n8n 导入（**已备好一键脚本，但 Claude Code 自动模式被权限策略禁止 SSH 生产服务器**，需用户执行或授权）：
+  - 三个脚本见 `deploy/lightweight-server/README.md` 的「一键脚本」节：`configure-llm-env.sh`（写 DeepSeek env，自动备份）→ `deploy.sh`（部署）→ `import-weekly-workflow.sh`（n8n 周报 workflow 导入+激活+smoke）。全部默认 dry-run、不回显密钥。
+  - 如希望 Claude Code 代跑：在 `.claude/settings.local.json` 的 permissions.allow 加 `Bash(ssh lighthouse-lab*)`、`Bash(scp * lighthouse-lab:*)`、`Bash(rsync * lighthouse-lab:*)`、`Bash(bash deploy/lightweight-server/*)` 后再发起。
+- 需要用户注册的外部凭据（代码侧已就绪，配好即生效；涉及账号/支付信息，无法代注册）：
+  - Brave Search API key（brave.com/search/api，free 档也要绑卡）或 Serper（serper.dev）→ `AGENT_FACTORY_SEARCH_PROVIDER=brave|serper` + `AGENT_FACTORY_SEARCH_API_KEY`。
+  - YouTube Data API v3 key（console.cloud.google.com → 建项目 → 启用 YouTube Data API v3 → 凭据 → API key）→ `AGENT_FACTORY_YOUTUBE_API_KEY`。
+  - Reddit token（reddit.com/prefs/apps 建 script app → client_credentials 换 token）→ `AGENT_FACTORY_REDDIT_ACCESS_TOKEN`。
 - P4 用户验证：找 1–3 个电商卖家用真实品类各跑一轮，以「愿不愿意为这份报告付费」为验收。
 
 ## 下一步建议

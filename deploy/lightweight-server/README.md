@@ -2,6 +2,28 @@
 
 本目录只放可审查模板，不放真实密钥、服务器 IP、SSH 私钥、n8n 密码或 Supabase service role key。
 
+## 一键脚本（2026-07-05 起）
+
+三个脚本都默认 `--dry-run`（只打印计划），确认后加 `--execute` 真实执行；均不打印任何密钥。SSH host 默认 `lighthouse-lab`（可用 `DEPLOY_SSH_HOST` 覆盖）。推荐执行顺序：
+
+```bash
+# 1. 把本机 .env.local 的 AGENT_FACTORY_LLM_*（DeepSeek）写入服务器 env（自动备份）
+bash deploy/lightweight-server/configure-llm-env.sh --dry-run   # 复核计划
+bash deploy/lightweight-server/configure-llm-env.sh --execute
+
+# 2. 部署已提交代码（git archive → 备份 → 非删除式 rsync → build → doctor → restart → health）
+bash deploy/lightweight-server/deploy.sh --dry-run              # 复核变更预览
+bash deploy/lightweight-server/deploy.sh --execute
+
+# 3. 导入并激活 n8n 周报 workflow（备份现有 → 导入新 id → 激活 → 重启 → 手动 smoke）
+docker_name=$(ssh lighthouse-lab "docker ps --format '{{.Names}}' | grep -i n8n")  # 先确认容器名
+N8N_CONTAINER="$docker_name" bash deploy/lightweight-server/import-weekly-workflow.sh --dry-run
+N8N_CONTAINER="$docker_name" bash deploy/lightweight-server/import-weekly-workflow.sh --execute
+
+# 4. 部署后 LLM 生产复核（服务器上执行，一次廉价 DeepSeek 调用）
+ssh lighthouse-lab "set -a; eval \"\$(sudo cat /opt/playgamelab/industry-research/industry-research.env | grep -v '^#' | grep '=')\"; set +a; cd /opt/playgamelab/industry-research && pnpm verify:9router"
+```
+
 生产运行面固定为轻量服务器：
 
 - 公网入口：`https://research.playgamelab.cn`

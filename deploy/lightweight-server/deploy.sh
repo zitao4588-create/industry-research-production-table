@@ -82,7 +82,7 @@ if [[ "$MODE" == "dry-run" ]]; then
   echo "[4/8..8/8] （dry-run）后续步骤计划："
   echo "  ssh $SSH_HOST \"cd $REMOTE_DIR && pnpm install --frozen-lockfile\""
   echo "  ssh $SSH_HOST \"cd $REMOTE_DIR && pnpm build\""
-  echo "  ssh $SSH_HOST \"cd $REMOTE_DIR && sudo -u ubuntu bash -lc 'set -a; source $REMOTE_DIR/industry-research.env; set +a; pnpm server:doctor && pnpm supabase:doctor && pnpm supabase:smoke'\""
+  echo "  ssh $SSH_HOST（登录用户 shell 内 sudo cat env 导出后跑 pnpm server:doctor && pnpm supabase:doctor；secret 不落盘不回显）"
   echo "  ssh $SSH_HOST \"sudo systemctl restart $SERVICE_NAME && systemctl is-active $SERVICE_NAME\""
   echo "  curl -fsS $HEALTH_URL"
   echo
@@ -92,7 +92,8 @@ fi
 
 echo
 echo "[2/8] 远端备份 → .deploy-backups/pre-$HEAD_SHA-$TIMESTAMP.tar.gz"
-ssh "$SSH_HOST" "mkdir -p $REMOTE_DIR/.deploy-backups && cd $REMOTE_DIR && tar -czf .deploy-backups/pre-$HEAD_SHA-$TIMESTAMP.tar.gz --exclude node_modules --exclude .next --exclude .deploy-backups ."
+# 备份用 sudo：远端目录里 industry-research.env 是 root:600，普通用户 tar 读取会报错。
+ssh "$SSH_HOST" "mkdir -p $REMOTE_DIR/.deploy-backups && cd $REMOTE_DIR && sudo tar -czf .deploy-backups/pre-$HEAD_SHA-$TIMESTAMP.tar.gz --exclude node_modules --exclude .next --exclude .deploy-backups ."
 
 echo "[3/8] 非删除式 rsync 同步"
 rsync -avz "${RSYNC_EXCLUDES[@]}" "$STAGE_DIR/" "$SSH_HOST:$REMOTE_DIR/"
@@ -103,8 +104,8 @@ ssh "$SSH_HOST" "cd $REMOTE_DIR && pnpm install --frozen-lockfile"
 echo "[5/8] pnpm build"
 ssh "$SSH_HOST" "cd $REMOTE_DIR && pnpm build"
 
-echo "[6/8] doctor 检查（按 systemd env 加载）"
-ssh "$SSH_HOST" "cd $REMOTE_DIR && sudo -u ubuntu bash -lc 'set -a; source $REMOTE_DIR/industry-research.env; set +a; cd $REMOTE_DIR && pnpm server:doctor && pnpm supabase:doctor'"
+echo "[6/8] doctor 检查（按 systemd env 加载；sudo cat 读 root:600 env，变量只进登录用户 shell 内存）"
+ssh "$SSH_HOST" "set -a; eval \"\$(sudo cat $REMOTE_DIR/industry-research.env | grep -v '^#' | grep '=')\"; set +a; cd $REMOTE_DIR && pnpm server:doctor && pnpm supabase:doctor"
 
 echo "[7/8] 重启服务"
 ssh "$SSH_HOST" "sudo systemctl restart $SERVICE_NAME && systemctl is-active $SERVICE_NAME"
