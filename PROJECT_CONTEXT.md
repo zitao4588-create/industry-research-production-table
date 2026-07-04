@@ -18,15 +18,22 @@
 
 ## 当前真实状态
 
+- 2026-07-05 生产上线 handoff（`docs/CODEX_PRODUCTION_ROLLOUT_HANDOFF.md` 的 R1-R6）已由 Codex 执行完成：
+  - R1 侦察：`ssh lighthouse-lab` 可用，远端用户 `ubuntu`，`sudo-nopasswd-ok`，`industry-research.service` active，n8n 容器名 `n8n`，`/opt` 余量约 27G。
+  - R2：已把本机 `.env.local` 的 `AGENT_FACTORY_LLM_*` 三个变量幂等写入 `/opt/playgamelab/industry-research/industry-research.env`，远端备份为 `industry-research.env.bak-20260704172841`，未打印密钥。
+  - R3：已部署当前已提交代码 `7478af7` 到 `/opt/playgamelab/industry-research`，远端备份为 `.deploy-backups/pre-7478af7-20260704T172911Z.tar.gz`；远端 `pnpm install --frozen-lockfile`、`pnpm build`、`pnpm server:doctor`、`pnpm supabase:doctor` 通过，服务重启后公网 health 复测 `status=ok`。
+  - R4：生产 `pnpm verify:9router` 真实调用 DeepSeek 官方 API 通过，`usesLocalFallback=false`，`contentLength=7334`，标题含 `deepseek-v4-flash`。
+  - R5：n8n 周报 workflow `industryResearchWeeklyRerun` 已导入并激活；CLI 手动执行因 Schedule Trigger 限制失败后，按 handoff fallback 直接调用 intake webhook，生成生产 run `dtc-2026-07-04T17-32-52-910Z`，报告含「本期新增与变化」并标记服务器基线 run；Supabase n8n event 以 `n8n_execution_id=13` 记录 queued / running / completed 三态。
+  - R6：远端 `pnpm zvec:index` 通过，runCount 9、chunkCount 258、upsertedChunkCount 56、Supabase metadata rows 56、warnings 空；`industry_research_zvec_chunks` 中新 run 有 56 行 metadata。
 - 2026-07-05 「研究价值」阶段（`docs/CODEX_RESEARCH_VALUE_HANDOFF.md` 的 P0–P3）已全部落地代码侧：
-  - LLM：本机 `.env.local` 配置自付费 DeepSeek 官方 API（`AGENT_FACTORY_LLM_*`，`deepseek-v4-flash`）；`pnpm verify:9router` 真实通过。**服务器 env 尚未写入这三个变量，生产 LLM 仍待部署。**
+  - LLM：本机 `.env.local` 和轻量服务器 env 均已配置自付费 DeepSeek 官方 API（`AGENT_FACTORY_LLM_*`，`deepseek-v4-flash`）；本机与生产 `pnpm verify:9router` 均真实通过。
   - 真实品类首跑 `pet-probiotics-dtc-2026-07-04T13-53-36-077Z`：25 raw docs、36 evidence、九库全部非空（32/3/3/3/16/3/3/3/1）、quoteMatched 65 true / 0 false；竞品 Finn / Native Pet / Pet Honesty 带定位与证据链。
   - 抽取改分批 map-reduce：修复旧实现只取前 12 文档的静默覆盖损失；单批失败按文档降级，全失败才回退。
   - 采集面：搜索 3 query（brave/serper API 抽象 + DDG fallback）；发现层按类硬配额 + robots Disallow 过滤 + 同域 1s 礼貌间隔 + 60 目标上限；YouTube/Reddit 官方 API 适配器就绪（缺 key 静默跳过）。
   - 订阅模式打通：第二次 run `pet-probiotics-dtc-2026-07-04T16-50-36-292Z` 自动 diff 上一次 run，`weekly_intelligence_reports` 产出真实对比条目（新增关键词 17、新增机会 1、机会分变化 1），报告新增「本期新增与变化」节；LLM 抽取注入上一次 run 结论摘要作对比上下文；新增 n8n 每周 re-run workflow JSON（inactive，未导入生产）。
   - 已知信号噪音：两次 run 的 LLM 关键词语言不稳定（中文↔英文），diff 会把语言漂移记为新增+消失（均标待复核）；后续可做关键词归一。
   - 工程：`run-security.test.ts` 12 条安全单测；`deploy/lightweight-server/deploy.sh`（默认 dry-run）；`.gitignore` 收纳工具目录；测试从 36 条增至 84 条。
-  - 待用户动作：Brave/YouTube/Reddit key 注册配置、deploy.sh --execute 生产部署、n8n 周报 workflow 导入、真实用户付费验证（见 TODO）。
+  - 待用户动作：Brave/YouTube/Reddit key 注册配置、真实用户付费验证（见 TODO）。
 - 已从 `agent-factory` 同步行业研究 v0.3 核心边界：
   - OpenAI-compatible provider 抽取 / 报告节点（旧 `deepseek` mode 保留为兼容别名）
   - public_web 保守采集
@@ -277,7 +284,7 @@
 - 远端最小同步和本轮 P0/P1/P2 完整部署均已完成；server/Supabase/zvec/API/health 验收均通过。
 - GitHub `main` 已包含 Claude Code 简化 UI，且轻量服务器生产服务已部署该 UI。
 - 生产运行和 API 固定在轻量服务器；不要把正式运行态拆到 Vercel、本机或其他托管面。
-- 生产 / 付费交付必须使用自付费 provider；9router free/MiMo 实测无 usable model。2026-07-05 起本机已用自付费 DeepSeek 官方 API 跑通完整 LLM 链路；服务器 env 尚未配置 `AGENT_FACTORY_LLM_*`，生产 LLM 交付待部署后生效。
+- 生产 / 付费交付必须使用自付费 provider；9router free/MiMo 实测无 usable model。2026-07-05 起本机和轻量服务器均已用自付费 DeepSeek 官方 API 跑通 LLM 验证；生产 LLM 交付应继续控制调用次数和成本。
 - 真实 run 已接入：工作台经同源 server action / 流式路由发真实 `public_web` / `9router` / `public_web_9router`（legacy `deepseek` / `public_web_deepseek` 仍兼容）。**P0-A 完整版 SSE 已落地且覆盖全部真实模式**：经 `POST /api/industry-research/run/stream` 逐阶段流式上报进度，`public_web` 发现阶段真实耗时 ~5.3s，LLM 系 emit discover/crawl/build done + report start，流式不可用时回退非流式 server action。
 - n8n 已在轻量服务器接入默认 `public_web` 业务流；生产 workflow 已更新为 queued / running / completed / failed 四态事件，并通过真实 webhook smoke 验证。
 - 前端功能接线已完成：P0-C 表单校验、P0-A 真实 run（含完整 SSE）、P0-B 失败态/空态/Skeleton、P1-D 下载/审核回写/导出 CSV、P1-E 证据溯源弹层、P1-F 无障碍（键盘可达 + canvas 文字替代）、P1-G 刷新持久化、P2-H 移动端抽屉、P2-J 导航解耦、Mock 数据密度恢复（rich profile）、运行期表格逐格骨架与 phase×view 派生收敛。

@@ -151,7 +151,7 @@
 ## 待处理
 
 - [x] 2026-07-05 GitHub 推送完成：`origin/main` 已包含研究价值阶段提交（`7c07af5`）。
-- 生产部署与 n8n 导入：已整理为 **`docs/CODEX_PRODUCTION_ROLLOUT_HANDOFF.md`**（R1 侦察 → R2 写 LLM env → R3 部署 → R4 生产 LLM 复核 → R5 n8n 导入+smoke → R6 zvec 增量 → R7 回写，含护栏/验收/回滚），由 Codex 或用户执行；Claude Code 自动模式被权限策略禁止 SSH 生产服务器。三个一键脚本在 `deploy/lightweight-server/`，全部默认 dry-run、不回显密钥。
+- [x] 2026-07-05 生产部署与 n8n 导入完成：已按 **`docs/CODEX_PRODUCTION_ROLLOUT_HANDOFF.md`** 执行 R1-R6，写入生产 LLM env、部署 `7478af7`、验证生产 DeepSeek、导入并激活 `industryResearchWeeklyRerun`、生成生产基线 run `dtc-2026-07-04T17-32-52-910Z`、完成 zvec 增量索引。R7 文档回写和提交由本轮收尾完成。
 - 需要用户注册的外部凭据（代码侧已就绪，配好即生效；涉及账号/支付信息，无法代注册）：
   - Brave Search API key（brave.com/search/api，free 档也要绑卡）或 Serper（serper.dev）→ `AGENT_FACTORY_SEARCH_PROVIDER=brave|serper` + `AGENT_FACTORY_SEARCH_API_KEY`。
   - YouTube Data API v3 key（console.cloud.google.com → 建项目 → 启用 YouTube Data API v3 → 凭据 → API key）→ `AGENT_FACTORY_YOUTUBE_API_KEY`。
@@ -162,7 +162,7 @@
 
 > 2026-07-04 起，下一阶段任务底稿移至 `docs/CODEX_RESEARCH_VALUE_HANDOFF.md`（全面审查后的 P0–P2 执行清单：LLM provider 接入、采集面扩展、订阅循环、工程收尾）。以下 4 条为历史建议，与该文档一致的部分以该文档为准。
 
-1. 先把 n8n 业务流继续稳定在 `public_web`，保证无 LLM 也能产出 8 文件交付包。
-2. 需要 LLM 交付时，先接入自付费 OpenAI-compatible provider；当前服务器探测没有 usable free model。
-3. 生产上线前继续复核内部 API key、n8n Header Auth credentials、robots / 公开数据边界和 provider 成本。
-4. Supabase、zvec、轻量服务器 API、简化 UI、P0/P1/P2 准生产基线和 n8n 四态 workflow 都已完成部署闭环；后续重点是真实业务样本质量和付费 provider 稳定性。
+1. 继续把 n8n 周报业务流稳定在 `public_web`，保证无 LLM 也能产出 8 文件交付包和周报基线。
+2. 需要 LLM 交付时使用已接入的自付费 DeepSeek 官方 API；不要回退到 9router free/MiMo 作为生产承诺。
+3. 接入 Brave/YouTube/Reddit key 前继续复核公开数据边界、robots 约束和 provider 成本。
+4. Supabase、zvec、轻量服务器 API、简化 UI、P0/P1/P2 准生产基线、生产 LLM 和 n8n 周报 workflow 都已完成部署闭环；后续重点是真实业务样本质量和付费验证。

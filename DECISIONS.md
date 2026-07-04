@@ -10,6 +10,18 @@
   - 真实品类完整 run（宠物益生菌/美国 DTC）已在本机跑通：九类数据库全部非空、证据 quoteMatched 100%。
   - 服务器启用时，只需把同样三个变量写入 `/opt/playgamelab/industry-research/industry-research.env`（改前先备份，防止再发生双 JWT 粘贴事故）。
 
+## 2026-07-05：生产 rollout 脚本按真实服务器行为加固
+
+- 决策：本轮 R1-R6 执行时，保留原有「默认 dry-run、非删除式 rsync、密钥不回显」边界，同时把脚本按实际失败点补硬：Bash 文案变量用 `${...}` 防中文标点误解析；远端 Docker 操作用 `sudo -n docker`；deploy 公网 health 增加短重试。
+- 原因：R2 dry-run 暴露了 Bash locale + `set -u` 的变量名问题；R1 暴露 `ubuntu` 无 Docker socket 权限；R3 暴露服务刚重启后的公网 502 race。
+- 影响：后续同类 rollout 不应再因为脚本文案、Docker 权限或瞬时 health race 中断；真实业务失败仍继续按「失败即停、查证据、记 BUG_NOTES」处理。
+
+## 2026-07-05：n8n 周报 smoke 以 intake webhook 等价验证为准
+
+- 决策：`industryResearchWeeklyRerun` 是 Schedule Trigger workflow，CLI `n8n execute --id=...` 不能作为可靠 smoke；导入激活后，用 Subscription List 第一项直接 POST intake webhook 验证业务链路。
+- 原因：n8n 2.26.5 对没有 `Execute Workflow Trigger` 的 Schedule workflow 返回 `Missing node to start execution`；但 webhook fallback 能验证同一 payload 进入 intake、生成 run、写 Supabase artifacts 和 n8n events。
+- 影响：R5 验收信号改为：workflow 已 active、intake smoke 生成新 run、报告含周报基线/变化节、Supabase event 表按同一 `n8n_execution_id` 有 queued / running / completed 三态。
+
 ## 2026-07-05：结构化抽取改为分批 map-reduce
 
 - 决策：`generateGlmStructuredExtractionBatched` 按「可确认来源优先 + 每批 12 文档 / 36k 字符 + 总量 36 文档」切批，逐批抽取后按稳定键合并去重（竞品按名、产品信号按竞品+信号、痛点按主题、内容按平台+话题、机会按标题）；单批失败只把该批文档的 extraction jobs 降级为 needs_review，全部批次失败才抛错走原有 workflow 降级。旧 `generateGlmStructuredExtraction` 保留为兼容包装。

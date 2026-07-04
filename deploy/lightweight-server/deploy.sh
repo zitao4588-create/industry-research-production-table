@@ -24,7 +24,7 @@ for arg in "$@"; do
     --execute) MODE="execute" ;;
     --dry-run) MODE="dry-run" ;;
     *)
-      echo "未知参数：$arg（支持 --dry-run / --execute）" >&2
+      echo "未知参数：${arg}（支持 --dry-run / --execute）" >&2
       exit 2
       ;;
   esac
@@ -53,7 +53,7 @@ RSYNC_EXCLUDES=(
   --exclude "remotion-videos"
 )
 
-echo "== 行业研究生产台部署（mode=$MODE）=="
+echo "== 行业研究生产台部署（mode=${MODE}）=="
 echo "repo:        $REPO_ROOT"
 echo "ssh host:    $SSH_HOST"
 echo "remote dir:  $REMOTE_DIR"
@@ -82,7 +82,7 @@ if [[ "$MODE" == "dry-run" ]]; then
   echo "[4/8..8/8] （dry-run）后续步骤计划："
   echo "  ssh $SSH_HOST \"cd $REMOTE_DIR && pnpm install --frozen-lockfile\""
   echo "  ssh $SSH_HOST \"cd $REMOTE_DIR && pnpm build\""
-  echo "  ssh $SSH_HOST（登录用户 shell 内 sudo cat env 导出后跑 pnpm server:doctor && pnpm supabase:doctor；secret 不落盘不回显）"
+  echo "  ssh ${SSH_HOST}（登录用户 shell 内 sudo cat env 导出后跑 pnpm server:doctor && pnpm supabase:doctor；secret 不落盘不回显）"
   echo "  ssh $SSH_HOST \"sudo systemctl restart $SERVICE_NAME && systemctl is-active $SERVICE_NAME\""
   echo "  curl -fsS $HEALTH_URL"
   echo
@@ -111,6 +111,18 @@ echo "[7/8] 重启服务"
 ssh "$SSH_HOST" "sudo systemctl restart $SERVICE_NAME && systemctl is-active $SERVICE_NAME"
 
 echo "[8/8] 公网 health 检查"
-curl -fsS "$HEALTH_URL"
+health_ok=0
+for attempt in 1 2 3 4 5; do
+  if curl -fsS "$HEALTH_URL"; then
+    health_ok=1
+    break
+  fi
+  echo "  health 暂未就绪，${attempt}/5，等待 3 秒后重试..." >&2
+  sleep 3
+done
+if [[ "$health_ok" != "1" ]]; then
+  echo "公网 health 检查失败：$HEALTH_URL" >&2
+  exit 1
+fi
 echo
 echo "== 部署完成：$HEAD_SHA =="

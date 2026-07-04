@@ -1,6 +1,7 @@
 # Codex 交接文档 · 生产上线三部曲 + 外部凭据接入
 
 > **更新时间**：2026-07-05
+> **状态同步**：2026-07-05 已由 Codex 执行 R1-R6；生产 LLM env 已写入，`7478af7` 已部署，`industryResearchWeeklyRerun` 已导入激活，生产基线 run `dtc-2026-07-04T17-32-52-910Z` 已生成并完成 zvec 索引。R7 文档回写与提交见本轮 commit。
 > **受众**：Codex / 接手生产上线的开发者
 > **性质**：研究价值阶段（`docs/CODEX_RESEARCH_VALUE_HANDOFF.md` 的 P0–P3）已由 Claude Code 于 2026-07-05 全部完成并推送 `origin/main`；Claude Code 的自动模式权限策略禁止其 SSH 生产服务器，剩余的**生产侧动作**全部整理在本文档。
 > **授权说明（重要）**：用户已明确授权在本文档范围内通过 SSH（host 别名 `lighthouse-lab`，登录用户 `ubuntu`）执行部署、n8n 导入和验证。这**覆盖** `CODEX_RESEARCH_VALUE_HANDOFF.md` §3.6「不要主动 SSH」的旧纪律——但授权范围仅限本文档列出的脚本与命令；护栏见 §2，任何一步失败即停、记 `BUG_NOTES.md`，不做清单外的服务器改动。
@@ -11,14 +12,16 @@
 
 已完成、**不要重做**：
 
-- `origin/main` = `a77d519`（`7c07af5` 研究价值阶段 + `a77d519` 部署脚本）。分批抽取、搜索 provider、robots/配额/礼貌控制、内容 API 适配器、跨 run diff 周报、历史上下文回灌、n8n 周报 workflow JSON、run-security 单测、三个部署脚本，全部在这两个提交里。
+- 执行前 `origin/main` = `7478af7`（`7c07af5` 研究价值阶段 + `a77d519` 部署脚本 + `7478af7` handoff 文档）。分批抽取、搜索 provider、robots/配额/礼貌控制、内容 API 适配器、跨 run diff 周报、历史上下文回灌、n8n 周报 workflow JSON、run-security 单测、三个部署脚本，均已入库。
 - 本机验证：`pnpm check`（84 测试）与 `pnpm build` 全绿；两次真实 DeepSeek run 证明九库填充 + 周报 diff 循环可用（`outputs/industry-research-runs/pet-probiotics-dtc-2026-07-04T16-50-36-292Z/`）。
 - 本机 `.env.local` 已配置可用的 DeepSeek 官方 API（`AGENT_FACTORY_LLM_*` 三个变量）。**这是 R2 的数据源，不要提交、不要打印。**
 
-未完成（本文档范围）：
+执行结果（本文档范围）：
 
-- 生产服务器还在旧代码（`703e41a` 时代 + 部分 UI 同步），env 无 `AGENT_FACTORY_LLM_*`，n8n 无周报 workflow。
-- 公网 `https://research.playgamelab.cn/api/health` 于 2026-07-05 确认 `status=ok`（部署前基线）。
+- 生产服务器已部署 `7478af7`；R3 部署备份为 `.deploy-backups/pre-7478af7-20260704T172911Z.tar.gz`。
+- 生产 env 已写入 `AGENT_FACTORY_LLM_*` 三个变量；R2 备份为 `industry-research.env.bak-20260704172841`，未打印密钥。
+- 公网 `https://research.playgamelab.cn/api/health` 部署后复测 `status=ok`。
+- n8n 周报 workflow `industryResearchWeeklyRerun` 已导入并激活；生产 smoke run 为 `dtc-2026-07-04T17-32-52-910Z`，报告包含「本期新增与变化」，zvec metadata 56 行。
 - Brave/YouTube/Reddit key 未注册（用户动作，见 §5）。
 
 前置阅读：`AGENTS.md`、`DECISIONS.md` 2026-07-05 各条、`deploy/lightweight-server/README.md`「一键脚本」节、`BUG_NOTES.md`（重点：远端目录不是 git 仓库、sudo env 加载坑、`SUPABASE_SERVICE_ROLE_KEY` 双 JWT 粘贴事故、`ssh lighthouse-lab` 而不是 root@domain）。

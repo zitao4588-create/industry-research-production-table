@@ -1,6 +1,40 @@
 # Bug Notes
 
-更新时间：2026-06-29
+更新时间：2026-07-05
+
+## 已处理：部署脚本文案中的 Bash 变量被中文标点吞进变量名
+
+- 现象：R2 执行 `bash deploy/lightweight-server/configure-llm-env.sh --dry-run` 时报 `line 41: MODE�: unbound variable`。
+- 原因：`set -u` 下，`$MODE）`、`$LOCAL_ENV（...` 这类变量后紧贴中文全角标点，Bash 在当前 locale 中把标点并入变量名解析。
+- 处理：三个部署脚本中所有紧贴中文标点的变量统一改为 `${MODE}` / `${LOCAL_ENV}` / `${arg}` 等花括号形式。
+- 验证：`bash -n deploy/lightweight-server/configure-llm-env.sh deploy/lightweight-server/deploy.sh deploy/lightweight-server/import-weekly-workflow.sh` 通过；R2 dry-run 与 execute 通过。
+
+## 已处理：部署 health 检查在服务刚重启时偶发 502
+
+- 现象：R3 `deploy.sh --execute` 完成 build、doctor 和 `systemctl restart` 后，最后一次公网 `curl https://research.playgamelab.cn/api/health` 返回 `502`，脚本 exit 56。
+- 原因：Next 服务已 active 并在 `127.0.0.1:3010` ready，但 Caddy 到新进程的公网 health 有短暂 race。
+- 处理：`deploy.sh` 的公网 health 检查改为最多 5 次、每次间隔 3 秒的短重试。
+- 验证：失败后只读复测显示本机 health 200、公网 health 200、`industry-research.service` active，日志只有 Next ready。
+
+## 已处理：n8n 周报导入脚本需要 sudo 访问 Docker
+
+- 现象：R1 中 `docker ps` 对 `ubuntu` 用户返回 `permission denied while trying to connect to the docker API`，但 `sudo -n docker ps` 可用。
+- 原因：服务器 Docker socket 未开放给普通 `ubuntu` 用户；原 `import-weekly-workflow.sh` 使用裸 `docker`，execute 会失败。
+- 处理：脚本中远端 `docker exec/cp/restart` 全部改为 `sudo -n docker ...`，保持无密码 sudo 先决条件。
+- 验证：R5 成功备份 workflow、导入 `industryResearchWeeklyRerun`、激活并重启 n8n 容器。
+
+## 验收备注：Schedule Trigger workflow 不能用 `n8n execute --id` 直接 smoke
+
+- 现象：R5 手动执行 `n8n execute --id=industryResearchWeeklyRerun` 返回 `Missing node to start execution`，提示 workflow 需要 `Execute Workflow Trigger`。
+- 判断：这是 n8n CLI 对 Schedule Trigger workflow 的限制，不代表导入或激活失败；n8n 日志显示 `Activated workflow "industry-research-weekly-rerun"`。
+- 处理：按 handoff fallback，直接 POST `https://n8n.playgamelab.cn/webhook/industry-research/intake` 发送 Subscription List 第一项作为等价 smoke。
+- 验证：生成生产 run `dtc-2026-07-04T17-32-52-910Z`，报告含「本期新增与变化」和「本期为基线」，Supabase n8n event 表按 `n8n_execution_id=13` 查询到 queued / running / completed 三态。
+
+## 验收备注：n8n webhook smoke 请求超时但业务 run 已完成
+
+- 现象：直接 POST intake webhook 的本地 `curl --max-time 620` 最终超时，0 bytes received。
+- 判断：n8n 没有及时把 webhook response 返回给调用方，但行业研究 run 实际在 25 秒内完成并写入 Supabase；这属于 webhook 响应层问题，不是业务链路失败。
+- 验证：run list 显示 `dtc-2026-07-04T17-32-52-910Z`，8 类 artifacts 齐全，reportMarkdown 含周报基线节；n8n event 表有 execution `13` 的三态事件。
 
 ## 已处理：n8n 四态 workflow 首次 smoke 失败
 

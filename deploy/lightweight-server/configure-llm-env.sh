@@ -18,7 +18,7 @@ for arg in "$@"; do
     --execute) MODE="execute" ;;
     --dry-run) MODE="dry-run" ;;
     *)
-      echo "未知参数：$arg（支持 --dry-run / --execute）" >&2
+      echo "未知参数：${arg}（支持 --dry-run / --execute）" >&2
       exit 2
       ;;
   esac
@@ -38,10 +38,10 @@ for var in "${VARS[@]}"; do
   fi
 done
 
-echo "== 服务器 LLM env 配置（mode=$MODE）=="
+echo "== 服务器 LLM env 配置（mode=${MODE}）=="
 echo "ssh host:   $SSH_HOST"
 echo "remote env: $REMOTE_ENV"
-echo "local env:  $LOCAL_ENV（只读取 ${VARS[*]}，不打印值）"
+echo "local env:  ${LOCAL_ENV}（只读取 ${VARS[*]}，不打印值）"
 echo
 
 if [[ "$MODE" == "dry-run" ]]; then
@@ -68,10 +68,10 @@ done
 
 echo "[3/3] 校验变量行数"
 count="$(ssh "$SSH_HOST" "sudo grep -c '^AGENT_FACTORY_LLM_' $REMOTE_ENV")"
-echo "  远端 AGENT_FACTORY_LLM_* 行数：$count（期望 3）"
+echo "  远端 AGENT_FACTORY_LLM_* 行数：${count}（期望 3）"
 
 if [[ "$count" != "3" ]]; then
-  echo "行数不符合预期，请人工核查 $REMOTE_ENV（备份在 .bak-$TIMESTAMP）。" >&2
+  echo "行数不符合预期，请人工核查 ${REMOTE_ENV}（备份在 .bak-${TIMESTAMP}）。" >&2
   exit 1
 fi
 
