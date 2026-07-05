@@ -777,3 +777,14 @@ table.data tbody tr:hover td:first-child::before { content: ""; position: absolu
   .sidebar { transform: translateX(-100%); }
   .sidebar.open { transform: translateX(0); }
 }
+
+/* ============== Simple mode: hero knowledge-graph backdrop ============== */
+.sr-hero { position: relative; }
+.sr-hero-viz {
+  position: absolute; top: -42px; left: 50%; transform: translateX(-50%);
+  width: min(880px, 100vw); height: 560px; z-index: 0;
+  opacity: 0.45; pointer-events: none;
+  -webkit-mask-image: radial-gradient(80% 78% at 50% 46%, #000 46%, transparent 97%);
+  mask-image: radial-gradient(80% 78% at 50% 46%, #000 46%, transparent 97%);
+}
+.sr-hero-content { position: relative; z-index: 1; }

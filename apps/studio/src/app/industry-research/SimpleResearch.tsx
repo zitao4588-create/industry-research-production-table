@@ -4,19 +4,19 @@ import type {
   ResearchWorkflowResult,
 } from "@industry-research/core";
 /* =============================================================================
- * SimpleResearch.tsx — 默认的「3 步式」简化体验（普通人一看就懂）
+ * SimpleResearch.tsx — 唯一的「3 步式」体验（普通人一看就懂）
  * -----------------------------------------------------------------------------
  * 定位：帮你做电商竞品研究并生成报告。只有三步：
  *   ① 输入：你想研究哪个品类 / 行业 / 竞品
  *   ② 运行：系统自动找资料、整理竞品、提炼机会
  *   ③ 报告：一份报告 + 竞品表 + 机会清单 + 下载
  *
- * 复杂能力（九库、运行模式、流水线、证据弹层、人工审核、命令面板…）全部保留，
- * 只是收进右上角的「高级模式」—— 即原有的完整 IndustryResearchWorkbench。
+ * 知识图谱（KnowledgeGraph）是贯穿三步的签名视觉元素：
+ *   输入屏做氛围背景 → 运行屏随进度逐节点点亮 → 报告屏展示真实库计数。
  *
  * 后端不动：复用 actions.ts 的 server action、`/api/.../run/stream` 的 SSE、
  * adapters 里的 createModelFromInput / adaptRun / deriveRunState、extras 的
- * renderMarkdown。默认运行模式固定为 public_web，先保证无 LLM 成本也能稳定交付。
+ * renderMarkdown。运行模式固定为 public_web，保证无 LLM 成本也能稳定交付。
  * ===========================================================================*/
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { runIndustryResearchAction } from "./actions";
@@ -34,12 +34,28 @@ import {
 } from "./adapters/run-events";
 import { Icon } from "./components/components";
 import { renderMarkdown, showToast, Toaster } from "./components/extras";
-import IndustryResearchWorkbench from "./IndustryResearchWorkbench";
+import {
+  type GraphDatabase,
+  KnowledgeGraph,
+} from "./components/KnowledgeGraph";
 import { fetchRunStreamToken } from "./run-stream-token";
 
 const ACCENT = "#34dcc0";
-/** 简化版唯一的运行模式：真实公开采集；LLM 交付放到高级模式显式启用。 */
+/** 唯一的运行模式：真实公开采集，无 LLM 成本也能稳定交付。 */
 const DEFAULT_MODE = "public_web" as const;
+
+/** 输入屏背景图谱的占位数据（与 adapters/research 的九库顺序一致）。 */
+const GRAPH_PLACEHOLDER: GraphDatabase[] = [
+  "信息源库",
+  "竞品库",
+  "网站结构库",
+  "产品库",
+  "关键词库",
+  "用户痛点库",
+  "内容库",
+  "机会库",
+  "情报周报库",
+].map((label) => ({ label, count: 0 }));
 
 type Phase = "input" | "running" | "error" | "done";
 
@@ -64,8 +80,7 @@ function downloadBlob(filename: string, content: string, mime: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-/** 单输入 → 完整 ResearchWorkflowInput：行业/市场/目标用合理默认值。
- *  需要精确设定这些字段时走「高级模式」。 */
+/** 单输入 → 完整 ResearchWorkflowInput：行业/市场/目标用合理默认值。 */
 function buildInput(query: string, urlText: string): ResearchWorkflowInput {
   const q = query.trim();
   return {
@@ -129,10 +144,15 @@ ${pains}
 - 用公开渠道持续监控竞品更新`;
 }
 
+/** UIDatabaseSummary → KnowledgeGraph 的输入。 */
+function toGraphDatabases(
+  databases: Array<{ label: string; count: number }>,
+): GraphDatabase[] {
+  return databases.map((db) => ({ label: db.label, count: db.count }));
+}
+
 /* =============================== App ================================ */
 export default function SimpleResearch() {
-  const [advanced, setAdvanced] = useState(false);
-
   const [phase, setPhase] = useState<Phase>("input");
   const [query, setQuery] = useState("");
   const [urlText, setUrlText] = useState("");
@@ -148,7 +168,7 @@ export default function SimpleResearch() {
 
   const runSeq = useRef(0);
 
-  // 主题挂到 <html>，让 globals.css 的 CSS 变量解析（与控制台一致）。
+  // 主题挂到 <html>，让 globals.css 的 CSS 变量解析。
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", "dark");
     document.documentElement.style.setProperty("--accent", ACCENT);
@@ -275,30 +295,6 @@ export default function SimpleResearch() {
     setIndeterminate(false);
   }, []);
 
-  // 高级模式 = 原有完整控制台，外加一个悬浮的「返回简化模式」按钮。
-  if (advanced) {
-    return (
-      <>
-        <IndustryResearchWorkbench />
-        <button
-          type="button"
-          className="chip"
-          onClick={() => setAdvanced(false)}
-          style={{
-            position: "fixed",
-            right: 18,
-            bottom: 18,
-            zIndex: 60,
-            boxShadow: "0 6px 22px rgba(0,0,0,.35)",
-          }}
-        >
-          <Icon name="arrow" size={14} />
-          返回简化模式
-        </button>
-      </>
-    );
-  }
-
   return (
     <div style={{ minHeight: "100vh" }}>
       <header
@@ -309,16 +305,11 @@ export default function SimpleResearch() {
           maxWidth: 880,
           margin: "0 auto",
           padding: "22px 24px 8px",
+          position: "relative",
+          zIndex: 1,
         }}
       >
         <div style={{ fontWeight: 700, letterSpacing: ".3px" }}>行研生产台</div>
-        <button
-          type="button"
-          className="chip"
-          onClick={() => setAdvanced(true)}
-        >
-          高级模式
-        </button>
       </header>
 
       <main
@@ -349,7 +340,6 @@ export default function SimpleResearch() {
             toggleDetail={() => setShowErrorDetail((v) => !v)}
             onRetry={startRun}
             onBack={resetToInput}
-            onAdvanced={() => setAdvanced(true)}
           />
         )}
         {phase === "done" && model && (
@@ -386,96 +376,107 @@ function InputScreen({
     inputRef.current?.focus();
   }, []);
   return (
-    <>
-      <div style={{ textAlign: "center", margin: "32px 0 24px" }}>
-        <h1 style={{ fontSize: 30, margin: "0 0 12px", lineHeight: 1.25 }}>
-          帮你做电商竞品研究，
-          <br />
-          一键生成报告
-        </h1>
-        <p
-          style={{
-            color: "var(--ink-2)",
-            fontSize: 15,
-            lineHeight: 1.7,
-            maxWidth: 560,
-            margin: "0 auto",
-          }}
-        >
-          输入一个品类、行业或竞品，系统会自动找资料、整理竞品、提炼机会，给你一份可下载的报告。
-        </p>
+    <div className="sr-hero">
+      <div className="sr-hero-viz" aria-hidden>
+        <KnowledgeGraph
+          databases={GRAPH_PLACEHOLDER}
+          progress={1}
+          building={false}
+          accent={ACCENT}
+          height={560}
+        />
       </div>
-
-      <div className="console">
-        <div className="console-body">
-          <div className="field">
-            <label htmlFor="sr-query">你想研究哪个品类 / 行业 / 竞品？</label>
-            <input
-              id="sr-query"
-              ref={inputRef}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") onStart();
-              }}
-              placeholder="例如：宠物肠胃益生菌 / 大豆蜡香薰 / 电解质气泡水"
-            />
-          </div>
-
-          <button
-            type="button"
-            className={`supplement-toggle${showUrls ? " open" : ""}`}
-            onClick={() => setShowUrls(!showUrls)}
-            aria-expanded={showUrls}
+      <div className="sr-hero-content">
+        <div style={{ textAlign: "center", margin: "32px 0 24px" }}>
+          <h1 style={{ fontSize: 30, margin: "0 0 12px", lineHeight: 1.25 }}>
+            帮你做电商竞品研究，
+            <br />
+            一键生成报告
+          </h1>
+          <p
             style={{
-              width: "100%",
-              textAlign: "left",
-              background: "none",
-              borderRight: 0,
-              borderBottom: 0,
-              borderLeft: 0,
-              paddingRight: 0,
-              paddingLeft: 0,
-              paddingBottom: 0,
-              fontFamily: "inherit",
-              cursor: "pointer",
+              color: "var(--ink-2)",
+              fontSize: 15,
+              lineHeight: 1.7,
+              maxWidth: 560,
+              margin: "0 auto",
             }}
           >
-            <Icon name="chevron" size={15} />
-            竞品网址（可选）— 留空将自动公开搜索
-          </button>
-          {showUrls && (
-            <div className="field fade-in" style={{ marginTop: 12 }}>
-              <textarea
-                value={urlText}
-                onChange={(e) => setUrlText(e.target.value)}
-                placeholder={"每行一个公开 URL\n留空将自动公开搜索竞品官网"}
+            输入一个品类、行业或竞品，系统会自动找资料、整理竞品、提炼机会，给你一份可下载的报告。
+          </p>
+        </div>
+
+        <div className="console">
+          <div className="console-body">
+            <div className="field">
+              <label htmlFor="sr-query">你想研究哪个品类 / 行业 / 竞品？</label>
+              <input
+                id="sr-query"
+                ref={inputRef}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") onStart();
+                }}
+                placeholder="例如：宠物肠胃益生菌 / 大豆蜡香薰 / 电解质气泡水"
               />
             </div>
-          )}
-        </div>
-        <div className="console-foot">
-          <span className="note">
-            点击开始后，自动找资料 · 整理竞品 · 提炼机会，约一两分钟。
-          </span>
-          <div className="spacer" />
-          <button
-            type="button"
-            className="btn btn-primary"
-            onClick={onStart}
-            disabled={!query.trim()}
-            style={
-              !query.trim()
-                ? { opacity: 0.5, cursor: "not-allowed" }
-                : undefined
-            }
-          >
-            <Icon name="play" size={15} />
-            开始研究
-          </button>
+
+            <button
+              type="button"
+              className={`supplement-toggle${showUrls ? " open" : ""}`}
+              onClick={() => setShowUrls(!showUrls)}
+              aria-expanded={showUrls}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                background: "none",
+                borderRight: 0,
+                borderBottom: 0,
+                borderLeft: 0,
+                paddingRight: 0,
+                paddingLeft: 0,
+                paddingBottom: 0,
+                fontFamily: "inherit",
+                cursor: "pointer",
+              }}
+            >
+              <Icon name="chevron" size={15} />
+              竞品网址（可选）— 留空将自动公开搜索
+            </button>
+            {showUrls && (
+              <div className="field fade-in" style={{ marginTop: 12 }}>
+                <textarea
+                  value={urlText}
+                  onChange={(e) => setUrlText(e.target.value)}
+                  placeholder={"每行一个公开 URL\n留空将自动公开搜索竞品官网"}
+                />
+              </div>
+            )}
+          </div>
+          <div className="console-foot">
+            <span className="note">
+              点击开始后，自动找资料 · 整理竞品 · 提炼机会，约一两分钟。
+            </span>
+            <div className="spacer" />
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={onStart}
+              disabled={!query.trim()}
+              style={
+                !query.trim()
+                  ? { opacity: 0.5, cursor: "not-allowed" }
+                  : undefined
+              }
+            >
+              <Icon name="play" size={15} />
+              开始研究
+            </button>
+          </div>
         </div>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -498,98 +499,114 @@ function RunningScreen({
   const headline = indeterminate
     ? "正在研究，请稍候…"
     : ["正在找资料…", "正在整理竞品…", "正在提炼机会…", "即将完成…"][stage];
+  const graphDatabases = useMemo(
+    () => toGraphDatabases(d.databases),
+    [d.databases],
+  );
 
   return (
-    <div
-      className="console"
-      style={{ marginTop: 40, padding: "40px 28px", textAlign: "center" }}
-    >
-      <div style={{ fontSize: 17, fontWeight: 600, marginBottom: 22 }}>
-        {headline}
-      </div>
-
-      <div
-        style={{
-          height: 8,
-          borderRadius: 99,
-          background: "var(--line)",
-          overflow: "hidden",
-          maxWidth: 520,
-          margin: "0 auto",
-        }}
-        role="progressbar"
-        aria-valuenow={indeterminate ? undefined : pct}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label="研究进度"
-      >
-        <div
-          style={{
-            height: "100%",
-            width: indeterminate ? "100%" : `${Math.max(4, pct)}%`,
-            background: "var(--accent)",
-            opacity: indeterminate ? 0.55 : 1,
-            transition: "width .45s ease",
-          }}
-        />
-      </div>
-      {!indeterminate && (
-        <div
-          style={{
-            marginTop: 10,
-            fontSize: 13,
-            color: "var(--muted)",
-            fontFamily: "var(--font-mono)",
-          }}
-        >
-          {pct}%
-        </div>
-      )}
-
-      <div
-        style={{
-          display: "flex",
-          gap: 28,
-          justifyContent: "center",
-          marginTop: 28,
-          flexWrap: "wrap",
-        }}
-      >
-        {MILESTONES.map((label, i) => {
-          const done = i < stage;
-          const active = i === stage;
-          const color = done
-            ? "var(--accent)"
-            : active
-              ? "var(--ink)"
-              : "var(--faint)";
-          return (
-            <div
-              key={label}
-              style={{ display: "flex", alignItems: "center", gap: 8, color }}
-            >
-              <span
-                style={{
-                  width: 20,
-                  height: 20,
-                  borderRadius: 99,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontSize: 11,
-                  border: `1.5px solid ${color}`,
-                  background: done ? "var(--accent)" : "transparent",
-                  color: done ? "#04201b" : color,
-                }}
-              >
-                {done ? <Icon name="check" size={11} /> : i + 1}
-              </span>
-              <span style={{ fontSize: 13.5, fontWeight: active ? 600 : 400 }}>
-                {label}
-              </span>
+    <div className="run-stage" style={{ marginTop: 40 }}>
+      <KnowledgeGraph
+        databases={graphDatabases}
+        progress={indeterminate ? 0.9 : Math.max(0.12, d.progress)}
+        building={!d.done}
+        accent={ACCENT}
+        height={430}
+      />
+      <div className="run-stage-overlay">
+        <div className="run-stage-top">
+          <div>
+            <h2>{skeleton.project.name}</h2>
+            <div className="now">
+              <span className="spin" />
+              {headline}
             </div>
-          );
-        })}
+          </div>
+          {!indeterminate && (
+            <div className="run-pct">
+              <b>{pct}%</b>
+              <span>progress</span>
+            </div>
+          )}
+        </div>
+
+        <div>
+          <div
+            style={{
+              height: 6,
+              borderRadius: 99,
+              background: "var(--line)",
+              overflow: "hidden",
+              maxWidth: 520,
+            }}
+            role="progressbar"
+            aria-valuenow={indeterminate ? undefined : pct}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="研究进度"
+          >
+            <div
+              style={{
+                height: "100%",
+                width: indeterminate ? "100%" : `${Math.max(4, pct)}%`,
+                background: "var(--accent)",
+                opacity: indeterminate ? 0.55 : 1,
+                transition: "width .45s ease",
+              }}
+            />
+          </div>
+          <div
+            style={{
+              display: "flex",
+              gap: 24,
+              marginTop: 14,
+              flexWrap: "wrap",
+            }}
+          >
+            {MILESTONES.map((label, i) => {
+              const done = i < stage;
+              const active = i === stage;
+              const color = done
+                ? "var(--accent)"
+                : active
+                  ? "var(--ink)"
+                  : "var(--faint)";
+              return (
+                <div
+                  key={label}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    color,
+                  }}
+                >
+                  <span
+                    style={{
+                      width: 20,
+                      height: 20,
+                      borderRadius: 99,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 11,
+                      border: `1.5px solid ${color}`,
+                      background: done ? "var(--accent)" : "transparent",
+                      color: done ? "#04201b" : color,
+                    }}
+                  >
+                    {done ? <Icon name="check" size={11} /> : i + 1}
+                  </span>
+                  <span
+                    style={{ fontSize: 13.5, fontWeight: active ? 600 : 400 }}
+                  >
+                    {label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -602,14 +619,12 @@ function ErrorScreen({
   toggleDetail,
   onRetry,
   onBack,
-  onAdvanced,
 }: {
   message: string | null;
   showDetail: boolean;
   toggleDetail: () => void;
   onRetry: () => void;
   onBack: () => void;
-  onAdvanced: () => void;
 }) {
   return (
     <div
@@ -626,7 +641,7 @@ function ErrorScreen({
           margin: "0 auto 22px",
         }}
       >
-        可能是网络或模型服务暂时不可用。可以稍后重试，或切换到高级模式选择其它运行方式。
+        可能是网络或数据源暂时不可用。稍等片刻重试，或换一个品类关键词再试一次。
       </p>
       <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
         <button type="button" className="btn btn-primary" onClick={onRetry}>
@@ -674,25 +689,6 @@ function ErrorScreen({
           </pre>
         )}
       </div>
-
-      <p style={{ marginTop: 18, fontSize: 12.5, color: "var(--muted)" }}>
-        需要更多控制？{" "}
-        <button
-          type="button"
-          onClick={onAdvanced}
-          style={{
-            color: "var(--accent)",
-            cursor: "pointer",
-            background: "none",
-            border: 0,
-            padding: 0,
-            fontFamily: "inherit",
-            fontSize: "inherit",
-          }}
-        >
-          切换到高级模式
-        </button>
-      </p>
     </div>
   );
 }
@@ -706,6 +702,10 @@ function DoneScreen({
   onRestart: () => void;
 }) {
   const markdown = useMemo(() => buildReportMarkdown(model), [model]);
+  const graphDatabases = useMemo(
+    () => toGraphDatabases(model.databases),
+    [model.databases],
+  );
 
   const download = () => {
     downloadBlob(
@@ -743,6 +743,35 @@ function DoneScreen({
           <Icon name="spark" size={14} />
           再研究一次
         </button>
+      </div>
+
+      <div className="run-stage" style={{ marginTop: 14 }}>
+        <KnowledgeGraph
+          databases={graphDatabases}
+          progress={1}
+          building={false}
+          accent={ACCENT}
+          height={300}
+        />
+        <div
+          className="run-stage-overlay"
+          style={{ justifyContent: "flex-end" }}
+        >
+          <div className="run-stage-bottom">
+            <div className="c">
+              <b>{model.stats.evidence}</b>
+              <span>可溯源证据</span>
+            </div>
+            <div className="c">
+              <b>{model.competitors.length}</b>
+              <span>竞品</span>
+            </div>
+            <div className="c">
+              <b>{model.opportunities.length}</b>
+              <span>机会</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="section-title">
