@@ -58,12 +58,15 @@ export function KnowledgeGraph({
   building = false,
   accent = "#3fd6c0",
   height = 440,
+  showLabels = true,
 }: {
   databases: GraphDatabase[];
   progress?: number;
   building?: boolean;
   accent?: string;
   height?: number;
+  /** 装饰性背景用途时关掉数据库名标注，避免与前景文字叠加。 */
+  showLabels?: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -71,12 +74,14 @@ export function KnowledgeGraph({
   const progRef = useRef(progress);
   const buildRef = useRef(building);
   const accentRef = useRef(accent);
+  const labelsRef = useRef(showLabels);
   const shownRef = useRef(building ? 0 : 1);
   const dbRef = useRef(databases);
 
   useEffect(() => { progRef.current = progress; }, [progress]);
   useEffect(() => { buildRef.current = building; }, [building]);
   useEffect(() => { accentRef.current = accent; }, [accent]);
+  useEffect(() => { labelsRef.current = showLabels; }, [showLabels]);
   useEffect(() => { dbRef.current = databases; }, [databases]);
 
   useEffect(() => {
@@ -192,7 +197,7 @@ export function KnowledgeGraph({
           ctx.strokeStyle = A(0.85 * vis); ctx.lineWidth = 1.4; ctx.stroke();
         }
 
-        if (n.type === "db" && vis > 0.6) {
+        if (n.type === "db" && vis > 0.6 && labelsRef.current) {
           const out = n.x > 0.5 ? 1 : -1;
           ctx.font = "500 10.5px 'IBM Plex Mono', monospace";
           ctx.textAlign = out > 0 ? "left" : "right";

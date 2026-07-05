@@ -384,32 +384,22 @@ function InputScreen({
           building={false}
           accent={ACCENT}
           height={560}
+          showLabels={false}
         />
       </div>
       <div className="sr-hero-content">
-        <div style={{ textAlign: "center", margin: "32px 0 24px" }}>
-          <h1 style={{ fontSize: 30, margin: "0 0 12px", lineHeight: 1.25 }}>
-            帮你做电商竞品研究，
+        <div style={{ textAlign: "center", margin: "44px 0 28px" }}>
+          <h1 style={{ fontSize: 30, margin: 0, lineHeight: 1.25 }}>
+            输入一个品类，
             <br />
-            一键生成报告
+            得到一份竞品研究报告
           </h1>
-          <p
-            style={{
-              color: "var(--ink-2)",
-              fontSize: 15,
-              lineHeight: 1.7,
-              maxWidth: 560,
-              margin: "0 auto",
-            }}
-          >
-            输入一个品类、行业或竞品，系统会自动找资料、整理竞品、提炼机会，给你一份可下载的报告。
-          </p>
         </div>
 
         <div className="console">
           <div className="console-body">
             <div className="field">
-              <label htmlFor="sr-query">你想研究哪个品类 / 行业 / 竞品？</label>
+              <label htmlFor="sr-query">品类 / 行业 / 竞品</label>
               <input
                 id="sr-query"
                 ref={inputRef}
@@ -418,8 +408,25 @@ function InputScreen({
                 onKeyDown={(e) => {
                   if (e.key === "Enter") onStart();
                 }}
-                placeholder="例如：宠物肠胃益生菌 / 大豆蜡香薰 / 电解质气泡水"
+                placeholder="例如：宠物肠胃益生菌"
               />
+            </div>
+            <div className="sr-examples">
+              <span>试试</span>
+              {["宠物肠胃益生菌", "大豆蜡香薰", "电解质气泡水"].map(
+                (example) => (
+                  <button
+                    key={example}
+                    type="button"
+                    onClick={() => {
+                      setQuery(example);
+                      inputRef.current?.focus();
+                    }}
+                  >
+                    {example}
+                  </button>
+                ),
+              )}
             </div>
 
             <button
@@ -456,7 +463,7 @@ function InputScreen({
           </div>
           <div className="console-foot">
             <span className="note">
-              点击开始后，自动找资料 · 整理竞品 · 提炼机会，约一两分钟。
+              自动找资料 · 整理竞品 · 提炼机会，约一两分钟
             </span>
             <div className="spacer" />
             <button
