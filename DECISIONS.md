@@ -11,13 +11,22 @@
   - 不新增登录、支付、多租户、数据库或新后端。
   - 不影响 `/industry-research?run=<runId>` 分享回放。
 
-## 2026-07-06：不可达旧控制台暂不批量删除
+## 2026-07-06：用户确认后删除不可达旧控制台
 
-- 决策：`IndustryResearchWorkbench.tsx` 及其独占依赖已不可达，但本轮不删除；后续需要用户明确确认删除清单后再做。
-- 原因：这是批量删除代码和相关依赖，项目协作规则要求先停下来确认；同时旧控制台仍可能作为短期回滚参考。
+- 决策：在用户明确确认后，删除不可达的 `IndustryResearchWorkbench.tsx` 及其独占依赖 `components/EvidencePopover.tsx`、`components/micro.tsx`、`fixtures/research-console.ts`。
+- 原因：线上已统一为 `SimpleResearch` 单一简化体验，旧控制台无 import 路径；保留会增加维护噪音和误判风险。删除前已先用 `rg` 盘点引用，确认应用代码没有依赖。
 - 影响：
   - 当前线上用户不会看到高级模式或旧控制台。
-  - 仓库仍保留一段死代码，后续清理前需要先 inventory 并单独提交。
+  - 设计交接/porting 文档里的历史参考文件保留不动；应用运行面只保留真实可达代码。
+
+## 2026-07-06：搜索 API 新增 Tavily，Brave 不再作为推荐路线
+
+- 决策：`AGENT_FACTORY_SEARCH_PROVIDER` 新增 `tavily`，与现有 `serper` / `duckduckgo_html` 共存；`brave` 只保留兼容，不再作为推荐配置。
+- 原因：Tavily 官方免费档提供 1,000 API credits/month 且不需要信用卡；Search endpoint 直接返回 `results[].url` 和摘要，适合当前“发现候选公开 URL → 再按 robots/配额保守采集”的架构。Serper 仍保留作 Google SERP 备选。Google Custom Search 官方已标注不对新客户开放，不能作为新配置建议。Reddit 官方政策对商业使用和研究用途有额外权限要求，不能当作普通免费数据源默认启用。
+- 影响：
+  - 服务器可用 `AGENT_FACTORY_SEARCH_PROVIDER=tavily` + `AGENT_FACTORY_SEARCH_API_KEY=<tvly key>` 切换搜索发现。
+  - Tavily 调用固定 `search_depth=basic`、`include_answer=false`、`include_raw_content=false`，控制免费 credits 消耗和响应体大小。
+  - 无 key 或 Tavily 调用失败时仍按既有逻辑降级到 `duckduckgo_html`。
 
 ## 2026-07-05：生产 LLM provider 确定为自付费 DeepSeek 官方 API
 

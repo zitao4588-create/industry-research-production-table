@@ -17,7 +17,7 @@
 ### 1.1 UI 统一：删除高级模式入口（`b794979`）
 
 - `SimpleResearch.tsx`：移除 `advanced` state、右上角「高级模式」chip、失败页「切换到高级模式」链接。SimpleResearch 现在是唯一入口。
-- **`IndustryResearchWorkbench.tsx` 仍在磁盘上但不可达**（无任何 import 路径）。这是刻意保留：如果确认永远不要控制台，可以连同 `components/EvidencePopover.tsx`、`components/micro.tsx`、`fixtures/` 一起清理（见 §4）。
+- **旧 `IndustryResearchWorkbench.tsx` 运行文件已删除**：用户确认后，连同独占依赖 `components/EvidencePopover.tsx`、`components/micro.tsx`、`fixtures/research-console.ts` 一起清理；porting/design docs 中的历史参考文件保留。
 - 知识图谱三屏角色：
   - 输入屏：`.sr-hero-viz` 氛围背景（径向 mask 渐隐、`pointer-events:none`）
   - 运行屏：复用 `.run-stage` 布局，`building` + `progress` 驱动节点随真实进度逐个点亮
@@ -76,8 +76,8 @@ bash deploy/lightweight-server/deploy.sh --execute
 
 | 项 | 说明 | 触发条件 |
 |---|---|---|
-| 清理死代码 | `IndustryResearchWorkbench.tsx`（1352 行）及其独占依赖已不可达；确认不要控制台后整体删除 | 用户确认 |
-| K1–K3 外部 key | Brave/YouTube/Reddit key 接线，见旧 handoff §5，与本次 UI 无关，仍未做 | 用户注册 key |
+| 清理死代码 | `IndustryResearchWorkbench.tsx` 及其独占依赖已在用户确认后删除；porting/design docs 的历史参考文件保留 | 已完成 |
+| K1–K3 外部 key | 推荐 Tavily 或 Serper 搜索 key；YouTube 可补内容生态；Reddit 需先确认商业使用权限 | 用户注册 key |
 | 回放屏增强 | 目前只回放报告 Markdown；如需竞品表/机会卡，需要在 report 端点里加 databases 摘要（注意最小暴露原则） | 有分享场景反馈后 |
 | 首页 `/` | 已改为直接 redirect 到 `/industry-research` | 已完成 |
 

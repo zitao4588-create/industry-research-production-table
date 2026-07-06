@@ -9,6 +9,12 @@
   - 本地 `pnpm check`、`pnpm build` 通过；`deploy.sh --dry-run` 复核后执行 `deploy.sh --execute`，生产部署完成到 `research.playgamelab.cn`。
   - 线上 health、输入页、新 run、报告页、分享回放、390px 移动端无横向溢出均已验证。
   - 根路由 `/` 已改为 redirect 到 `/industry-research`，旧浅色首页不再作为入口。
+- [x] 2026-07-06 用户确认后删除不可达旧控制台：
+  - 删除 `IndustryResearchWorkbench.tsx`、`components/EvidencePopover.tsx`、`components/micro.tsx`、`fixtures/research-console.ts`。
+  - 应用代码无剩余 import；porting/design docs 中的历史参考文件保留。
+- [x] 2026-07-06 搜索 provider 新增 Tavily：
+  - `AGENT_FACTORY_SEARCH_PROVIDER=tavily` + `AGENT_FACTORY_SEARCH_API_KEY` 可切换到 Tavily Search。
+  - Tavily 固定 basic search，不请求 answer/raw content，控制免费 credits 消耗。
 - [x] 按 `docs/design_handoff_research_console 2/porting/source/globals.css` 迁移核心 UI 样式。
 - [x] 补齐展示字体：`Space Grotesk`、`Manrope`、`IBM Plex Mono`、`Noto Sans SC`。
 - [x] 移植 `components.tsx`、`KnowledgeGraph.tsx`、`micro.tsx`、`extras.tsx`。
@@ -141,7 +147,7 @@
 - [x] 2026-07-05 交接文档 P0–P3 全部落地（按 `docs/CODEX_RESEARCH_VALUE_HANDOFF.md`）：
   - T1：DeepSeek 官方 API 接入本机 `.env.local`，`pnpm verify:9router` 通过（真实 7570 字符报告，无本地回退）；真实品类 run `pet-probiotics-dtc-2026-07-04T13-53-36-077Z` 九库全部非空（32/3/3/3/16/3/3/3/1），quoteMatched 65/0。
   - T2：抽取分批 map-reduce（`generateGlmStructuredExtractionBatched`），高可信来源优先、稳定键合并去重、单批失败按文档降级；修复旧实现只取前 12 文档的覆盖损失。
-  - T3：搜索 provider 抽象（brave/serper API + DDG fallback），搜索默认 3 query×5 结果；env 见 `.env.example`。
+  - T3：搜索 provider 抽象（tavily/serper/brave API + DDG fallback；Brave 仅兼容不推荐），搜索默认 3 query×5 结果；env 见 `.env.example`。
   - T4：发现层按类硬配额（product/collection/blog 各 6-8）、robots.txt Disallow 解析过滤、同域 ≥1s 礼貌间隔、单 run 60 目标上限。
   - T5：RSS alternate 链接发现已有链路保留；新增 YouTube/Reddit 官方 API 内容适配器（`content_api` sourceType），缺 key 静默跳过。
   - T6：跨 run diff → 真实周报（`run-diff.ts` + `previousRun` 参数 + 报告「本期新增与变化」节）；studio 与 CLI 都接了上一 run 查找。
@@ -158,11 +164,11 @@
 - [x] 2026-07-05 GitHub 推送完成：`origin/main` 已包含研究价值阶段提交（`7c07af5`）。
 - [x] 2026-07-05 生产部署与 n8n 导入完成：已按 **`docs/CODEX_PRODUCTION_ROLLOUT_HANDOFF.md`** 执行 R1-R6，写入生产 LLM env、部署 `7478af7`、验证生产 DeepSeek、导入并激活 `industryResearchWeeklyRerun`、生成生产基线 run `dtc-2026-07-04T17-32-52-910Z`、完成 zvec 增量索引。R7 文档回写和提交由本轮收尾完成。
 - [x] 2026-07-06 UI 统一版 D1/D2 完成：部署 `main` 到轻量服务器并完成线上端到端验证；本轮又把根路由 `/` 改成 redirect 到 `/industry-research`。
-- [ ] 待用户确认后再做：删除不可达旧控制台死代码（`IndustryResearchWorkbench.tsx` 及其独占依赖）。这属于批量删除，必须先由用户明确确认清单后执行。
 - 需要用户注册的外部凭据（代码侧已就绪，配好即生效；涉及账号/支付信息，无法代注册）：
-  - Brave Search API key（brave.com/search/api，free 档也要绑卡）或 Serper（serper.dev）→ `AGENT_FACTORY_SEARCH_PROVIDER=brave|serper` + `AGENT_FACTORY_SEARCH_API_KEY`。
+  - Tavily API key（推荐，免费档 1,000 credits/month，无需信用卡）→ `AGENT_FACTORY_SEARCH_PROVIDER=tavily` + `AGENT_FACTORY_SEARCH_API_KEY`。
+  - Serper API key（备选，注册送 2,500 free queries）→ `AGENT_FACTORY_SEARCH_PROVIDER=serper` + `AGENT_FACTORY_SEARCH_API_KEY`。
   - YouTube Data API v3 key（console.cloud.google.com → 建项目 → 启用 YouTube Data API v3 → 凭据 → API key）→ `AGENT_FACTORY_YOUTUBE_API_KEY`。
-  - Reddit token（reddit.com/prefs/apps 建 script app → client_credentials 换 token）→ `AGENT_FACTORY_REDDIT_ACCESS_TOKEN`。
+  - Reddit token（需先确认商业使用权限和 token 续期方式）→ `AGENT_FACTORY_REDDIT_ACCESS_TOKEN`。
 - P4 用户验证：找 1–3 个电商卖家用真实品类各跑一轮，以「愿不愿意为这份报告付费」为验收。
 
 ## 下一步建议
@@ -171,5 +177,5 @@
 
 1. 继续把 n8n 周报业务流稳定在 `public_web`，保证无 LLM 也能产出 8 文件交付包和周报基线。
 2. 需要 LLM 交付时使用已接入的自付费 DeepSeek 官方 API；不要回退到 9router free/MiMo 作为生产承诺。
-3. 接入 Brave/YouTube/Reddit key 前继续复核公开数据边界、robots 约束和 provider 成本。
+3. 接入 Tavily/Serper/YouTube/Reddit key 前继续复核公开数据边界、robots 约束、provider 成本和平台商业使用权限。
 4. Supabase、zvec、轻量服务器 API、简化 UI、P0/P1/P2 准生产基线、生产 LLM 和 n8n 周报 workflow 都已完成部署闭环；后续重点是真实业务样本质量和付费验证。

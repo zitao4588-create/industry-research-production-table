@@ -53,13 +53,14 @@ export const researchAutomationCapabilityAssessments: ReusableCapabilityAssessme
       id: "hermes-tavily-search",
       name: "Hermes Tavily search skill",
       source: "hermes",
-      status: "future_candidate",
+      status: "reusable_now",
       license: "provider-api",
       maintenanceSignal:
-        "本机 Hermes skills 中存在，支持 search/extract/map/crawl/research。",
-      useCase: "后续用于陌生行业的信息源发现、网页正文抽取和站点 map。",
+        "本机 Hermes skills 中存在，支持 search/extract/map/crawl/research；核心 workflow 已接入 Tavily Search API 作为候选 URL 发现 provider。",
+      useCase:
+        "用于陌生行业的信息源发现；extract/map/crawl/research 仍先不接入核心 workflow。",
       reason:
-        "依赖 Tavily API Key；当前先不把外部搜索服务耦合进核心 workflow。",
+        "依赖 Tavily API Key；Search endpoint 返回结构稳定，适合替代 DDG HTML 做候选公开 URL 发现。",
     },
     {
       id: "hermes-camofox",

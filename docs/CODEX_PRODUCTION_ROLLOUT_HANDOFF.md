@@ -22,7 +22,7 @@
 - 生产 env 已写入 `AGENT_FACTORY_LLM_*` 三个变量；R2 备份为 `industry-research.env.bak-20260704172841`，未打印密钥。
 - 公网 `https://research.playgamelab.cn/api/health` 部署后复测 `status=ok`。
 - n8n 周报 workflow `industryResearchWeeklyRerun` 已导入并激活；生产 smoke run 为 `dtc-2026-07-04T17-32-52-910Z`，报告包含「本期新增与变化」，zvec metadata 56 行。
-- Brave/YouTube/Reddit key 未注册（用户动作，见 §5）。
+- Tavily/Serper/YouTube/Reddit key 未注册（用户动作，见 §5；Brave 仅保留兼容，不再推荐）。
 
 前置阅读：`AGENTS.md`、`DECISIONS.md` 2026-07-05 各条、`deploy/lightweight-server/README.md`「一键脚本」节、`BUG_NOTES.md`（重点：远端目录不是 git 仓库、sudo env 加载坑、`SUPABASE_SERVICE_ROLE_KEY` 双 JWT 粘贴事故、`ssh lighthouse-lab` 而不是 root@domain）。
 
@@ -149,9 +149,9 @@ ssh lighthouse-lab "set -a; eval \"\$(sudo cat <env> | grep -v '^#' | grep '=')\
 
 | Key | 注册处（给用户） | env 变量 | 接线后验证 |
 |-----|-----------------|----------|-----------|
-| K1 Brave（或 Serper） | brave.com/search/api（free 档也要绑卡）/ serper.dev | `AGENT_FACTORY_SEARCH_PROVIDER=brave\|serper` + `AGENT_FACTORY_SEARCH_API_KEY` | 跑 `pnpm sample:deepseek`，报告合规边界节应出现 `provider=brave`（而非 duckduckgo_html） |
+| K1 Tavily（或 Serper） | tavily.com（免费档 1,000 credits/month，无需信用卡）/ serper.dev（注册送 2,500 free queries） | `AGENT_FACTORY_SEARCH_PROVIDER=tavily\|serper` + `AGENT_FACTORY_SEARCH_API_KEY` | 跑 `pnpm sample:deepseek`，报告合规边界节应出现 `provider=tavily` 或 `provider=serper`（而非 duckduckgo_html） |
 | K2 YouTube Data API v3 | console.cloud.google.com → 启用 API → 创建 API key | `AGENT_FACTORY_YOUTUBE_API_KEY` | 同上，`content_database` 应出现 YouTube 平台条目、`sourceQualitySummary.bySourceType.content_api > 0` |
-| K3 Reddit | reddit.com/prefs/apps 建 script app → client_credentials 换 token | `AGENT_FACTORY_REDDIT_ACCESS_TOKEN` | 同上，pain_point/content 库出现 Reddit 来源；注意 token 会过期，记录获取方式供续期 |
+| K3 Reddit | Reddit Data API 需要按用途申请/授权，商业使用需先获许可 | `AGENT_FACTORY_REDDIT_ACCESS_TOKEN` | 同上，pain_point/content 库出现 Reddit 来源；注意 token 会过期，记录获取方式供续期 |
 
 接线位置：本机 `.env.local` + 服务器 env（复用 `configure-llm-env.sh` 的模式：备份 → sed 删旧行 → tee -a，或扩展该脚本支持变量清单参数）。验证 run 用本机跑即可，不必每个 key 都动生产。
 

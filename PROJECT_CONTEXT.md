@@ -19,11 +19,12 @@
 ## 当前真实状态
 
 - 2026-07-06 UI 统一版已由 Codex 验证并部署上线：
-  - 已复核 Claude 合并到 `origin/main` 的 UI 统一提交，并在本轮追加根路由 redirect 收尾提交；确认 `/industry-research` 为唯一简化体验，无「高级模式」入口；`IndustryResearchWorkbench.tsx` 仍在盘上但不可达，未删除。
+  - 已复核 Claude 合并到 `origin/main` 的 UI 统一提交，并在本轮追加根路由 redirect 收尾提交；确认 `/industry-research` 为唯一简化体验，无「高级模式」入口；旧 `IndustryResearchWorkbench.tsx` 运行文件已在用户确认后删除。
   - 本地 `pnpm check` 与 `pnpm build` 通过；`deploy/lightweight-server/deploy.sh --dry-run` 复核后执行 `--execute`，远端 `pnpm install --frozen-lockfile`、`pnpm build`、`pnpm server:doctor`、`pnpm supabase:doctor` 通过，服务重启后公网 health `status=ok`。
   - 线上端到端验证通过：生产页输入「剃须刀」生成 run `industry-research-2026-07-06T06-34-55-939Z`，完成后 URL 自动带 `?run=`，新页面打开分享链接可读取回放报告；390px 移动视口 `scrollWidth=390/clientWidth=390`，无横向溢出。
   - 根路由 `/` 已改为直接 redirect 到 `/industry-research`，避免旧浅色首页与当前产品体验不一致。
-  - 仍未处理且需要用户动作：Brave/YouTube/Reddit 外部 key 注册配置；旧控制台死代码删除需要用户明确确认，不能在本轮批量删除。
+  - 用户已确认删除旧控制台；本轮删除不可达的 `IndustryResearchWorkbench.tsx`、`components/EvidencePopover.tsx`、`components/micro.tsx`、`fixtures/research-console.ts`。
+  - 搜索 provider 新增 `tavily`；推荐优先配置 Tavily 或 Serper，Brave 仅保留兼容不再推荐。YouTube 可作为内容生态补充；Reddit 需先确认商业使用权限。
 - 2026-07-05 生产上线 handoff（`docs/CODEX_PRODUCTION_ROLLOUT_HANDOFF.md` 的 R1-R6）已由 Codex 执行完成：
   - R1 侦察：`ssh lighthouse-lab` 可用，远端用户 `ubuntu`，`sudo-nopasswd-ok`，`industry-research.service` active，n8n 容器名 `n8n`，`/opt` 余量约 27G。
   - R2：已把本机 `.env.local` 的 `AGENT_FACTORY_LLM_*` 三个变量幂等写入 `/opt/playgamelab/industry-research/industry-research.env`，远端备份为 `industry-research.env.bak-20260704172841`，未打印密钥。
@@ -35,11 +36,11 @@
   - LLM：本机 `.env.local` 和轻量服务器 env 均已配置自付费 DeepSeek 官方 API（`AGENT_FACTORY_LLM_*`，`deepseek-v4-flash`）；本机与生产 `pnpm verify:9router` 均真实通过。
   - 真实品类首跑 `pet-probiotics-dtc-2026-07-04T13-53-36-077Z`：25 raw docs、36 evidence、九库全部非空（32/3/3/3/16/3/3/3/1）、quoteMatched 65 true / 0 false；竞品 Finn / Native Pet / Pet Honesty 带定位与证据链。
   - 抽取改分批 map-reduce：修复旧实现只取前 12 文档的静默覆盖损失；单批失败按文档降级，全失败才回退。
-  - 采集面：搜索 3 query（brave/serper API 抽象 + DDG fallback）；发现层按类硬配额 + robots Disallow 过滤 + 同域 1s 礼貌间隔 + 60 目标上限；YouTube/Reddit 官方 API 适配器就绪（缺 key 静默跳过）。
+  - 采集面：搜索 3 query（tavily/serper/brave API 抽象 + DDG fallback；Brave 仅兼容不推荐）；发现层按类硬配额 + robots Disallow 过滤 + 同域 1s 礼貌间隔 + 60 目标上限；YouTube/Reddit 官方 API 适配器就绪（缺 key 静默跳过）。
   - 订阅模式打通：第二次 run `pet-probiotics-dtc-2026-07-04T16-50-36-292Z` 自动 diff 上一次 run，`weekly_intelligence_reports` 产出真实对比条目（新增关键词 17、新增机会 1、机会分变化 1），报告新增「本期新增与变化」节；LLM 抽取注入上一次 run 结论摘要作对比上下文；新增 n8n 每周 re-run workflow JSON（inactive，未导入生产）。
   - 已知信号噪音：两次 run 的 LLM 关键词语言不稳定（中文↔英文），diff 会把语言漂移记为新增+消失（均标待复核）；后续可做关键词归一。
   - 工程：`run-security.test.ts` 12 条安全单测；`deploy/lightweight-server/deploy.sh`（默认 dry-run）；`.gitignore` 收纳工具目录；测试从 36 条增至 84 条。
-  - 待用户动作：Brave/YouTube/Reddit key 注册配置、真实用户付费验证（见 TODO）。
+  - 待用户动作：Tavily/Serper/YouTube key 注册配置，Reddit 需先确认商业使用权限，之后继续真实用户付费验证（见 TODO）。
 - 已从 `agent-factory` 同步行业研究 v0.3 核心边界：
   - OpenAI-compatible provider 抽取 / 报告节点（旧 `deepseek` mode 保留为兼容别名）
   - public_web 保守采集
@@ -54,7 +55,7 @@
 - 新增 `pnpm probe:9router` 和 `pnpm verify:9router`，用于真实探测 9router / OpenAI-compatible provider；执行前需要配置 `AGENT_FACTORY_LLM_API_KEY` 等服务端环境变量，并接受调用成本。
 - `/industry-research` 工作台已按 `docs/design_handoff_research_console 2/porting/` 的 source CSS 和 TSX 组件完成移植。
 - `globals.css` 已改为按源设计稿规则对齐，包括噪点层、玻璃效果、光晕、暗/亮主题、reduced-motion 等。
-- `IndustryResearchWorkbench.tsx` 已换成装配版，接入已有 adapter、fixture、运行事件流和 `@industry-research/core` mock 工作流。
+- 历史：`IndustryResearchWorkbench.tsx` 曾作为装配版接入 adapter、fixture、运行事件流和 `@industry-research/core` mock 工作流；2026-07-06 用户确认后已删除该不可达旧控制台。
 - 字体已补齐 `Space Grotesk`、`Manrope`、`IBM Plex Mono`、`Noto Sans SC`。
 - 2026-06-25 Claude Code UI 还原修正已提交：
   - 修复 `next/font` 变量挂载和 CSS 字体栈，确保中文走 `Noto Sans SC` 兜底。
@@ -82,7 +83,7 @@
 - 2026-06-29 Claude Code UI 简化版已合并到 GitHub：
   - 当前 `main` / `origin/main` 指向提交 `329dab8`：`feat(studio): simplify /industry-research to a 3-step flow, keep console as advanced mode`。
   - `/industry-research` 默认入口改为 3 步用户流程：输入品类 / 可选竞品 URL → 自动研究进度 → Markdown 报告 + 竞品表 + 机会列表 + 下载。
-  - 新增 `SimpleResearch.tsx`；完整工程控制台 `IndustryResearchWorkbench` 保留在低调的「高级模式」里。
+  - 新增 `SimpleResearch.tsx`；完整工程控制台当时保留在低调的「高级模式」里，后续 UI 统一版已移除高级入口，2026-07-06 用户确认后删除旧控制台文件。
   - Studio 首页文案去工程黑话，改成「输入品类 → 自动研究 → 得到报告」。
   - 后端 actions、SSE route、adapter、run/stream 复用既有链路，没有引入新的后端 contract。
   - GitHub 合并提交记录显示 Claude Code 已跑过 `pnpm check` 和 `pnpm build`；本轮同步只核查 Git 状态，未重新做浏览器视觉验收。
@@ -153,6 +154,10 @@
 
 ## 验证结果
 
+- 2026-07-06 旧控制台删除 + Tavily provider 接入验证：
+  - `pnpm check`：通过，workspace typecheck / Vitest 8 文件 86 tests / Biome 84 文件。
+  - `pnpm build`：通过，Next.js 生产构建成功。
+  - 未做真实 Tavily/Serper/YouTube/Reddit API 调用：本轮未写入任何外部 key，测试使用 mock fetcher 覆盖 Tavily 请求形状、结果解析、候选 URL 过滤和 DDG fallback。
 - 2026-07-06 UI 统一版部署与线上验证：
   - 本地：`pnpm check` 通过（workspace typecheck / 84 条 Vitest / Biome 85 文件）；`pnpm build` 通过，Next.js 构建包含 `/api/industry-research/runs/[runId]/report`。
   - 部署：`bash deploy/lightweight-server/deploy.sh --dry-run` 预览通过；`bash deploy/lightweight-server/deploy.sh --execute` 完成非删除式同步、远端备份、安装依赖、构建、doctor、重启和公网 health 检查。
@@ -167,7 +172,7 @@
   - `pnpm check`：通过，typecheck + 84 条 Vitest（8 文件）+ Biome 84 文件。
   - `pnpm build`：通过，Next.js 生产构建成功。
   - `bash -n deploy/lightweight-server/deploy.sh`：语法通过；dry-run 的远端 rsync 预览在 ssh 不可达时自动跳过。本轮未连接生产服务器、未执行真实部署、未导入 n8n workflow。
-  - 未验证项：Brave/Serper、YouTube、Reddit 真实 API 调用（无 key，仅 fixture 测试）；服务器侧 DeepSeek env 未配置。
+  - 未验证项：Tavily/Serper、YouTube、Reddit 真实 API 调用（无 key，仅 fixture 测试）；服务器侧 DeepSeek env 未配置。
 - 2026-06-29 本轮 P0/P1/P2 准生产收敛验证：
   - `pnpm check`：通过，workspace typecheck / Vitest / Biome 全部通过；当前为 3 个测试文件、36 条测试。
   - `pnpm build`：通过，Next.js 生产构建成功，并包含 `/api/industry-research/runs/[runId]/replay`。

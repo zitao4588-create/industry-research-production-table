@@ -53,7 +53,7 @@
   配置位：本地 `.env.local`；服务器 `/opt/playgamelab/industry-research/industry-research.env`（root:600，改动前先备份，有双 JWT 粘贴事故先例见 BUG_NOTES）。
   变量：`AGENT_FACTORY_LLM_API_KEY` / `AGENT_FACTORY_LLM_BASE_URL` / `AGENT_FACTORY_LLM_MODEL`。
   验证：`pnpm verify:9router`（脚本名历史遗留，实际是通用 OpenAI-compatible 验证）。
-- **D2 · 搜索 API**（T3）：推荐 Brave Search API（有免费档）或 Serper；自建 SearXNG 也可。
+- **D2 · 搜索 API**（T3）：推荐 Tavily（免费档 1,000 credits/month，无需信用卡）或 Serper；Brave 仅保留兼容不再推荐。
 - **D3 · 内容生态官方 API**（T5）：YouTube Data API v3（免费配额）、Reddit API。RSS 不需要 key，可先行。
 
 ## 5. 任务清单
@@ -82,7 +82,7 @@
 
 - 现象：`public-source-discovery.ts:40-43`：`defaultMaxSearchQueries = 1`、每 query 3 结果、endpoint 是 `https://duckduckgo.com/html/`（HTML 抓取，随时被验证码拦）。
 - 为什么：发现层是整个漏斗的入口；入口只有 3 个候选，后面全是无米之炊。
-- 怎么做：抽 `SearchProvider` 接口（`search(query) → {url,title,snippet}[]`）；实现 Brave/Serper 适配器（env 配 key + endpoint），DDG HTML 降级为无 key fallback；`maxSearchQueries` 提到 3–5（`createSearchQueries` 已经生成 3 条 query，只是被上限截断）。
+- 怎么做：抽 `SearchProvider` 接口（`search(query) → {url,title,snippet}[]`）；实现 Tavily/Serper 适配器（env 配 key + endpoint），DDG HTML 降级为无 key fallback；`maxSearchQueries` 提到 3–5（`createSearchQueries` 已经生成 3 条 query，只是被上限截断）。
 - 落点：`packages/industry-research/src/public-source-discovery.ts`；env 变量新增走 `apps/studio/src/app/api/industry-research/_lib/server-env.ts` 与 `.env.example`。
 - 验收：注入 mock fetcher 的单测覆盖新 provider 解析与 fallback；无 key 时行为与现状一致；真实 key 冒烟由用户在服务器执行。
 

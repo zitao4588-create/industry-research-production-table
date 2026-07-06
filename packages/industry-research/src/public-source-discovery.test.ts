@@ -106,8 +106,10 @@ function createDiscoveryFetcher(overrides: {
   ) => Awaited<ReturnType<PublicCrawlerFetch>> | null;
 }) {
   const requestedUrls: string[] = [];
+  const requestedInits: Array<RequestInit | undefined> = [];
   const fetcher: PublicCrawlerFetch = async (url, init) => {
     requestedUrls.push(url);
+    requestedInits.push(init);
     const searchResponse = overrides.onSearch(url, init);
 
     if (searchResponse) {
@@ -125,7 +127,7 @@ function createDiscoveryFetcher(overrides: {
     return notFound();
   };
 
-  return { fetcher, requestedUrls };
+  return { fetcher, requestedUrls, requestedInits };
 }
 
 describe("resolveSearchProviderConfig", () => {
@@ -138,6 +140,17 @@ describe("resolveSearchProviderConfig", () => {
     expect(config.provider).toBe("brave");
     expect(config.apiKey).toBe("brave-key");
     expect(config.endpoint).toContain("api.search.brave.com");
+  });
+
+  it("uses tavily when provider and key are configured", () => {
+    const config = resolveSearchProviderConfig({
+      AGENT_FACTORY_SEARCH_PROVIDER: "tavily",
+      AGENT_FACTORY_SEARCH_API_KEY: "tavily-key",
+    });
+
+    expect(config.provider).toBe("tavily");
+    expect(config.apiKey).toBe("tavily-key");
+    expect(config.endpoint).toContain("api.tavily.com");
   });
 
   it("falls back to duckduckgo html when the api key is missing", () => {
@@ -158,6 +171,59 @@ describe("resolveSearchProviderConfig", () => {
 });
 
 describe("discoverPublicSources with api search provider", () => {
+  it("uses tavily results, filters social/marketplace hosts, and notes the provider", async () => {
+    const { fetcher, requestedUrls, requestedInits } = createDiscoveryFetcher({
+      onSearch: (url) =>
+        url === "https://api.tavily.com/search"
+          ? jsonResponse({
+              results: [
+                { url: "https://newbrand.example/" },
+                { url: "https://www.amazon.com/some-listing" },
+                { url: "https://www.tiktok.com/@brand" },
+              ],
+            })
+          : null,
+    });
+
+    const result = await discoverPublicSources(
+      "project-test",
+      input,
+      emptyCrawlPlan,
+      {
+        fetcher,
+        searchProvider: {
+          provider: "tavily",
+          endpoint: "https://api.tavily.com/search",
+          apiKey: "tavily-key",
+        },
+      },
+    );
+
+    expect(requestedUrls).toContain("https://api.tavily.com/search");
+    const tavilyRequestIndex = requestedUrls.indexOf(
+      "https://api.tavily.com/search",
+    );
+    const tavilyInit = requestedInits[tavilyRequestIndex];
+    expect(tavilyInit?.method).toBe("POST");
+    expect((tavilyInit?.headers as Record<string, string>)?.Authorization).toBe(
+      "Bearer tavily-key",
+    );
+    expect(JSON.parse(String(tavilyInit?.body))).toMatchObject({
+      search_depth: "basic",
+      max_results: 5,
+      include_answer: false,
+      include_raw_content: false,
+    });
+
+    const seeds = result.candidates.map((candidate) => candidate.seed);
+    expect(seeds).toContain("https://newbrand.example/");
+    expect(seeds.some((seed) => seed.includes("amazon"))).toBe(false);
+    expect(seeds.some((seed) => seed.includes("tiktok"))).toBe(false);
+    expect(result.notes.some((note) => note.includes("provider=tavily"))).toBe(
+      true,
+    );
+  });
+
   it("uses brave results, filters social/marketplace hosts, and notes the provider", async () => {
     const { fetcher, requestedUrls } = createDiscoveryFetcher({
       onSearch: (url) =>

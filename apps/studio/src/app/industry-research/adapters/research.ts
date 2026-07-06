@@ -31,7 +31,7 @@ export type UISourceCandidate = {
   db: IndustryResearchDatabaseName[];
 };
 
-/** 单条可溯源证据(给 EvidencePopover 用):来源标题 / URL / 原文片段。 */
+/** 单条可溯源证据引用：来源标题 / URL / 原文片段。 */
 export type UIEvidenceRef = {
   id: string;
   quote: string;
@@ -390,7 +390,7 @@ export function adaptRun(raw: ResearchWorkflowResult): UIResearchModel {
     raw.competitors.map((item) => [item.id, item.name]),
   );
 
-  // 证据溯源:evidenceId → 来源标题 / URL / 原文片段(给 EvidencePopover)。
+  // 证据溯源:evidenceId → 来源标题 / URL / 原文片段。
   const evidenceById = new Map(raw.evidence.map((item) => [item.id, item]));
   const sourceById = new Map(
     raw.research_sources.map((item) => [item.id, item]),
