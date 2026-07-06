@@ -2,6 +2,20 @@
 
 更新时间：2026-07-06
 
+## 2026-07-06：用户确认 UI 默认模式切到 public_web_llm
+
+- 决策：`SimpleResearch.tsx` 的默认运行模式从 `public_web` 改为 `public_web_llm`。用户点击「开始研究」时，默认执行公开采集 + OpenAI-compatible provider 结构化抽取 + provider 报告生成。
+- 原因：`public_web` 已能稳定完成公开证据扫描，但 lean 路径不会生成竞品/机会结构化结果，和用户要“直接可以拿来用”的目标不匹配。
+- 配套：
+  - UI 等待文案从「约一两分钟」改为「约 2-4 分钟」。
+  - `AGENT_FACTORY_RUN_TIMEOUT_MS` 示例改为 300000ms，生产也需要同步为 300000ms。
+  - health 的 `defaultWorkflowMode` 改为 `public_web_llm`，`llmDefaultSafeForProduction` 改为按实际 provider 配置判断。
+  - n8n 自动化周报不跟随 UI 默认模式，继续使用低成本 `public_web`。
+- 影响：
+  - 线上默认 run 会消耗 LLM provider 调用额度。
+  - 如果 LLM 抽取单批失败，workflow 会保留 public_web 原始资料并降级 extraction jobs；provider 报告失败时会回退本地报告，但此类结果仍需人工复核。
+  - 下一步重点从“能完成”转到“来源质量和结构化结论质量是否能交付”。
+
 ## 2026-07-06：交互式 public_web run 使用保守预算，避免 UI 180 秒超时
 
 - 决策：`runPublicIndustryResearchWorkflow` 在 workflow 层解析 `AGENT_FACTORY_PUBLIC_WEB_MAX_*` 预算变量，并把预算传给 source discovery 和 crawler；默认交互预算收敛到小步可完成的一轮研究。生产 Firecrawl 单页超时从 30000ms 降到 12000ms。
@@ -19,13 +33,12 @@
   - 明显平台/门户不再进入默认候选来源。
   - 这只是第一层过滤；`wabei.cn` 这类资讯/财经站仍可能被误判，需要后续加严 `sourceQuality`。
 
-## 2026-07-06：本轮不擅自把 UI 默认模式从 public_web 切到 public_web_llm
+## 2026-07-06：在用户确认前不擅自把 UI 默认模式从 public_web 切到 public_web_llm
 
-- 决策：虽然 public_web lean 模式会导致竞品/机会为 0，本轮仍保持 `SimpleResearch.tsx` 的 `DEFAULT_MODE = "public_web"`，只记录为待决策项。
+- 决策：虽然 public_web lean 模式会导致竞品/机会为 0，上一轮仍保持 `SimpleResearch.tsx` 的 `DEFAULT_MODE = "public_web"`，只记录为待决策项。
 - 原因：切到 `public_web_llm` 会改变成本、运行时间、失败模式和 SSE timeout 假设；这不是单纯 bugfix，而是产品/成本决策。
 - 影响：
-  - 当前线上按钮可稳定完成公开证据扫描和分享回放。
-  - 若用户目标是“直接可交付竞品研究”，下一步应明确切 `public_web_llm` 或新增「深度研究」模式，并同步处理 timeout、成本提示、失败兜底和结果质量验收。
+  - 用户现已明确要求切换，因此本条作为前序边界记录保留。
 
 ## 2026-07-06：UI 统一版上线后根路由直接进入行业研究
 

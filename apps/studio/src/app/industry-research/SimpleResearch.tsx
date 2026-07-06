@@ -16,7 +16,7 @@ import type {
  *
  * 后端不动：复用 actions.ts 的 server action、`/api/.../run/stream` 的 SSE、
  * adapters 里的 createModelFromInput / adaptRun / deriveRunState、extras 的
- * renderMarkdown。运行模式固定为 public_web，保证无 LLM 成本也能稳定交付。
+ * renderMarkdown。运行模式固定为 public_web_llm，优先产出结构化竞品/机会报告。
  * ===========================================================================*/
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { runIndustryResearchAction } from "./actions";
@@ -41,8 +41,8 @@ import {
 import { fetchRunStreamToken } from "./run-stream-token";
 
 const ACCENT = "#34dcc0";
-/** 唯一的运行模式：真实公开采集，无 LLM 成本也能稳定交付。 */
-const DEFAULT_MODE = "public_web" as const;
+/** 唯一的运行模式：公开采集 + LLM 结构化抽取/报告。 */
+const DEFAULT_MODE = "public_web_llm" as const;
 
 /** 输入屏背景图谱的占位数据（与 adapters/research 的九库顺序一致）。 */
 const GRAPH_PLACEHOLDER: GraphDatabase[] = [
@@ -534,7 +534,7 @@ function InputScreen({
           </div>
           <div className="console-foot">
             <span className="note">
-              自动找资料 · 整理竞品 · 提炼机会，约一两分钟
+              自动找资料 · 整理竞品 · 提炼机会，约 2-4 分钟
             </span>
             <div className="spacer" />
             <button

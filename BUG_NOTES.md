@@ -16,12 +16,13 @@
 - 处理：发现层 query 改为更偏「品牌官网 / official brand website / 竞品」；新增 JD、淘宝、天猫、1688、拼多多、搜狐、新浪、网易、QQ、微博、知乎、百度、B 站、抖音、头条、凤凰等域名过滤。
 - 验证：本地 `pnpm check` 和 `pnpm build` 通过；提交 `ccad3f4` 已部署生产。最新 run `industry-research-2026-07-06T12-52-48-094Z` 不再出现 JD/Sohu，抓到 Philips 官方站并可分享回放。
 
-## 当前限制：public_web 默认模式仍可能没有竞品/机会结构化结果
+## 已处理一半：public_web 默认模式没有竞品/机会结构化结果
 
 - 现象：最新线上 run `industry-research-2026-07-06T12-52-48-094Z` 约 25 秒完成，信息源库 10 条、可溯源证据 2 条，但竞品和机会仍为 0。
-- 判断：这是当前 UI 固定 `DEFAULT_MODE = "public_web"` 的预期边界。真实 public_web lean 路径只构建公开证据和 source database，不做 LLM 结构化抽取；要生成竞品/机会，需要切 `public_web_llm` 或新增深度研究模式。
+- 判断：这是 UI 固定 `DEFAULT_MODE = "public_web"` 的预期边界。真实 public_web lean 路径只构建公开证据和 source database，不做 LLM 结构化抽取。
+- 处理：用户已确认切到 `public_web_llm`；代码侧默认模式已切换，等待线上部署和真实 run 验证。
 - 另一个质量问题：`wabei.cn` 这类财经资讯站仍被 `sourceQuality` 判为 `official_site` 并 accepted，需要继续加严来源分类。
-- 后续：决策 UI 默认模式是否切到 `public_web_llm`；同时把资讯站/百科/问答/内容社区从 `official_site` 中剥离，避免 accepted evidence 误导。
+- 后续：把资讯站/百科/问答/内容社区从 `official_site` 中剥离，避免 accepted evidence 被 LLM 放大成业务结论。
 
 ## 已处理：Firecrawl keyless scrape 在当前网络环境返回 403
 

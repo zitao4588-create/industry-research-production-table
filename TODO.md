@@ -4,6 +4,11 @@
 
 ## 已完成
 
+- [x] 2026-07-06 用户确认 UI 默认模式切到 `public_web_llm`：
+  - `SimpleResearch.tsx` 默认 mode 从 `public_web` 改为 `public_web_llm`。
+  - UI 等待文案改为「约 2-4 分钟」。
+  - `AGENT_FACTORY_RUN_TIMEOUT_MS` 示例改为 300000ms；health 默认模式口径改为 `public_web_llm`。
+  - n8n 周报默认仍保持低成本 `public_web`。
 - [x] 2026-07-06 从输入品类开始的线上 workflow 已修复超时并复测：
   - 复现：输入「男士电动剃须刀」点击「开始研究」后，运行卡在 `crawl_sources` 并在 180 秒返回 `run_timeout_after_180000ms`。
   - 修复：新增 `AGENT_FACTORY_PUBLIC_WEB_MAX_*` 预算配置，默认限制 search / probe / sitemap / discovered / crawl 目标数；生产 Firecrawl 单页超时从 30000ms 降为 12000ms。
@@ -189,13 +194,10 @@
 - [x] 2026-07-05 GitHub 推送完成：`origin/main` 已包含研究价值阶段提交（`7c07af5`）。
 - [x] 2026-07-05 生产部署与 n8n 导入完成：已按 **`docs/CODEX_PRODUCTION_ROLLOUT_HANDOFF.md`** 执行 R1-R6，写入生产 LLM env、部署 `7478af7`、验证生产 DeepSeek、导入并激活 `industryResearchWeeklyRerun`、生成生产基线 run `dtc-2026-07-04T17-32-52-910Z`、完成 zvec 增量索引。R7 文档回写和提交由本轮收尾完成。
 - [x] 2026-07-06 UI 统一版 D1/D2 完成：部署 `main` 到轻量服务器并完成线上端到端验证；本轮又把根路由 `/` 改成 redirect 到 `/industry-research`。
-- 决策：UI 默认是否从 `public_web` 切到 `public_web_llm`。
-  - 现状：`SimpleResearch.tsx` 固定 `DEFAULT_MODE = "public_web"`，优点是成本低、快、稳定；缺点是 lean 模式不会生成竞品/机会结构化结果。
-  - 如果目标是「直接可交付竞品研究」，需要切 `public_web_llm` 或增加明确的「深度研究」模式，并同步调整 SSE timeout、成本提示和失败兜底。
 - 加严 `sourceQuality`：把资讯站、财经站、百科/问答/内容平台从 `official_site` 中剥离。
   - 最新 run 仍出现 `wabei.cn` 被接受为 `official_site` 的误判；需要做域名类别、页面标题和 URL path 的组合规则，避免把非品牌官网进入已接受证据。
-- 如果继续保留 `public_web` 为默认模式，前端文案需要更诚实：
-  - 当前页面承诺「竞品研究报告」，但 evidence-only 模式可能输出 0 竞品 / 0 机会；应改成「快速公开证据扫描」或在结果页提示“要生成竞品/机会请使用深度研究/补充竞品官网”。
+- 线上验证 `public_web_llm` 默认模式的真实报告质量：
+  - 重点确认竞品/机会是否明显优于 evidence-only 模式，以及低质量来源是否仍被 LLM 放大。
 - 需要用户注册的外部凭据（代码侧已就绪，配好即生效；涉及账号/支付信息，无法代注册）：
   - Serper API key（备选，注册送 2,500 free queries）→ `AGENT_FACTORY_SEARCH_PROVIDER=serper` + `AGENT_FACTORY_SEARCH_API_KEY`。
   - YouTube Data API v3 key（console.cloud.google.com → 建项目 → 启用 YouTube Data API v3 → 凭据 → API key）→ `AGENT_FACTORY_YOUTUBE_API_KEY`。

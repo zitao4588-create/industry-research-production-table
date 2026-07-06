@@ -1,3 +1,4 @@
+import { resolveOpenAICompatibleConfig } from "@industry-research/core";
 import { NextResponse } from "next/server";
 import {
   isTruthyEnv,
@@ -8,6 +9,13 @@ export const runtime = "nodejs";
 
 export async function GET() {
   const env = loadServerEnv();
+  let llmDefaultSafeForProduction = false;
+  try {
+    resolveOpenAICompatibleConfig(env);
+    llmDefaultSafeForProduction = true;
+  } catch {
+    llmDefaultSafeForProduction = false;
+  }
 
   return NextResponse.json({
     status: "ok",
@@ -17,9 +25,9 @@ export async function GET() {
       deploymentTarget: env.AGENT_FACTORY_DEPLOYMENT_TARGET || "local_dev",
       productionRuntime: "lightweight_server",
       baseUrl: env.AGENT_FACTORY_BASE_URL || env.NEXT_PUBLIC_APP_URL || null,
-      defaultWorkflowMode: "public_web",
+      defaultWorkflowMode: "public_web_llm",
       llmProvider: "9router_or_openai_compatible",
-      llmDefaultSafeForProduction: false,
+      llmDefaultSafeForProduction,
       runStorage: isTruthyEnv(env.AGENT_FACTORY_SUPABASE_ENABLED)
         ? "supabase_and_local_json_markdown"
         : "local_json_markdown",
