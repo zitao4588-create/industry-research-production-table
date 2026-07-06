@@ -1,9 +1,14 @@
 # TODO
 
-更新时间：2026-07-05
+更新时间：2026-07-06
 
 ## 已完成
 
+- [x] 2026-07-06 Claude UI 统一版已验证并部署到生产：
+  - 已复核 `docs/CODEX_UI_UNIFICATION_HANDOFF.md`：单一简化模式、知识图谱三屏、运行事件流、`?run=` 分享回放端点、移动端样式均在 `main`。
+  - 本地 `pnpm check`、`pnpm build` 通过；`deploy.sh --dry-run` 复核后执行 `deploy.sh --execute`，生产部署完成到 `research.playgamelab.cn`。
+  - 线上 health、输入页、新 run、报告页、分享回放、390px 移动端无横向溢出均已验证。
+  - 根路由 `/` 已改为 redirect 到 `/industry-research`，旧浅色首页不再作为入口。
 - [x] 按 `docs/design_handoff_research_console 2/porting/source/globals.css` 迁移核心 UI 样式。
 - [x] 补齐展示字体：`Space Grotesk`、`Manrope`、`IBM Plex Mono`、`Noto Sans SC`。
 - [x] 移植 `components.tsx`、`KnowledgeGraph.tsx`、`micro.tsx`、`extras.tsx`。
@@ -152,6 +157,8 @@
 
 - [x] 2026-07-05 GitHub 推送完成：`origin/main` 已包含研究价值阶段提交（`7c07af5`）。
 - [x] 2026-07-05 生产部署与 n8n 导入完成：已按 **`docs/CODEX_PRODUCTION_ROLLOUT_HANDOFF.md`** 执行 R1-R6，写入生产 LLM env、部署 `7478af7`、验证生产 DeepSeek、导入并激活 `industryResearchWeeklyRerun`、生成生产基线 run `dtc-2026-07-04T17-32-52-910Z`、完成 zvec 增量索引。R7 文档回写和提交由本轮收尾完成。
+- [x] 2026-07-06 UI 统一版 D1/D2 完成：部署 `main` 到轻量服务器并完成线上端到端验证；本轮又把根路由 `/` 改成 redirect 到 `/industry-research`。
+- [ ] 待用户确认后再做：删除不可达旧控制台死代码（`IndustryResearchWorkbench.tsx` 及其独占依赖）。这属于批量删除，必须先由用户明确确认清单后执行。
 - 需要用户注册的外部凭据（代码侧已就绪，配好即生效；涉及账号/支付信息，无法代注册）：
   - Brave Search API key（brave.com/search/api，free 档也要绑卡）或 Serper（serper.dev）→ `AGENT_FACTORY_SEARCH_PROVIDER=brave|serper` + `AGENT_FACTORY_SEARCH_API_KEY`。
   - YouTube Data API v3 key（console.cloud.google.com → 建项目 → 启用 YouTube Data API v3 → 凭据 → API key）→ `AGENT_FACTORY_YOUTUBE_API_KEY`。

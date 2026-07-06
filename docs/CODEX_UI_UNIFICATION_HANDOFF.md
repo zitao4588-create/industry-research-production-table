@@ -2,7 +2,7 @@
 
 > **更新时间**：2026-07-06
 > **作者**：Claude Code（云端会话，无 SSH 权限）
-> **状态**：代码已全部合并入 `origin/main`，本机验证全绿；**生产部署未执行**（云端沙箱无 SSH），部署与线上验证见 §3。
+> **状态**：代码已全部合并入 `origin/main`；Codex 已完成本机复核、生产部署与线上验证。根路由 `/` 已改为直接进入 `/industry-research`。
 > **受众**：Codex / 接手部署与后续迭代的开发者
 > **前置阅读**：`docs/CODEX_PRODUCTION_ROLLOUT_HANDOFF.md`（部署脚本用法、安全护栏、`lighthouse-lab` SSH 约定——本文档完全沿用其护栏，不重复）
 
@@ -48,9 +48,9 @@
 - 后端工作流（public_web / DeepSeek 抽取 / 周报 diff / zvec）、`run-core`、`run-security` 的既有函数、部署脚本、systemd/n8n 配置：**零改动**。
 - 唯一的 API 面变化就是 §1.3 的新增只读端点；`runs/[runId]`（完整 detail）与 `download` 的内网 key 鉴权原样保留。
 
-## 3. 还需要做什么（按顺序）
+## 3. Codex 已执行的部署与线上验证
 
-### D1 · 部署 `main` 到 lighthouse-lab
+### D1 · 部署 `main` 到 lighthouse-lab（已完成）
 
 ```bash
 git checkout main && git pull
@@ -58,16 +58,19 @@ bash deploy/lightweight-server/deploy.sh --dry-run   # 复核计划
 bash deploy/lightweight-server/deploy.sh --execute
 ```
 
-护栏与回滚同 `CODEX_PRODUCTION_ROLLOUT_HANDOFF.md` §3 R3（脚本自动备份到 `.deploy-backups/`）。
+执行结果：
 
-### D2 · 线上验证（部署后 10 分钟内）
+- 本地 `main` 与 `origin/main` 一致；Claude UI 基线已先部署，本轮追加根路由 redirect 收尾提交后继续部署最终版。
+- `deploy.sh --dry-run` 复核通过；`deploy.sh --execute` 完成非删除式同步、远端 `pnpm install --frozen-lockfile`、`pnpm build`、`pnpm server:doctor`、`pnpm supabase:doctor`、服务重启和公网 health 检查。
+- 远端部署前备份由脚本自动写入 `.deploy-backups/pre-<commit>-<timestamp>.tar.gz`。
 
-1. `https://research.playgamelab.cn/api/health` → `status=ok`。
-2. 打开 `/industry-research`：确认是新版单一模式（无「高级模式」按钮，输入页有示例 chips 与图谱背景）。
-3. 跑一次真实研究（如「宠物肠胃益生菌」）：
-   - 运行屏应出现**实时事件流**（生产走 SSE，Origin 是默认白名单，应有数据；若始终空白说明流式没走通，检查反代是否缓冲 SSE——Caddy 默认不缓冲，应无问题）。
-   - 完成后 URL 应带 `?run=`；点「复制链接」，无痕窗口打开 → 应显示回放报告。若 403，检查生产 env 是否设置过 `AGENT_FACTORY_ALLOWED_ORIGINS`/`AGENT_FACTORY_ALLOWED_HOSTS` 把默认域名顶掉了。
-4. 手机（或 DevTools 390px）看一眼输入页排版。
+### D2 · 线上验证（已完成）
+
+- `https://research.playgamelab.cn/api/health` 返回 `status=ok`、`runStorage=supabase_and_local_json_markdown`、`zvecCache=enabled`。
+- `/industry-research` 线上页面为新版单一模式：无「高级模式」按钮，输入页有示例 chips 与图谱背景。
+- 线上真实 run 验证：输入「剃须刀」生成 `industry-research-2026-07-06T06-34-55-939Z`，报告页出现「下载报告」「复制链接」，URL 自动变为 `?run=`。
+- 分享回放验证：新页面打开 `?run=industry-research-2026-07-06T06-34-55-939Z`，能读取「来自运行记录」和已审核版报告，无需内部 key。
+- 390px 移动端验证：`innerWidth=390`、`scrollWidth=390`、`hasHorizontalOverflow=false`。
 
 ### D3 · 待用户决策 / 可选项
 
@@ -76,7 +79,7 @@ bash deploy/lightweight-server/deploy.sh --execute
 | 清理死代码 | `IndustryResearchWorkbench.tsx`（1352 行）及其独占依赖已不可达；确认不要控制台后整体删除 | 用户确认 |
 | K1–K3 外部 key | Brave/YouTube/Reddit key 接线，见旧 handoff §5，与本次 UI 无关，仍未做 | 用户注册 key |
 | 回放屏增强 | 目前只回放报告 Markdown；如需竞品表/机会卡，需要在 report 端点里加 databases 摘要（注意最小暴露原则） | 有分享场景反馈后 |
-| 首页 `/` | 根路由还是旧的浅色三步说明页，与 `/industry-research` 观感不一致；低优先级，可改成直接 redirect | 顺手时 |
+| 首页 `/` | 已改为直接 redirect 到 `/industry-research` | 已完成 |
 
 ## 4. 已知边界
 

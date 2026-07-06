@@ -1,6 +1,6 @@
 # 项目上下文
 
-更新时间：2026-07-05
+更新时间：2026-07-06
 
 ## 当前项目目标
 
@@ -18,6 +18,12 @@
 
 ## 当前真实状态
 
+- 2026-07-06 UI 统一版已由 Codex 验证并部署上线：
+  - 已复核 Claude 合并到 `origin/main` 的 UI 统一提交，并在本轮追加根路由 redirect 收尾提交；确认 `/industry-research` 为唯一简化体验，无「高级模式」入口；`IndustryResearchWorkbench.tsx` 仍在盘上但不可达，未删除。
+  - 本地 `pnpm check` 与 `pnpm build` 通过；`deploy/lightweight-server/deploy.sh --dry-run` 复核后执行 `--execute`，远端 `pnpm install --frozen-lockfile`、`pnpm build`、`pnpm server:doctor`、`pnpm supabase:doctor` 通过，服务重启后公网 health `status=ok`。
+  - 线上端到端验证通过：生产页输入「剃须刀」生成 run `industry-research-2026-07-06T06-34-55-939Z`，完成后 URL 自动带 `?run=`，新页面打开分享链接可读取回放报告；390px 移动视口 `scrollWidth=390/clientWidth=390`，无横向溢出。
+  - 根路由 `/` 已改为直接 redirect 到 `/industry-research`，避免旧浅色首页与当前产品体验不一致。
+  - 仍未处理且需要用户动作：Brave/YouTube/Reddit 外部 key 注册配置；旧控制台死代码删除需要用户明确确认，不能在本轮批量删除。
 - 2026-07-05 生产上线 handoff（`docs/CODEX_PRODUCTION_ROLLOUT_HANDOFF.md` 的 R1-R6）已由 Codex 执行完成：
   - R1 侦察：`ssh lighthouse-lab` 可用，远端用户 `ubuntu`，`sudo-nopasswd-ok`，`industry-research.service` active，n8n 容器名 `n8n`，`/opt` 余量约 27G。
   - R2：已把本机 `.env.local` 的 `AGENT_FACTORY_LLM_*` 三个变量幂等写入 `/opt/playgamelab/industry-research/industry-research.env`，远端备份为 `industry-research.env.bak-20260704172841`，未打印密钥。
@@ -147,6 +153,13 @@
 
 ## 验证结果
 
+- 2026-07-06 UI 统一版部署与线上验证：
+  - 本地：`pnpm check` 通过（workspace typecheck / 84 条 Vitest / Biome 85 文件）；`pnpm build` 通过，Next.js 构建包含 `/api/industry-research/runs/[runId]/report`。
+  - 部署：`bash deploy/lightweight-server/deploy.sh --dry-run` 预览通过；`bash deploy/lightweight-server/deploy.sh --execute` 完成非删除式同步、远端备份、安装依赖、构建、doctor、重启和公网 health 检查。
+  - 公网 health：`https://research.playgamelab.cn/api/health` 返回 `status=ok`、`runStorage=supabase_and_local_json_markdown`、`zvecCache=enabled`。
+  - 线上 UI：Playwright/headless Chrome 验证 `/industry-research` 无「高级模式」、示例 chips 可见；输入「剃须刀」生成 run `industry-research-2026-07-06T06-34-55-939Z`，报告页含「复制链接」「下载报告」。
+  - 分享回放：`/industry-research?run=industry-research-2026-07-06T06-34-55-939Z` 可无内部 key 打开回放屏，显示「来自运行记录」和已审核版报告。
+  - 移动端：390x844 视口截图通过，`innerWidth=390`、`scrollWidth=390`、`hasHorizontalOverflow=false`。
 - 2026-07-05 研究价值阶段验证（全部本机）：
   - `pnpm verify:9router`：通过，DeepSeek 官方 API 生成 7570 字符真实报告，`usesLocalFallback=false`。
   - `pnpm sample:deepseek` 第一次（改造前基线）：`pet-probiotics-dtc-2026-07-04T13-53-36-077Z`，8 文件齐全，九库 32/3/3/3/16/3/3/3/1，quoteMatched 65/0。

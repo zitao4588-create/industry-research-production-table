@@ -1,6 +1,18 @@
 # Bug Notes
 
-更新时间：2026-07-05
+更新时间：2026-07-06
+
+## 验收备注：Codex Browser DOM snapshot 不可用，已用 Playwright 兜底
+
+- 现象：本轮本地/线上 UI 验证时，Browser 插件的 `domSnapshot()` 返回 `TypeError: o.incrementalAriaSnapshot is not a function`。
+- 判断：这是当前 Codex Browser 自动化通道能力问题，不是行业研究页面运行时报错。
+- 处理：改用 Browser evaluate / 截图 + 临时 Playwright/headless Chrome 做端到端验证；Playwright 验证通过线上输入页、真实 run、`?run=` 分享回放和 390px 移动端无横向溢出。
+
+## 验收备注：泛化品类 public_web 可能产出稀疏报告
+
+- 现象：2026-07-06 线上验证用「剃须刀」跑 `public_web`，流程成功并生成 run `industry-research-2026-07-06T06-34-55-939Z`，但报告只有 2 条信息源，竞品/机会为空。
+- 判断：这是当前无外部搜索 key、无竞品 URL 时 public_web 公开检索的质量边界，不是分享链接或 UI 部署失败。
+- 后续：接入 Brave/Serper 搜索 key，或输入具体竞品官网 URL，可以提高竞品抽取密度；正式交付仍需用自付费 provider 和人工复核。
 
 ## 已处理：部署脚本文案中的 Bash 变量被中文标点吞进变量名
 
