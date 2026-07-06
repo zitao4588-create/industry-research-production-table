@@ -2,12 +2,12 @@
 
 更新时间：2026-07-06
 
-## 验收备注：Firecrawl keyless scrape 在当前网络环境返回 403
+## 已处理：Firecrawl keyless scrape 在当前网络环境返回 403
 
 - 现象：本机无 `FIRECRAWL_API_KEY` / `AGENT_FACTORY_FIRECRAWL_API_KEY`，直接 `POST https://api.firecrawl.dev/v2/scrape` 抓 `https://example.com/` 返回 HTTP 403，错误说明无 key 的当前 IP 被 Firecrawl 风控。
 - 判断：这是 Firecrawl keyless free tier 的环境限制，不是本项目 Firecrawl 包装层或 public_web 工作流失败。
-- 处理：代码侧已安装并接入 Firecrawl；本地和生产只写入非密钥配置，保持 `AGENT_FACTORY_FIRECRAWL_ENABLED=false`。用户注册 Firecrawl API key 后，填入 `AGENT_FACTORY_FIRECRAWL_API_KEY` 即可自动启用。
-- 验证：`pnpm check` 通过；`pnpm sample:public-web` 用 Tavily 搜索发现成功，Firecrawl 未启用时 run 正常完成。
+- 处理：代码侧已安装并接入 Firecrawl；随后用户注册 Firecrawl API key，本地 `.env.local` 和生产服务器 env 已写入真实 key 并启用 `AGENT_FACTORY_FIRECRAWL_ENABLED=true`，不再依赖 keyless 模式。
+- 验证：本地和生产 Firecrawl 单页 smoke 均返回 HTTP 200；生产 `pnpm sample:public-web` 生成 `v03-public-web-smoke-2026-07-06T12-25-43-548Z`，Firecrawl Markdown 正文进入 raw documents。
 
 ## 验收备注：Codex Browser DOM snapshot 不可用，已用 Playwright 兜底
 

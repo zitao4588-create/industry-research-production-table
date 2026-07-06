@@ -34,7 +34,8 @@
 - 原因：Tavily/Serper 适合发现候选 URL，Firecrawl 更适合把公开页面抽成干净正文；但 Firecrawl 不应做站点级 crawl、交互动作、登录态访问或绕过限制，否则会突破当前 public_web 合规边界。
 - 影响：
   - 配置位：`AGENT_FACTORY_FIRECRAWL_ENABLED`、`AGENT_FACTORY_FIRECRAWL_API_KEY`、`AGENT_FACTORY_FIRECRAWL_BASE_URL`、`AGENT_FACTORY_FIRECRAWL_TARGET_KINDS`、`AGENT_FACTORY_FIRECRAWL_TIMEOUT_MS`。
-  - 当前本机和生产只写入非密钥配置，`AGENT_FACTORY_FIRECRAWL_ENABLED=false`；本机实测 Firecrawl keyless scrape 返回 403，需要用户注册 Firecrawl API key 后再启用。
+  - 本机和生产已配置 Firecrawl API key 并启用 `AGENT_FACTORY_FIRECRAWL_ENABLED=true`；密钥只写入 `.env.local` 和服务器 env，不进入 Git。
+  - 曾实测 Firecrawl keyless scrape 返回 403，因此不依赖无 key 模式。
   - Agent prompt 和 crawl guardrails 明确优先抓品牌/商家官网首页、collection、product、blog/FAQ/reviews/testimonials；社媒和 marketplace 页面默认排除，内容生态只走官方 API。
 
 ## 2026-07-05：生产 LLM provider 确定为自付费 DeepSeek 官方 API
