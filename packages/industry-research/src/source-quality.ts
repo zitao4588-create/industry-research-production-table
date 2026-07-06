@@ -98,6 +98,42 @@ function hostnameFor(value: string) {
   }
 }
 
+function parseUrl(value: string) {
+  try {
+    return new URL(value);
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizedPathPrefix(pathname: string) {
+  const normalized = pathname.replace(/\/+$/, "");
+  return normalized || "/";
+}
+
+function isUserProvidedTarget({ input, target, url }: SourceQualityInput) {
+  const targetUrl = parseUrl(url || target.target);
+
+  if (!targetUrl) {
+    return false;
+  }
+
+  return input.urls.some((seed) => {
+    const seedUrl = parseUrl(seed);
+
+    if (!seedUrl || seedUrl.origin !== targetUrl.origin) {
+      return false;
+    }
+
+    const seedPath = normalizedPathPrefix(seedUrl.pathname);
+    if (seedPath === "/") {
+      return true;
+    }
+
+    return normalizedPathPrefix(targetUrl.pathname).startsWith(seedPath);
+  });
+}
+
 function isWeakHomepageSource(input: SourceQualityInput) {
   const hostname = hostnameFor(input.url || input.target.target);
   if (
@@ -159,8 +195,24 @@ function includesAny(text: string, terms: string[]) {
   return terms.some((term) => normalized.includes(term.toLowerCase()));
 }
 
+function cjkNgrams(term: string) {
+  const compact = term.replace(/\s+/g, "");
+  if (!/[\u3400-\u9fff]/.test(compact) || compact.length < 5) {
+    return [];
+  }
+
+  const grams: string[] = [];
+  for (let size = 3; size <= Math.min(6, compact.length); size += 1) {
+    for (let index = 0; index <= compact.length - size; index += 1) {
+      grams.push(compact.slice(index, index + size));
+    }
+  }
+
+  return grams;
+}
+
 function relevanceTerms(input: ResearchWorkflowInput) {
-  return [
+  const baseTerms = [
     input.industry,
     input.category,
     input.market,
@@ -170,11 +222,14 @@ function relevanceTerms(input: ResearchWorkflowInput) {
   ]
     .map((term) => term.trim())
     .filter((term) => term.length >= 2);
+
+  return [...new Set(baseTerms.flatMap((term) => [term, ...cjkNgrams(term)]))];
 }
 
 function scoreRelevance({
   input,
   title,
+  url,
   extractedText,
   target,
 }: SourceQualityInput): SourceQualityLevel {
@@ -185,6 +240,13 @@ function scoreRelevance({
   const text = `${title}\n${target.target}\n${extractedText}`;
   const terms = relevanceTerms(input);
   const hasCategorySignal = includesAny(text, terms);
+  const isUserSeed = isUserProvidedTarget({
+    input,
+    title,
+    extractedText,
+    target,
+    url,
+  });
   const hasCommerceSignal = includesAny(text, [
     "shop",
     "product",
@@ -205,7 +267,11 @@ function scoreRelevance({
     return "high";
   }
 
-  if (hasCategorySignal || hasCommerceSignal || extractedText.length >= 800) {
+  if (hasCategorySignal) {
+    return "medium";
+  }
+
+  if (isUserSeed && (hasCommerceSignal || extractedText.length >= 800)) {
     return "medium";
   }
 

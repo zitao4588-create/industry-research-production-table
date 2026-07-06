@@ -51,7 +51,7 @@ describe("assessSourceQuality", () => {
       title: "飞利浦官方网站",
       url: "https://www.philips.com.cn/",
       extractedText:
-        "飞利浦官方网站 男士电动剃须刀 Shaver series 5000 干湿两用电动剃须刀 产品 品牌 官网 ".repeat(
+        "飞利浦官方网站 Shaver series 5000 干湿两用剃须刀 产品 品牌 官网 ".repeat(
           12,
         ),
     });
@@ -59,6 +59,40 @@ describe("assessSourceQuality", () => {
     expect(quality.sourceType).toBe("official_site");
     expect(quality.sourceRelevance).toBe("high");
     expect(quality.sourceConfidence).toBe("high");
+    expect(quality.acceptedForReport).toBe(true);
+  });
+
+  it("rejects auto-discovered commerce homepages without category relevance", () => {
+    const quality = assessSourceQuality({
+      target: target("https://www.sayweee.com/"),
+      input,
+      title: "Weee! | America's largest online Asian supermarket",
+      url: "https://www.sayweee.com/",
+      extractedText:
+        "Online grocery supermarket shop products collection best sellers reviews subscription ".repeat(
+          20,
+        ),
+    });
+
+    expect(quality.sourceType).toBe("official_site");
+    expect(quality.sourceRelevance).toBe("low");
+    expect(quality.acceptedForReport).toBe(false);
+  });
+
+  it("keeps user-provided commerce homepages as candidate evidence", () => {
+    const quality = assessSourceQuality({
+      target: target("https://brand.example/"),
+      input: { ...input, urls: ["https://brand.example"] },
+      title: "Brand official store",
+      url: "https://brand.example/",
+      extractedText:
+        "Official store shop products collection reviews bundle subscription ".repeat(
+          20,
+        ),
+    });
+
+    expect(quality.sourceType).toBe("official_site");
+    expect(quality.sourceRelevance).toBe("medium");
     expect(quality.acceptedForReport).toBe(true);
   });
 

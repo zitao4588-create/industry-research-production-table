@@ -626,7 +626,7 @@ describe("industry research public crawl adapter", () => {
           body: `
             <html>
               <head><title>Brand Home</title><script>ignore()</script></head>
-              <body><h1>Starter kits</h1><p>Bundle, reviews, subscription.</p></body>
+              <body><h1>宠物益生菌 Starter kits</h1><p>Bundle, reviews, subscription.</p></body>
             </html>
           `,
           contentType: "text/html",
