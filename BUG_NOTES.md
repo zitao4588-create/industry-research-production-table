@@ -20,7 +20,7 @@
 
 - 现象：最新线上 run `industry-research-2026-07-06T12-52-48-094Z` 约 25 秒完成，信息源库 10 条、可溯源证据 2 条，但竞品和机会仍为 0。
 - 判断：这是 UI 固定 `DEFAULT_MODE = "public_web"` 的预期边界。真实 public_web lean 路径只构建公开证据和 source database，不做 LLM 结构化抽取。
-- 处理：用户已确认切到 `public_web_llm`；代码侧默认模式已切换，等待线上部署和真实 run 验证。
+- 处理：用户已确认切到 `public_web_llm`；代码侧默认模式已切换并部署 `a509032`。线上 E2E run `industry-research-2026-07-06T13-09-42-043Z` 确认请求体为 `mode=public_web_llm`，`llmStatus=openai_compatible`，结果产出 1 个竞品候选 Philips。
 - 另一个质量问题：`wabei.cn` 这类财经资讯站仍被 `sourceQuality` 判为 `official_site` 并 accepted，需要继续加严来源分类。
 - 后续：把资讯站/百科/问答/内容社区从 `official_site` 中剥离，避免 accepted evidence 被 LLM 放大成业务结论。
 

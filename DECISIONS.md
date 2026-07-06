@@ -8,7 +8,7 @@
 - 原因：`public_web` 已能稳定完成公开证据扫描，但 lean 路径不会生成竞品/机会结构化结果，和用户要“直接可以拿来用”的目标不匹配。
 - 配套：
   - UI 等待文案从「约一两分钟」改为「约 2-4 分钟」。
-  - `AGENT_FACTORY_RUN_TIMEOUT_MS` 示例改为 300000ms，生产也需要同步为 300000ms。
+  - `AGENT_FACTORY_RUN_TIMEOUT_MS` 示例和生产 env 改为 300000ms。
   - health 的 `defaultWorkflowMode` 改为 `public_web_llm`，`llmDefaultSafeForProduction` 改为按实际 provider 配置判断。
   - n8n 自动化周报不跟随 UI 默认模式，继续使用低成本 `public_web`。
 - 影响：

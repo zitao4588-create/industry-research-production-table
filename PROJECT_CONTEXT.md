@@ -20,9 +20,11 @@
 
 - 2026-07-06 用户已确认将 UI 默认模式切到 `public_web_llm`：
   - `SimpleResearch.tsx` 的 `DEFAULT_MODE` 已从 `public_web` 改为 `public_web_llm`，线上用户点击「开始研究」会执行公开采集 + LLM 结构化抽取/报告。
-  - UI 等待文案改为「约 2-4 分钟」；`AGENT_FACTORY_RUN_TIMEOUT_MS` 示例和生产配置计划改为 300000ms，给公开采集 + LLM 抽取留足窗口。
+  - UI 等待文案改为「约 2-4 分钟」；`AGENT_FACTORY_RUN_TIMEOUT_MS` 示例和生产 env 已改为 300000ms，生产 env 备份为 `industry-research.env.bak-20260706210706`。
   - health 的 `defaultWorkflowMode` 同步为 `public_web_llm`，`llmDefaultSafeForProduction` 改为基于实际 OpenAI-compatible provider 配置判断。
   - n8n 自动化周报不变，仍保持 `public_web` 以控制成本和稳定性。
+  - 已部署提交 `a509032`，远端备份 `.deploy-backups/pre-a509032-20260706T130730Z.tar.gz`；远端 build、`server:doctor`、`supabase:doctor` 和公网 health 均通过。
+  - 线上 Playwright E2E 已验证：请求体为 `mode=public_web_llm`，run `industry-research-2026-07-06T13-09-42-043Z` 完成，`run_log` 记录 `llmStatus=openai_compatible`、8 raw documents、7 evidence、26 extraction jobs；结果页显示 1 个竞品候选 Philips，分享链接清空 localStorage 后可回放。
 - 2026-07-06 线上从输入品类开始的完整流程已重新验证并修复关键超时：
   - 复现问题：生产页输入「男士电动剃须刀」并点击「开始研究」后，流程能进入 running，但卡在 `crawl_sources`，最终返回 `run_timeout_after_180000ms`；服务本身 active，说明问题是单轮 public_web 采集预算过重，不是 UI 按钮或服务宕机。
   - 修复：`public_web` workflow 新增 env 可调预算，默认限制搜索 query、搜索结果、探测入口、sitemap URL、发现目标和实际 crawl 目标；生产 env 把 Firecrawl 单页超时降到 12000ms，备份为 `industry-research.env.bak-20260706204443`。
