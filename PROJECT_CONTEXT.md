@@ -18,6 +18,12 @@
 
 ## 当前真实状态
 
+- 2026-07-06 `public_web_llm` 默认模式上线后，已继续加严来源质量和机会抽取：
+  - 提交 `3ba2f8e`：`sourceQuality` 不再把平台、门户、财经资讯、百科/问答、robots、sitemap、search candidate 或 `unknown/low` 来源作为可确认报告证据；LLM 分批抽取只接收 `canConfirmWithSource` 的 raw documents，并在 prompt 中携带 `sourceQuality` 与“机会是待验证候选切入点”的约束。
+  - 提交 `24c98ca`：中文品类词新增 3-6 字片段匹配（如「男士电动剃须刀」可匹配「剃须刀」）；自动搜索发现的首页如果只有通用电商词、没有品类相关性，会降级为 `low/accepted=false`；用户手动输入的官网 URL 仍可作为候选入口。
+  - 两个提交均已推送 `origin/main` 并部署到轻量服务器；远端备份分别为 `.deploy-backups/pre-3ba2f8e-20260706T132915Z.tar.gz`、`.deploy-backups/pre-24c98ca-20260706T133801Z.tar.gz`。
+  - 最新线上 Playwright E2E：输入「男士电动剃须刀」生成 run `industry-research-2026-07-06T13-39-33-057Z`，mode=`public_web_llm`，`llmStatus=openai_compatible`，页面输出 1 个 Philips 竞品、2 个机会、13 条证据；分享链接 `?run=` 可直接回放。
+  - 最新 `run_log.sourceQualitySummary`：8 raw documents、acceptedForReport 1、rejectedForReport 7；`sayweee.com` 和其 sitemap 页面已降级为 `official_site/low/high/accepted=false`，Philips 官网为 `official_site/high/high/accepted=true`。
 - 2026-07-06 用户已确认将 UI 默认模式切到 `public_web_llm`：
   - `SimpleResearch.tsx` 的 `DEFAULT_MODE` 已从 `public_web` 改为 `public_web_llm`，线上用户点击「开始研究」会执行公开采集 + LLM 结构化抽取/报告。
   - UI 等待文案改为「约 2-4 分钟」；`AGENT_FACTORY_RUN_TIMEOUT_MS` 示例和生产 env 已改为 300000ms，生产 env 备份为 `industry-research.env.bak-20260706210706`。

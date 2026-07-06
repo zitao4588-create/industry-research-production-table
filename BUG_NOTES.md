@@ -2,6 +2,17 @@
 
 更新时间：2026-07-06
 
+## 已处理：sourceQuality 把资讯/门户/无关电商页当作可确认官网证据
+
+- 现象：`public_web_llm` 首轮线上验证中，`wabei.cn` 曾被判为 `official_site/high/accepted=true`；后续 Tavily 搜索又把 `sayweee.com` 这类无关电商页带入「男士电动剃须刀」run，并被旧规则接受。
+- 判断：旧规则过度依赖 target kind、HTTPS 和正文长度；中文品类词也只按空格/标点拆分，无法用「剃须刀」命中「男士电动剃须刀」这类连续中文短语。
+- 处理：
+  - `sourceQuality` 增加弱来源域名/标题识别，把平台、门户、财经资讯、百科/问答和聚合页降为 `unknown/low/accepted=false`。
+  - `robots`、`sitemap`、`search_candidate`、`unknown`、low relevance / low confidence 来源不再进入 `acceptedForReport` 或 `canConfirmWithSource`。
+  - LLM 分批抽取只接收可确认来源，prompt 带 `sourceQuality` 和机会抽取约束。
+  - 中文行业/品类词增加 3-6 字片段匹配；自动搜索发现的首页没有品类相关性时降为 low，用户手动 URL 仍保留为候选入口。
+- 验证：本地 `pnpm check` 通过（95 tests），`pnpm build` 通过；提交 `3ba2f8e`、`24c98ca` 已部署。最新 run `industry-research-2026-07-06T13-39-33-057Z` 中 `sayweee.com` 为 `official_site/low/high/accepted=false`，Philips 官网为 `official_site/high/high/accepted=true`，页面输出 1 个竞品、2 个机会、13 条证据，分享回放正常。
+
 ## 已处理：线上输入品类后 public_web run 在 crawl_sources 阶段 180 秒超时
 
 - 现象：生产页输入「男士电动剃须刀」并点击「开始研究」后，UI 正常进入运行态，进度到 `crawl_sources` 后等待，最终显示 `run_timeout_after_180000ms`。

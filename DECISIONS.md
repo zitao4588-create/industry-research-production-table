@@ -2,6 +2,18 @@
 
 更新时间：2026-07-06
 
+## 2026-07-06：自动搜索来源宁可少 accepted，也不让无关站点进入 LLM 证据链
+
+- 决策：`sourceQuality.acceptedForReport` 不再只看页面长度和 HTTPS；平台/门户/资讯/百科/问答/robots/sitemap/search candidate/unknown/low 来源都不能作为可确认报告证据。`public_web_llm` 的 LLM 抽取批次只接收 `canConfirmWithSource` 的 raw documents。
+- 原因：真实线上验证表明，搜索 API 可能把无关电商站或财经资讯站带进候选；如果这些站点被 accepted，LLM 会把低质量来源放大成竞品或机会结论。
+- 配套：
+  - 中文行业/品类词使用 3-6 字片段补强匹配，避免「男士电动剃须刀」只能匹配完整短语的问题。
+  - 自动搜索发现的首页必须有品类相关性才可 accepted；用户显式输入的官网 URL 仍可作为候选入口，避免误伤用户提供的种子站。
+  - 机会抽取 prompt 明确机会是“可进一步验证的候选切入点”，证据不足时必须 `needs_review`。
+- 影响：
+  - 报告的 accepted source 会更少，但证据链更干净。
+  - 自动发现召回不足时，报告可能只覆盖 1 个品牌；后续应通过更好的搜索 query、Serper/YouTube/Reddit 等官方 API 或用户输入竞品 URL 扩大覆盖，而不是放宽 accepted 规则。
+
 ## 2026-07-06：用户确认 UI 默认模式切到 public_web_llm
 
 - 决策：`SimpleResearch.tsx` 的默认运行模式从 `public_web` 改为 `public_web_llm`。用户点击「开始研究」时，默认执行公开采集 + OpenAI-compatible provider 结构化抽取 + provider 报告生成。
