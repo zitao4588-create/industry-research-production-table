@@ -1,0 +1,76 @@
+import { NextResponse } from "next/server";
+import {
+  getLocalIndustryResearchRunDetail,
+  LocalRunNotFoundError,
+} from "../../../_lib/local-runs";
+import {
+  RunSecurityError,
+  validateRunStreamTokenRequest,
+} from "../../../_lib/run-security";
+import { loadServerEnv } from "../../../_lib/server-env";
+import { getIndustryResearchSupabaseRunDetail } from "../../../_lib/supabase-run-store";
+
+export const runtime = "nodejs";
+
+type RouteContext = {
+  params: { runId: string } | Promise<{ runId: string }>;
+};
+
+/**
+ * 报告只读端点：给 ?run= 分享链接用的浏览器同源入口。
+ * 与 run/stream 相同的 Host/Origin 白名单校验（不要求内网 key），
+ * 只返回报告 Markdown 与项目基本信息，不暴露完整 run 细节。
+ */
+export async function GET(request: Request, context: RouteContext) {
+  const env = loadServerEnv();
+
+  try {
+    validateRunStreamTokenRequest(request, env);
+  } catch (error) {
+    if (error instanceof RunSecurityError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.status },
+      );
+    }
+    throw error;
+  }
+
+  try {
+    const { runId } = await context.params;
+    const run =
+      (await getIndustryResearchSupabaseRunDetail({ runId, env })) ??
+      (await getLocalIndustryResearchRunDetail(runId));
+    const reportMarkdown =
+      run.reviewedReportMarkdown || run.reportMarkdown || null;
+
+    if (!reportMarkdown) {
+      return NextResponse.json(
+        { error: "该运行记录没有可展示的报告。" },
+        { status: 404 },
+      );
+    }
+
+    return NextResponse.json({
+      schemaVersion: "industry_research_run_report.v1",
+      runId: run.runId,
+      input: run.input
+        ? {
+            projectName: run.input.projectName,
+            industry: run.input.industry,
+            category: run.input.category,
+            market: run.input.market,
+          }
+        : null,
+      reportMarkdown,
+    });
+  } catch (error) {
+    if (error instanceof LocalRunNotFoundError) {
+      return NextResponse.json({ error: error.message }, { status: 404 });
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}

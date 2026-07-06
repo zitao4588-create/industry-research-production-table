@@ -57,7 +57,14 @@ const GRAPH_PLACEHOLDER: GraphDatabase[] = [
   "情报周报库",
 ].map((label) => ({ label, count: 0 }));
 
-type Phase = "input" | "running" | "error" | "done";
+type Phase = "input" | "running" | "error" | "done" | "replay";
+
+/** 从 ?run= 回放时可用的最小数据：输入 + 报告 Markdown。 */
+type ReplayData = {
+  title: string;
+  sub: string;
+  markdown: string;
+};
 
 /* ----------------------------- 小工具 ----------------------------- */
 function parseUrlLines(text: string): string[] {
@@ -165,6 +172,8 @@ export default function SimpleResearch() {
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [showErrorDetail, setShowErrorDetail] = useState(false);
+  const [runId, setRunId] = useState<string | null>(null);
+  const [replay, setReplay] = useState<ReplayData | null>(null);
 
   const runSeq = useRef(0);
 
@@ -175,6 +184,50 @@ export default function SimpleResearch() {
     requestAnimationFrame(() =>
       document.documentElement.classList.add("booted"),
     );
+  }, []);
+
+  // ?run=<id> 回放：从运行记录 API 取报告，直接进入报告屏。
+  useEffect(() => {
+    const sharedRunId = new URLSearchParams(window.location.search).get("run");
+    if (!sharedRunId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await fetch(
+          `/api/industry-research/runs/${encodeURIComponent(sharedRunId)}/report`,
+        );
+        if (!response.ok) throw new Error(String(response.status));
+        const payload = (await response.json()) as {
+          input?: {
+            projectName?: string;
+            category?: string;
+            market?: string;
+          } | null;
+          reportMarkdown?: string | null;
+        };
+        const markdown = payload.reportMarkdown || "";
+        if (cancelled || !markdown) throw new Error("empty");
+        const input = payload.input;
+        setRunId(sharedRunId);
+        setReplay({
+          title: input?.projectName || "行业研究报告",
+          sub:
+            input?.category && input?.market
+              ? `${input.category} · ${input.market}`
+              : `运行记录 ${sharedRunId}`,
+          markdown,
+        });
+        setPhase("replay");
+      } catch {
+        if (!cancelled) {
+          showToast("没有找到这条运行记录，或当前环境未开放读取", "spark");
+          window.history.replaceState(null, "", window.location.pathname);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const startRun = useCallback(async () => {
@@ -202,8 +255,19 @@ export default function SimpleResearch() {
     setEvents(createRunStartedEvents(skel));
     setPhase("running");
 
-    const applySuccess = (result: ResearchWorkflowResult) => {
+    const applySuccess = (
+      result: ResearchWorkflowResult,
+      nextRunId?: string | null,
+    ) => {
       setModel(adaptRun(result));
+      setRunId(nextRunId ?? null);
+      window.history.replaceState(
+        null,
+        "",
+        nextRunId
+          ? `?run=${encodeURIComponent(nextRunId)}`
+          : window.location.pathname,
+      );
       setEvents((xs) => [
         ...xs,
         { type: "run.done", at: new Date().toISOString() },
@@ -248,6 +312,7 @@ export default function SimpleResearch() {
           let frame: {
             control?: string;
             result?: ResearchWorkflowResult;
+            deliveryPackage?: { runId?: string } | null;
             message?: string;
           };
           try {
@@ -257,7 +322,7 @@ export default function SimpleResearch() {
           }
           if (runSeq.current !== seq) return;
           if (frame.control === "result" && frame.result) {
-            applySuccess(frame.result);
+            applySuccess(frame.result, frame.deliveryPackage?.runId);
             settled = true;
           } else if (frame.control === "error") {
             applyError(frame.message ?? "运行失败");
@@ -283,7 +348,7 @@ export default function SimpleResearch() {
       applyError(res.error);
       return;
     }
-    applySuccess(res.result);
+    applySuccess(res.result, res.deliveryPackage?.runId);
   }, [query, urlText]);
 
   const resetToInput = useCallback(() => {
@@ -293,6 +358,9 @@ export default function SimpleResearch() {
     setModel(null);
     setErrorMsg(null);
     setIndeterminate(false);
+    setRunId(null);
+    setReplay(null);
+    window.history.replaceState(null, "", window.location.pathname);
   }, []);
 
   return (
@@ -343,7 +411,10 @@ export default function SimpleResearch() {
           />
         )}
         {phase === "done" && model && (
-          <DoneScreen model={model} onRestart={resetToInput} />
+          <DoneScreen model={model} runId={runId} onRestart={resetToInput} />
+        )}
+        {phase === "replay" && replay && (
+          <ReplayScreen data={replay} onRestart={resetToInput} />
         )}
       </main>
 
@@ -389,7 +460,7 @@ function InputScreen({
       </div>
       <div className="sr-hero-content">
         <div style={{ textAlign: "center", margin: "44px 0 28px" }}>
-          <h1 style={{ fontSize: 30, margin: 0, lineHeight: 1.25 }}>
+          <h1 className="sr-title">
             输入一个品类，
             <br />
             得到一份竞品研究报告
@@ -482,6 +553,7 @@ function InputScreen({
             </button>
           </div>
         </div>
+        <p className="sr-hint">将自动建立 9 类行业数据库，全部结论可溯源</p>
       </div>
     </div>
   );
@@ -538,6 +610,13 @@ function RunningScreen({
         </div>
 
         <div>
+          {!indeterminate && d.logs.length > 0 && (
+            <div className="sr-feed" aria-live="polite">
+              {d.logs.slice(0, 3).map((line, i) => (
+                <div key={`${line}-${i}`}>{line}</div>
+              ))}
+            </div>
+          )}
           <div
             style={{
               height: 6,
@@ -701,11 +780,22 @@ function ErrorScreen({
 }
 
 /* ============================== 报告 =============================== */
+async function copyShareLink() {
+  try {
+    await navigator.clipboard.writeText(window.location.href);
+    showToast("报告链接已复制", "copy");
+  } catch {
+    showToast("复制失败，请手动复制地址栏链接", "spark");
+  }
+}
+
 function DoneScreen({
   model,
+  runId,
   onRestart,
 }: {
   model: UIResearchModel;
+  runId: string | null;
   onRestart: () => void;
 }) {
   const markdown = useMemo(() => buildReportMarkdown(model), [model]);
@@ -746,6 +836,16 @@ function DoneScreen({
           <Icon name="download" size={14} />
           下载报告
         </button>
+        {runId ? (
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => void copyShareLink()}
+          >
+            <Icon name="source" size={14} />
+            复制链接
+          </button>
+        ) : null}
         <button type="button" className="btn btn-ghost" onClick={onRestart}>
           <Icon name="spark" size={14} />
           再研究一次
@@ -802,6 +902,57 @@ function DoneScreen({
         <span className="meta">{model.opportunities.length} 条</span>
       </div>
       <OpportunityList rows={model.opportunities} />
+    </div>
+  );
+}
+
+/* ====================== 回放（?run= 分享链接） ====================== */
+function ReplayScreen({
+  data,
+  onRestart,
+}: {
+  data: ReplayData;
+  onRestart: () => void;
+}) {
+  return (
+    <div className="view" style={{ paddingTop: 28 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          flexWrap: "wrap",
+          marginBottom: 8,
+        }}
+      >
+        <div>
+          <h2 style={{ fontSize: 22, margin: 0 }}>{data.title}</h2>
+          <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>
+            {data.sub} · 来自运行记录
+          </div>
+        </div>
+        <div className="spacer" style={{ flex: 1 }} />
+        <button
+          type="button"
+          className="btn btn-ghost"
+          onClick={() => void copyShareLink()}
+        >
+          <Icon name="source" size={14} />
+          复制链接
+        </button>
+        <button type="button" className="btn btn-primary" onClick={onRestart}>
+          <Icon name="spark" size={14} />
+          再研究一次
+        </button>
+      </div>
+
+      <div className="section-title">
+        <h2 style={{ fontSize: 18 }}>研究报告</h2>
+        <span className="line" />
+      </div>
+      <div className="report report-md" style={{ maxHeight: "none" }}>
+        {renderMarkdown(data.markdown)}
+      </div>
     </div>
   );
 }
