@@ -40,9 +40,12 @@ function documentHaystack(document: RawDocument) {
 export function canConfirmWithSource(document: RawDocument) {
   return (
     document.sourceQuality.acceptedForReport &&
+    document.sourceQuality.sourceRelevance !== "low" &&
+    document.sourceQuality.sourceConfidence !== "low" &&
     document.sourceQuality.sourceType !== "robots" &&
     document.sourceQuality.sourceType !== "sitemap" &&
-    document.sourceQuality.sourceType !== "search_candidate"
+    document.sourceQuality.sourceType !== "search_candidate" &&
+    document.sourceQuality.sourceType !== "unknown"
   );
 }
 

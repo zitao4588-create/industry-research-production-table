@@ -194,15 +194,10 @@ export function planExtractionBatches(
     ...extractionBatchDefaults,
     ...options,
   };
-  const rank = (document: RawDocument) =>
-    canConfirmWithSource(document)
-      ? 0
-      : document.sourceQuality.acceptedForReport
-        ? 1
-        : 2;
   const ordered = rawDocuments
+    .filter(canConfirmWithSource)
     .map((document, index) => ({ document, index }))
-    .sort((a, b) => rank(a.document) - rank(b.document) || a.index - b.index)
+    .sort((a, b) => a.index - b.index)
     .map((item) => item.document)
     .slice(0, maxTotalDocs);
   const batches: RawDocument[][] = [];
@@ -262,6 +257,7 @@ function createExtractionInput(
       excerpt: document.excerpt,
       text: document.extractedText.slice(0, maxDocChars),
       databaseTargets: document.databaseTargets,
+      sourceQuality: document.sourceQuality,
     })),
   };
 }
@@ -369,6 +365,9 @@ export function createGlmStructuredExtractionMessages(
         "- 证据不足时 reviewStatus 用 needs_review。",
         "- 不要编造价格、销量、私人信息或登录后数据。",
         "- evidenceQuotes 必须是 rawDocuments 里的短句或摘要片段。",
+        "- rawDocuments 已经过 sourceQuality 过滤；仍要优先使用 acceptedForReport=true 且 sourceType 为 official_site / product_page / collection_page / blog / content_api 的证据。",
+        "- 如果文档中有产品系列、价格、定位、购买路径、内容主题或明显未覆盖场景，请尽量抽取 1-3 个机会；没有直接需求证据时 reviewStatus 必须是 needs_review。",
+        "- 机会必须解释为“可进一步验证的候选切入点”，不要写成已经被市场验证的结论。",
         "",
         JSON.stringify(
           createExtractionInput(

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GlmFetch } from "./glm-client";
 import {
+  createGlmStructuredExtractionMessages,
   type GlmStructuredExtraction,
   generateGlmStructuredExtractionBatched,
   mergeGlmStructuredExtractions,
@@ -37,12 +38,16 @@ function createRawDocument(
   overrides: {
     textLength?: number;
     sourceType?: SourceQualityType;
+    sourceRelevance?: "high" | "medium" | "low";
+    sourceConfidence?: "high" | "medium" | "low";
     acceptedForReport?: boolean;
   } = {},
 ): RawDocument {
   const {
     textLength = 1000,
     sourceType = "official_site",
+    sourceRelevance = "high",
+    sourceConfidence = "high",
     acceptedForReport = true,
   } = overrides;
 
@@ -61,8 +66,8 @@ function createRawDocument(
     databaseTargets: ["competitor_database"],
     sourceQuality: {
       sourceType,
-      sourceRelevance: "high",
-      sourceConfidence: "high",
+      sourceRelevance,
+      sourceConfidence,
       needsReviewReason: "",
       acceptedForReport,
     },
@@ -148,12 +153,14 @@ describe("planExtractionBatches", () => {
     expect(batches).toHaveLength(3);
   });
 
-  it("orders confirmable sources before robots/sitemap and applies total cap", () => {
+  it("filters non-confirmable sources before batching and applies total cap", () => {
     const documents = [
       createRawDocument("robots-doc", { sourceType: "robots" }),
       createRawDocument("official-doc"),
       createRawDocument("sitemap-doc", { sourceType: "sitemap" }),
       createRawDocument("product-doc", { sourceType: "product_page" }),
+      createRawDocument("unknown-doc", { sourceType: "unknown" }),
+      createRawDocument("low-confidence-doc", { sourceConfidence: "low" }),
     ];
     const batches = planExtractionBatches(documents, {
       maxDocsPerBatch: 2,
@@ -161,7 +168,7 @@ describe("planExtractionBatches", () => {
     });
     const orderedIds = batches.flat().map((document) => document.id);
 
-    expect(orderedIds).toEqual(["official-doc", "product-doc", "robots-doc"]);
+    expect(orderedIds).toEqual(["official-doc", "product-doc"]);
   });
 });
 
@@ -251,6 +258,19 @@ describe("mergeGlmStructuredExtractions", () => {
 });
 
 describe("generateGlmStructuredExtractionBatched", () => {
+  it("includes source quality and opportunity extraction guidance in prompts", () => {
+    const dataset = createDataset([createRawDocument("doc-a")]);
+    const messages = createGlmStructuredExtractionMessages(dataset, {
+      documents: dataset.raw_documents,
+    });
+    const prompt = messages[messages.length - 1]?.content ?? "";
+
+    expect(prompt).toContain('"sourceQuality"');
+    expect(prompt).toContain("acceptedForReport=true");
+    expect(prompt).toContain("请尽量抽取 1-3 个机会");
+    expect(prompt).toContain("可进一步验证的候选切入点");
+  });
+
   it("sends one request per batch with only that batch's documents", async () => {
     const documents = ["doc-a", "doc-b", "doc-c", "doc-d"].map((id) =>
       createRawDocument(id),

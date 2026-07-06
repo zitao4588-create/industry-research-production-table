@@ -46,7 +46,89 @@ const emptyTypeCounts = {
   unknown: 0,
 } satisfies Record<SourceQualityType, number>;
 
-function inferSourceType(target: CrawlPlanTarget): SourceQualityType {
+const weakHomepageHostnameParts = [
+  "wabei.",
+  "qcc.",
+  "tianyancha.",
+  "itjuzi.",
+  "36kr.",
+  "huxiu.",
+  "iresearch.",
+  "sohu.",
+  "sina.",
+  "163.com",
+  "qq.com",
+  "baidu.",
+  "zhihu.",
+  "bilibili.",
+  "douyin.",
+  "toutiao.",
+  "ifeng.",
+  "jd.com",
+  "taobao.",
+  "tmall.",
+  "1688.",
+  "pinduoduo.",
+  "alibaba.",
+  "aliexpress.",
+];
+
+const weakHomepageTitleTerms = [
+  "新闻",
+  "资讯",
+  "快讯",
+  "财经",
+  "证券",
+  "股票",
+  "信披",
+  "企业信息",
+  "百科",
+  "问答",
+  "社区",
+  "论坛",
+  "门户",
+  "头条",
+];
+
+function hostnameFor(value: string) {
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function isWeakHomepageSource(input: SourceQualityInput) {
+  const hostname = hostnameFor(input.url || input.target.target);
+  if (
+    weakHomepageHostnameParts.some((part) =>
+      hostname.includes(part.toLowerCase()),
+    )
+  ) {
+    return true;
+  }
+
+  const title = input.title.toLowerCase();
+  const titleLooksWeak = weakHomepageTitleTerms.some((term) =>
+    title.includes(term.toLowerCase()),
+  );
+
+  return titleLooksWeak && !includesAny(title, relevanceTerms(input.input));
+}
+
+function inferSourceType(input: SourceQualityInput): SourceQualityType {
+  const { target } = input;
+
+  if (
+    (target.kind === "homepage" ||
+      target.kind === "product" ||
+      target.kind === "collection" ||
+      target.kind === "blog") &&
+    isWeakHomepageSource(input)
+  ) {
+    return "unknown";
+  }
+
   switch (target.kind) {
     case "homepage":
       return "official_site";
@@ -130,11 +212,14 @@ function scoreRelevance({
   return "low";
 }
 
-function scoreConfidence({
-  target,
-  url,
-  extractedText,
-}: SourceQualityInput): SourceQualityLevel {
+function scoreConfidence(
+  { target, url, extractedText }: SourceQualityInput,
+  sourceType: SourceQualityType,
+): SourceQualityLevel {
+  if (sourceType === "unknown") {
+    return "low";
+  }
+
   if (target.kind === "robots") {
     return "low";
   }
@@ -173,6 +258,14 @@ function reviewReason(
     return "sitemap 适合发现 URL 结构，业务结论需要商品页、首页或内容页交叉验证。";
   }
 
+  if (sourceType === "search_candidate") {
+    return "公开搜索候选页只能用于发现待抓取 URL，不能直接支撑报告结论。";
+  }
+
+  if (sourceType === "unknown") {
+    return "来源像平台、门户、资讯、百科或企业信息聚合页，不应直接作为品牌官网证据进入报告。";
+  }
+
   if (relevance === "low") {
     return "文本与目标行业、品类或市场相关性不足，不能进入已确认发现。";
   }
@@ -189,13 +282,16 @@ function reviewReason(
 }
 
 export function assessSourceQuality(input: SourceQualityInput): SourceQuality {
-  const sourceType = inferSourceType(input.target);
+  const sourceType = inferSourceType(input);
   const sourceRelevance = scoreRelevance(input);
-  const sourceConfidence = scoreConfidence(input);
+  const sourceConfidence = scoreConfidence(input, sourceType);
   const acceptedForReport =
     sourceRelevance !== "low" &&
     sourceConfidence !== "low" &&
-    sourceType !== "robots";
+    sourceType !== "robots" &&
+    sourceType !== "sitemap" &&
+    sourceType !== "search_candidate" &&
+    sourceType !== "unknown";
 
   return {
     sourceType,
