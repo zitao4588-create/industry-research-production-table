@@ -1099,4 +1099,64 @@ describe("industry research public workflow", () => {
       "quote_not_found_in_raw_documents",
     );
   });
+
+  it("honors env crawl target caps for public workflow runs", async () => {
+    const crawledUrls: string[] = [];
+    const pageUrls = new Set([
+      "https://brand.example/page-1",
+      "https://brand.example/page-2",
+      "https://brand.example/page-3",
+      "https://brand.example/page-4",
+    ]);
+    const fakeFetch: PublicCrawlerFetch = async (url) => {
+      const urlText = String(url);
+
+      if (!pageUrls.has(urlText)) {
+        return {
+          ok: false,
+          status: 404,
+          text: async () => "",
+          headers: { get: () => null },
+        };
+      }
+
+      crawledUrls.push(urlText);
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          `<html><head><title>${urlText}</title></head><body><p>Public competitor evidence.</p></body></html>`,
+        headers: {
+          get: (name) =>
+            name.toLowerCase() === "content-type" ? "text/html" : null,
+        },
+      };
+    };
+
+    const result = await runPublicIndustryResearchWorkflow(
+      {
+        ...input,
+        urls: [...pageUrls],
+      },
+      {
+        fetcher: fakeFetch,
+        env: {
+          AGENT_FACTORY_PUBLIC_WEB_MAX_SEARCH_QUERIES: "1",
+          AGENT_FACTORY_PUBLIC_WEB_MAX_SEARCH_RESULTS_PER_QUERY: "1",
+          AGENT_FACTORY_PUBLIC_WEB_MAX_PROBE_URLS: "1",
+          AGENT_FACTORY_PUBLIC_WEB_MAX_SITEMAP_URLS: "1",
+          AGENT_FACTORY_PUBLIC_WEB_MAX_DISCOVERED_TARGETS: "1",
+          AGENT_FACTORY_PUBLIC_WEB_MAX_CRAWL_TARGETS: "2",
+        },
+      },
+    );
+
+    expect(crawledUrls).toHaveLength(2);
+    expect(result.raw_documents).toHaveLength(2);
+    expect(
+      result.crawl_runs.filter((run) =>
+        run.summary.includes("TARGET_CAP_EXCEEDED"),
+      ),
+    ).toHaveLength(2);
+  });
 });

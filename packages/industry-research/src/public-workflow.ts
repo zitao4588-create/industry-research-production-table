@@ -63,14 +63,139 @@ export type WorkflowProgressHandler = (event: WorkflowProgressEvent) => void;
 type PublicWorkflowOptions = {
   fetcher?: PublicCrawlerFetch;
   now?: string;
+  maxSearchQueries?: number;
+  maxSearchResultsPerQuery?: number;
   maxDiscoveredTargets?: number;
   maxProbeUrls?: number;
   maxSitemapUrls?: number;
   requestTimeoutMs?: number;
+  maxCrawlTargets?: number;
+  crawlPerHostDelayMs?: number;
   onProgress?: WorkflowProgressHandler;
   /** 搜索 provider / 内容 API 凭据解析用 env；核心包不读 process.env，由调用方显式传入。 */
   env?: Record<string, string | undefined>;
 };
+
+const PUBLIC_WORKFLOW_BUDGET_ENV = {
+  maxSearchQueries: "AGENT_FACTORY_PUBLIC_WEB_MAX_SEARCH_QUERIES",
+  maxSearchResultsPerQuery:
+    "AGENT_FACTORY_PUBLIC_WEB_MAX_SEARCH_RESULTS_PER_QUERY",
+  maxDiscoveredTargets: "AGENT_FACTORY_PUBLIC_WEB_MAX_DISCOVERED_TARGETS",
+  maxProbeUrls: "AGENT_FACTORY_PUBLIC_WEB_MAX_PROBE_URLS",
+  maxSitemapUrls: "AGENT_FACTORY_PUBLIC_WEB_MAX_SITEMAP_URLS",
+  requestTimeoutMs: "AGENT_FACTORY_PUBLIC_WEB_REQUEST_TIMEOUT_MS",
+  maxCrawlTargets: "AGENT_FACTORY_PUBLIC_WEB_MAX_CRAWL_TARGETS",
+  crawlPerHostDelayMs: "AGENT_FACTORY_PUBLIC_WEB_CRAWL_PER_HOST_DELAY_MS",
+} as const;
+
+const DEFAULT_PUBLIC_WORKFLOW_BUDGET = {
+  maxSearchQueries: 2,
+  maxSearchResultsPerQuery: 4,
+  maxDiscoveredTargets: 10,
+  maxProbeUrls: 8,
+  maxSitemapUrls: 4,
+  requestTimeoutMs: 8_000,
+  maxCrawlTargets: 8,
+} as const;
+
+function parsePositiveInteger(value: string | undefined, fallback: number) {
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : fallback;
+}
+
+function resolveBudgetValue({
+  explicitValue,
+  env,
+  envKey,
+  fallback,
+}: {
+  explicitValue?: number;
+  env: Record<string, string | undefined>;
+  envKey: string;
+  fallback: number;
+}) {
+  if (explicitValue !== undefined) {
+    return explicitValue;
+  }
+
+  return parsePositiveInteger(env[envKey], fallback);
+}
+
+function resolveOptionalBudgetValue({
+  explicitValue,
+  env,
+  envKey,
+}: {
+  explicitValue?: number;
+  env: Record<string, string | undefined>;
+  envKey: string;
+}) {
+  if (explicitValue !== undefined) {
+    return explicitValue;
+  }
+
+  const rawValue = env[envKey];
+  if (rawValue === undefined || rawValue.trim() === "") {
+    return undefined;
+  }
+
+  return parsePositiveInteger(rawValue, 0);
+}
+
+function resolvePublicWorkflowBudget(options: PublicWorkflowOptions) {
+  const env = options.env ?? {};
+
+  return {
+    maxSearchQueries: resolveBudgetValue({
+      explicitValue: options.maxSearchQueries,
+      env,
+      envKey: PUBLIC_WORKFLOW_BUDGET_ENV.maxSearchQueries,
+      fallback: DEFAULT_PUBLIC_WORKFLOW_BUDGET.maxSearchQueries,
+    }),
+    maxSearchResultsPerQuery: resolveBudgetValue({
+      explicitValue: options.maxSearchResultsPerQuery,
+      env,
+      envKey: PUBLIC_WORKFLOW_BUDGET_ENV.maxSearchResultsPerQuery,
+      fallback: DEFAULT_PUBLIC_WORKFLOW_BUDGET.maxSearchResultsPerQuery,
+    }),
+    maxDiscoveredTargets: resolveBudgetValue({
+      explicitValue: options.maxDiscoveredTargets,
+      env,
+      envKey: PUBLIC_WORKFLOW_BUDGET_ENV.maxDiscoveredTargets,
+      fallback: DEFAULT_PUBLIC_WORKFLOW_BUDGET.maxDiscoveredTargets,
+    }),
+    maxProbeUrls: resolveBudgetValue({
+      explicitValue: options.maxProbeUrls,
+      env,
+      envKey: PUBLIC_WORKFLOW_BUDGET_ENV.maxProbeUrls,
+      fallback: DEFAULT_PUBLIC_WORKFLOW_BUDGET.maxProbeUrls,
+    }),
+    maxSitemapUrls: resolveBudgetValue({
+      explicitValue: options.maxSitemapUrls,
+      env,
+      envKey: PUBLIC_WORKFLOW_BUDGET_ENV.maxSitemapUrls,
+      fallback: DEFAULT_PUBLIC_WORKFLOW_BUDGET.maxSitemapUrls,
+    }),
+    requestTimeoutMs: resolveBudgetValue({
+      explicitValue: options.requestTimeoutMs,
+      env,
+      envKey: PUBLIC_WORKFLOW_BUDGET_ENV.requestTimeoutMs,
+      fallback: DEFAULT_PUBLIC_WORKFLOW_BUDGET.requestTimeoutMs,
+    }),
+    maxCrawlTargets: resolveBudgetValue({
+      explicitValue: options.maxCrawlTargets,
+      env,
+      envKey: PUBLIC_WORKFLOW_BUDGET_ENV.maxCrawlTargets,
+      fallback: DEFAULT_PUBLIC_WORKFLOW_BUDGET.maxCrawlTargets,
+    }),
+    crawlPerHostDelayMs: resolveOptionalBudgetValue({
+      explicitValue: options.crawlPerHostDelayMs,
+      env,
+      envKey: PUBLIC_WORKFLOW_BUDGET_ENV.crawlPerHostDelayMs,
+    }),
+  };
+}
 
 function normalizeUrls(urls: string[]) {
   return urls.map((url) => url.trim()).filter(Boolean);
@@ -217,6 +342,7 @@ export async function runPublicIndustryResearchWorkflow(
   options: PublicWorkflowOptions = {},
 ): Promise<ResearchWorkflowResult> {
   const emit = options.onProgress ?? (() => {});
+  const budget = resolvePublicWorkflowBudget(options);
   const ts = () => new Date().toISOString();
   emit({ type: "phase", phase: "discover", status: "start", at: ts() });
 
@@ -238,10 +364,12 @@ export async function runPublicIndustryResearchWorkflow(
     publicCrawlPlan,
     {
       fetcher: options.fetcher,
-      maxDiscoveredTargets: options.maxDiscoveredTargets,
-      maxProbeUrls: options.maxProbeUrls,
-      maxSitemapUrls: options.maxSitemapUrls,
-      requestTimeoutMs: options.requestTimeoutMs,
+      maxSearchQueries: budget.maxSearchQueries,
+      maxSearchResultsPerQuery: budget.maxSearchResultsPerQuery,
+      maxDiscoveredTargets: budget.maxDiscoveredTargets,
+      maxProbeUrls: budget.maxProbeUrls,
+      maxSitemapUrls: budget.maxSitemapUrls,
+      requestTimeoutMs: budget.requestTimeoutMs,
       env: options.env,
     },
   );
@@ -290,6 +418,8 @@ export async function runPublicIndustryResearchWorkflow(
       fetcher: options.fetcher,
       input,
       now: options.now,
+      maxTargets: budget.maxCrawlTargets,
+      perHostDelayMs: budget.crawlPerHostDelayMs,
       env: options.env,
     },
   );

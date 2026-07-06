@@ -13,6 +13,7 @@ outputs
 .claude/
 .codebuddy/
 .workbuddy/
+.playwright-cli/
 
 # Remotion 营销视频：源码入库，依赖与渲染产物不入库
 remotion-videos/node_modules/
