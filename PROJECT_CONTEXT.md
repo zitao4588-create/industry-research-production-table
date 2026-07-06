@@ -24,7 +24,9 @@
   - 线上端到端验证通过：生产页输入「剃须刀」生成 run `industry-research-2026-07-06T06-34-55-939Z`，完成后 URL 自动带 `?run=`，新页面打开分享链接可读取回放报告；390px 移动视口 `scrollWidth=390/clientWidth=390`，无横向溢出。
   - 根路由 `/` 已改为直接 redirect 到 `/industry-research`，避免旧浅色首页与当前产品体验不一致。
   - 用户已确认删除旧控制台；本轮删除不可达的 `IndustryResearchWorkbench.tsx`、`components/EvidencePopover.tsx`、`components/micro.tsx`、`fixtures/research-console.ts`。
-  - 搜索 provider 新增 `tavily`；推荐优先配置 Tavily 或 Serper，Brave 仅保留兼容不再推荐。YouTube 可作为内容生态补充；Reddit 需先确认商业使用权限。
+  - 搜索 provider 新增并已配置 `tavily`：本轮从 OpenClaw 工作区安全复制 `TAVILY_API_KEY` 到本项目 `.env.local` 和轻量服务器 env（未打印密钥），生产 env 备份为 `industry-research.env.bak-20260706081456`；Brave 仅保留兼容不再推荐，Serper 可作为备选。
+  - Firecrawl 已安装 SDK 并接入公开页面正文抽取增强：只用于 `homepage` / `collection` / `product` / `blog` 目标的 `/v2/scrape`，`robots` / `sitemap` / `rss` 仍走原生 fetch；失败自动回退 native fetch。当前未找到可用 Firecrawl API key，本机 keyless 测试返回 403，因此本地和生产均保持 `AGENT_FACTORY_FIRECRAWL_ENABLED=false`，等用户注册 key 后再启用。
+  - Agent 内部采集策略已明确：优先发现和抓取品牌/商家官网首页、collection、product、blog/FAQ/reviews/testimonials；社媒和 marketplace 页面默认排除，YouTube/Reddit 等内容生态只走官方 API。
 - 2026-07-05 生产上线 handoff（`docs/CODEX_PRODUCTION_ROLLOUT_HANDOFF.md` 的 R1-R6）已由 Codex 执行完成：
   - R1 侦察：`ssh lighthouse-lab` 可用，远端用户 `ubuntu`，`sudo-nopasswd-ok`，`industry-research.service` active，n8n 容器名 `n8n`，`/opt` 余量约 27G。
   - R2：已把本机 `.env.local` 的 `AGENT_FACTORY_LLM_*` 三个变量幂等写入 `/opt/playgamelab/industry-research/industry-research.env`，远端备份为 `industry-research.env.bak-20260704172841`，未打印密钥。
@@ -40,7 +42,7 @@
   - 订阅模式打通：第二次 run `pet-probiotics-dtc-2026-07-04T16-50-36-292Z` 自动 diff 上一次 run，`weekly_intelligence_reports` 产出真实对比条目（新增关键词 17、新增机会 1、机会分变化 1），报告新增「本期新增与变化」节；LLM 抽取注入上一次 run 结论摘要作对比上下文；新增 n8n 每周 re-run workflow JSON（inactive，未导入生产）。
   - 已知信号噪音：两次 run 的 LLM 关键词语言不稳定（中文↔英文），diff 会把语言漂移记为新增+消失（均标待复核）；后续可做关键词归一。
   - 工程：`run-security.test.ts` 12 条安全单测；`deploy/lightweight-server/deploy.sh`（默认 dry-run）；`.gitignore` 收纳工具目录；测试从 36 条增至 84 条。
-  - 待用户动作：Tavily/Serper/YouTube key 注册配置，Reddit 需先确认商业使用权限，之后继续真实用户付费验证（见 TODO）。
+  - 待用户动作：Firecrawl/Serper/YouTube key 注册配置，Reddit 需先确认商业使用权限，之后继续真实用户付费验证（见 TODO）。
 - 已从 `agent-factory` 同步行业研究 v0.3 核心边界：
   - OpenAI-compatible provider 抽取 / 报告节点（旧 `deepseek` mode 保留为兼容别名）
   - public_web 保守采集
@@ -154,6 +156,13 @@
 
 ## 验证结果
 
+- 2026-07-06 Tavily 生产配置 + Firecrawl 接线验证：
+  - 本地 `.env.local`：`AGENT_FACTORY_SEARCH_PROVIDER=tavily`、`AGENT_FACTORY_SEARCH_API_KEY` 已从 OpenClaw 配置复制；Firecrawl 非密钥配置已写入，但无 API key，`AGENT_FACTORY_FIRECRAWL_ENABLED=false`。
+  - 生产 env：轻量服务器 `/opt/playgamelab/industry-research/industry-research.env` 已写入 Tavily 三个变量和 Firecrawl 四个非密钥变量，改前备份为 `industry-research.env.bak-20260706081456`；未打印密钥。
+  - Firecrawl 官方 keyless scrape 本机实测 `POST https://api.firecrawl.dev/v2/scrape` 返回 403（IP 无 key 风控），所以不启用无 key Firecrawl，避免每轮 run 先打必失败请求。
+  - `pnpm check`：通过，workspace typecheck / Vitest 8 文件 88 tests / Biome 85 文件。
+  - `pnpm build`：通过，Next.js 生产构建成功。
+  - `pnpm sample:public-web`：通过，run `v03-public-web-smoke-2026-07-06T08-13-09-864Z`，rawDocuments 7、acceptedForReport 5、crawlFailures 0；`run_log.sourceDiscoveryNotes` 显示 `provider=tavily`。
 - 2026-07-06 旧控制台删除 + Tavily provider 接入验证：
   - `pnpm check`：通过，workspace typecheck / Vitest 8 文件 86 tests / Biome 84 文件。
   - `pnpm build`：通过，Next.js 生产构建成功。

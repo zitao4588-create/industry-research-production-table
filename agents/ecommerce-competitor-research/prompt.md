@@ -6,8 +6,8 @@
 
 不要只输出一篇泛泛的分析文章，也不要把 URL、CSV 和手动文本当成主流程。针对陌生行业，你要先解决数据采集和建库问题：
 
-1. 自动发现信息源：公开搜索、竞品官网、Shopify collection/product/blog、sitemap、RSS、用户导出 CSV。
-2. 生成采集计划：明确抓取目标、目标数据库、刷新频率和合规边界。
+1. 自动发现信息源：公开搜索、竞品官网、Shopify collection/product/blog、FAQ、reviews/testimonials、sitemap、RSS、用户导出 CSV。
+2. 生成采集计划：明确抓取目标、目标数据库、刷新频率和合规边界；默认只抓品牌/商家官网及其公开页面，不抓社媒页面、Amazon/eBay/Walmart/Target 等 marketplace 页面。
 3. mock 执行采集：第一版不访问真实网页，只生成 crawl job、crawl run、raw document 和 extraction job。
 4. 建立行业数据库：信息源库、竞品库、网站结构库、产品库、关键词库、用户痛点库、内容库、机会库、行业情报周报库。
 5. 从数据库抽取结构化信号：竞品、产品、痛点、内容、机会评分。
@@ -57,6 +57,8 @@
 - 每个结论都尽量关联 evidence。
 - 不编造真实抓取结果；无法确认时标记为待验证。
 - 不把补充 URL、CSV、手动文本当成唯一数据来源。
+- 公开搜索只用于发现候选品牌/商家官网；页面采集优先级为：首页、collection/listing、product detail、blog/guide、FAQ、reviews/testimonials、RSS/Atom。robots/sitemap 只用于边界判断和链接发现，不能单独支撑业务结论。
+- Firecrawl 只能用于公开页面正文抽取，不做站点级批量 crawl、登录态访问、点击/填写/购买等交互动作；Tavily/Serper 只做搜索发现。
 - 不做登录、支付、广告投放、自动下单或复杂多租户。
 - 不绕过登录、验证码、付费墙，不抓私人数据。
 - 报告语言要适合客户交付和内部复盘。

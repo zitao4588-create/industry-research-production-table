@@ -204,6 +204,8 @@ function createPublicCrawlPlan(
       "不绕过登录、验证码、付费墙，不采集私人数据、支付信息或联系方式。",
       "非公开补充输入会保留为补充链路，不进入真实 public_web crawl plan。",
       "未验证的 Shopify、RSS 和产品 JSON 猜测路径不会直接进入真实抓取；只有用户明确输入或从首页、robots、sitemap 发现的公开 URL 才会抓取。",
+      "优先采集品牌/商家官网首页、collection、product、blog、FAQ、reviews/testimonials；社媒和 marketplace 页面默认排除，内容生态只走官方 API。",
+      "Tavily/Serper 只负责候选 URL 搜索发现；Firecrawl 只负责公开页面正文抽取，不执行站点级 crawl、交互动作、登录或绕过访问限制。",
       "公开网页抽取出的结构化结论必须人工复核。",
     ],
     targets: userProvidedPublicTargets,
@@ -258,7 +260,7 @@ export async function runPublicIndustryResearchWorkflow(
     targets: [...publicCrawlPlan.targets, ...publicSourceDiscovery.targets],
     guardrails: [
       ...publicCrawlPlan.guardrails,
-      "public_source_discovery 会保守探测公开首页、robots 和 sitemap；RSS/Atom、collection、product、blog 只从真实页面链接或 sitemap 进入采集。",
+      "public_source_discovery 会保守探测公开品牌/商家官网首页、robots 和 sitemap；RSS/Atom、collection、product、blog/FAQ/reviews 只从真实页面链接或 sitemap 进入采集。",
     ],
   };
   for (const candidate of enhancedSourceDiscoveryPlan.candidates.slice(0, 12)) {
@@ -288,6 +290,7 @@ export async function runPublicIndustryResearchWorkflow(
       fetcher: options.fetcher,
       input,
       now: options.now,
+      env: options.env,
     },
   );
   const contentApiResult = await collectContentApiSignals(project.id, input, {

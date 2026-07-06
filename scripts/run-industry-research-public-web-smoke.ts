@@ -1,3 +1,4 @@
+import { existsSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
@@ -30,17 +31,46 @@ function createSmokeInput(): ResearchWorkflowInput {
   };
 }
 
+function loadLocalEnv() {
+  if (!existsSync(".env.local")) {
+    return {};
+  }
+
+  return readFileSync(".env.local", "utf8")
+    .split(/\r?\n/)
+    .reduce<Record<string, string>>((env, line) => {
+      const trimmed = line.trim();
+
+      if (!trimmed || trimmed.startsWith("#")) {
+        return env;
+      }
+
+      const separatorIndex = trimmed.indexOf("=");
+
+      if (separatorIndex <= 0) {
+        return env;
+      }
+
+      const key = trimmed.slice(0, separatorIndex).trim();
+      const value = trimmed.slice(separatorIndex + 1).trim();
+      env[key] = value.replace(/^["']|["']$/g, "");
+
+      return env;
+    }, {});
+}
+
 async function main() {
   const started = new Date();
   const input = createSmokeInput();
   const runId = `v03-public-web-smoke-${timestampForPath(started)}`;
+  const env = { ...loadLocalEnv(), ...process.env };
   const result = await runPublicIndustryResearchWorkflow(input, {
     maxDiscoveredTargets: 6,
     maxProbeUrls: 8,
     maxSitemapUrls: 4,
     requestTimeoutMs: 8_000,
     now: started.toISOString(),
-    env: process.env,
+    env,
   });
   const finished = new Date();
   const runsRootDir = join("outputs", "industry-research-runs");

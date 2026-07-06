@@ -392,4 +392,153 @@ describe("runPublicCrawler politeness and caps", () => {
     expect(result.crawl_runs[2]?.summary).toContain("TARGET_CAP_EXCEEDED");
     expect(result.raw_documents).toHaveLength(2);
   });
+
+  it("uses Firecrawl scrape for ecommerce pages and keeps robots on native fetch", async () => {
+    const targets = [
+      {
+        id: "target-homepage",
+        projectId: "project-test",
+        candidateId: "candidate-homepage",
+        kind: "homepage" as const,
+        target: "https://brand.example/",
+        reason: "official homepage",
+        maxPages: 1,
+        databaseTargets: ["competitor_database" as const],
+      },
+      {
+        id: "target-robots",
+        projectId: "project-test",
+        candidateId: "candidate-robots",
+        kind: "robots" as const,
+        target: "https://brand.example/robots.txt",
+        reason: "robots boundary",
+        maxPages: 1,
+        databaseTargets: ["source_database" as const],
+      },
+    ];
+    const sources: ResearchSource[] = targets.map((target, index) => ({
+      id: `source-${index + 1}`,
+      projectId: "project-test",
+      type: "url",
+      title: target.target,
+      value: target.target,
+      automationHint: "",
+      discoveryCandidateId: target.candidateId,
+    }));
+    const requestedUrls: string[] = [];
+    const requestedInits: Array<RequestInit | undefined> = [];
+    const fetcher: PublicCrawlerFetch = async (url, init) => {
+      requestedUrls.push(url);
+      requestedInits.push(init);
+
+      if (url === "https://api.firecrawl.dev/v2/scrape") {
+        return jsonResponse({
+          success: true,
+          data: {
+            markdown:
+              "# Zesty Brand\nBest sellers probiotic bundle with product reviews.",
+            metadata: { title: "Firecrawl title" },
+          },
+        });
+      }
+
+      if (url === "https://brand.example/robots.txt") {
+        return textResponse("User-agent: *\nDisallow: /private\n");
+      }
+
+      return notFound();
+    };
+
+    const result = await runPublicCrawler(
+      "project-test",
+      { ...emptyCrawlPlan, targets },
+      sources,
+      {
+        fetcher,
+        input,
+        env: {
+          AGENT_FACTORY_FIRECRAWL_ENABLED: "true",
+          AGENT_FACTORY_FIRECRAWL_API_KEY: "fc-key",
+        },
+      },
+    );
+
+    expect(requestedUrls[0]).toBe("https://api.firecrawl.dev/v2/scrape");
+    expect(requestedUrls).toContain("https://brand.example/robots.txt");
+    const firecrawlInit = requestedInits[0];
+    expect(
+      (firecrawlInit?.headers as Record<string, string>)?.Authorization,
+    ).toBe("Bearer fc-key");
+    expect(JSON.parse(String(firecrawlInit?.body))).toMatchObject({
+      url: "https://brand.example/",
+      formats: ["markdown"],
+      onlyMainContent: true,
+      blockAds: true,
+    });
+    expect(result.raw_documents[0]?.title).toBe("Firecrawl title");
+    expect(result.raw_documents[0]?.contentType).toBe("text");
+    expect(result.raw_documents[0]?.extractedText).toContain(
+      "Best sellers probiotic bundle",
+    );
+    expect(result.raw_documents[1]?.title).toBe("robots.txt");
+    expect(result.crawl_runs[0]?.summary).toContain("firecrawl_scrape");
+  });
+
+  it("falls back to native fetch when Firecrawl does not return usable text", async () => {
+    const target = {
+      id: "target-homepage",
+      projectId: "project-test",
+      candidateId: "candidate-homepage",
+      kind: "homepage" as const,
+      target: "https://brand.example/",
+      reason: "official homepage",
+      maxPages: 1,
+      databaseTargets: ["competitor_database" as const],
+    };
+    const sources: ResearchSource[] = [
+      {
+        id: "source-1",
+        projectId: "project-test",
+        type: "url",
+        title: target.target,
+        value: target.target,
+        automationHint: "",
+        discoveryCandidateId: target.candidateId,
+      },
+    ];
+    const requestedUrls: string[] = [];
+    const fetcher: PublicCrawlerFetch = async (url) => {
+      requestedUrls.push(url);
+
+      if (url === "https://api.firecrawl.dev/v2/scrape") {
+        return jsonResponse({ success: true, data: { markdown: "" } });
+      }
+
+      if (url === "https://brand.example/") {
+        return htmlResponse(
+          "<html><title>Native title</title><body>Native product bundle reviews</body></html>",
+        );
+      }
+
+      return notFound();
+    };
+
+    const result = await runPublicCrawler(
+      "project-test",
+      { ...emptyCrawlPlan, targets: [target] },
+      sources,
+      {
+        fetcher,
+        input,
+        env: { AGENT_FACTORY_FIRECRAWL_ENABLED: "true" },
+      },
+    );
+
+    expect(requestedUrls).toEqual([
+      "https://api.firecrawl.dev/v2/scrape",
+      "https://brand.example/",
+    ]);
+    expect(result.raw_documents[0]?.title).toBe("Native title");
+    expect(result.crawl_runs[0]?.summary).toContain("回退 native fetch");
+  });
 });

@@ -141,9 +141,9 @@ function unique(values: string[]) {
 
 function createSearchQueries(input: ResearchWorkflowInput) {
   return unique([
-    `${input.category} best sellers ${input.market}`,
-    `${input.category} competitor official website ${input.market}`,
-    `${input.industry} ${input.category} DTC brands`,
+    `${input.category} competitor official brand website ${input.market}`,
+    `${input.category} DTC brand store collection product blog ${input.market}`,
+    `${input.industry} ${input.category} best sellers brand reviews ${input.market}`,
   ]);
 }
 
@@ -494,7 +494,11 @@ function extractHtmlDiscoveryLinks(body: string, baseUrl: string) {
         normalizedUrl.includes("sitemap") ||
         normalizedUrl.includes("/products/") ||
         normalizedUrl.includes("/collections") ||
-        normalizedUrl.includes("/blog")
+        normalizedUrl.includes("/blog") ||
+        normalizedUrl.includes("/faq") ||
+        normalizedUrl.includes("/review") ||
+        normalizedUrl.includes("/reviews") ||
+        normalizedUrl.includes("/testimonials")
       );
     });
 }
@@ -681,7 +685,7 @@ async function discoverSearchResultUrls(
 
   notes.push(
     uniqueDiscoveredUrls.length > 0
-      ? `public_search_discovery 自动发现 ${uniqueDiscoveredUrls.length} 个候选公开 URL（provider=${providerLabel}），后续只保守探测公开首页、robots 和 sitemap；RSS、collection、product、blog 仅从页面或 sitemap 真实链接进入采集。`
+      ? `public_search_discovery 自动发现 ${uniqueDiscoveredUrls.length} 个候选公开 URL（provider=${providerLabel}），后续只保守探测公开品牌/商家官网首页、robots 和 sitemap；RSS、collection、product、blog/FAQ/reviews 仅从页面或 sitemap 真实链接进入采集。`
       : `public_search_discovery 未发现可用候选 URL（provider=${providerLabel}）；需要补充种子 URL 或接入更稳定的搜索 API。`,
   );
 

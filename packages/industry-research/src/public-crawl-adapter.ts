@@ -1,3 +1,8 @@
+import {
+  resolveFirecrawlConfig,
+  scrapeWithFirecrawl,
+  shouldUseFirecrawlForTarget,
+} from "./firecrawl-provider";
 import { assessSourceQuality } from "./source-quality";
 import type {
   CrawlJob,
@@ -36,6 +41,8 @@ export type PublicCrawlAdapterOptions = {
   perHostDelayMs?: number;
   /** 单次 run 的抓取目标硬上限，超出的目标标记 skipped 不请求。 */
   maxTargets?: number;
+  /** Firecrawl / provider 配置解析用 env；核心包不直接读取 process.env。 */
+  env?: Record<string, string | undefined>;
 };
 
 export type PublicCrawlAdapterResult = {
@@ -270,6 +277,7 @@ export async function runPublicCrawler(
   const rawDocuments: RawDocument[] = [];
   const extractionJobs: ExtractionJob[] = [];
   const lastFetchAtByHost = new Map<string, number>();
+  const firecrawlConfig = resolveFirecrawlConfig(options.env ?? {});
 
   for (const [index, target] of crawlPlan.targets.entries()) {
     const jobId = `public-crawl-job-${index + 1}`;
@@ -354,31 +362,64 @@ export async function runPublicCrawler(
         lastFetchAtByHost.set(host, Date.now());
       }
 
-      const response = await fetcher(target.target, {
-        headers: {
-          "User-Agent":
-            "AgentFactoryIndustryResearch/0.1 (+public research workflow)",
-        },
-      });
+      let extractionTool = "native_fetch";
+      let firecrawlFallbackNote = "";
+      let extracted:
+        | ReturnType<typeof extractPublicText>
+        | {
+            title: string;
+            contentType: "text";
+            text: string;
+          }
+        | null = null;
 
-      if (!response.ok) {
-        jobs[index] = { ...jobs[index], status: "failed" };
-        runs.push({
-          id: runId,
-          projectId,
-          jobId,
-          status: "failed",
-          startedAt: now,
-          finishedAt: now,
-          documentsCreated: 0,
-          summary: `HTTP_ERROR: HTTP ${response.status} while fetching ${target.target}`,
-        });
-        continue;
+      if (shouldUseFirecrawlForTarget(target, firecrawlConfig)) {
+        const firecrawlResult = await scrapeWithFirecrawl(
+          target,
+          firecrawlConfig,
+          fetcher,
+        );
+
+        if (firecrawlResult.ok) {
+          extractionTool = "firecrawl_scrape";
+          extracted = {
+            title: firecrawlResult.title,
+            contentType: "text",
+            text: normalizeText(firecrawlResult.text),
+          };
+        } else {
+          firecrawlFallbackNote = `Firecrawl 未产出可用正文（${firecrawlResult.error}），已回退 native fetch。`;
+        }
       }
 
-      const body = await response.text();
-      const contentType = response.headers?.get("content-type") ?? "";
-      const extracted = extractPublicText(target, body, contentType);
+      if (!extracted) {
+        const response = await fetcher(target.target, {
+          headers: {
+            "User-Agent":
+              "AgentFactoryIndustryResearch/0.1 (+public research workflow)",
+          },
+        });
+
+        if (!response.ok) {
+          jobs[index] = { ...jobs[index], status: "failed" };
+          runs.push({
+            id: runId,
+            projectId,
+            jobId,
+            status: "failed",
+            startedAt: now,
+            finishedAt: now,
+            documentsCreated: 0,
+            summary: `HTTP_ERROR: HTTP ${response.status} while fetching ${target.target}`,
+          });
+          continue;
+        }
+
+        const body = await response.text();
+        const contentType = response.headers?.get("content-type") ?? "";
+        extracted = extractPublicText(target, body, contentType);
+      }
+
       const extractedText = extracted.text.slice(0, maxTextLength);
       const qualityInput = options.input ?? fallbackQualityInput;
       const rawDocument: RawDocument = {
@@ -412,7 +453,7 @@ export async function runPublicCrawler(
         startedAt: now,
         finishedAt: now,
         documentsCreated: 1,
-        summary: `public_web adapter 已抽取 1 条 ${extracted.contentType} raw document；sourceQuality=${rawDocument.sourceQuality.sourceType}/${rawDocument.sourceQuality.sourceRelevance}/${rawDocument.sourceQuality.sourceConfidence}；acceptedForReport=${rawDocument.sourceQuality.acceptedForReport}。`,
+        summary: `${extractionTool} 已抽取 1 条 ${extracted.contentType} raw document；sourceQuality=${rawDocument.sourceQuality.sourceType}/${rawDocument.sourceQuality.sourceRelevance}/${rawDocument.sourceQuality.sourceConfidence}；acceptedForReport=${rawDocument.sourceQuality.acceptedForReport}。${firecrawlFallbackNote ? ` ${firecrawlFallbackNote}` : ""}`,
       });
     } catch (error) {
       jobs[index] = { ...jobs[index], status: "failed" };

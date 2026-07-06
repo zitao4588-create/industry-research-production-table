@@ -28,6 +28,15 @@
   - Tavily 调用固定 `search_depth=basic`、`include_answer=false`、`include_raw_content=false`，控制免费 credits 消耗和响应体大小。
   - 无 key 或 Tavily 调用失败时仍按既有逻辑降级到 `duckduckgo_html`。
 
+## 2026-07-06：Firecrawl 只作为公开页面正文抽取增强，不替代搜索发现
+
+- 决策：新增 Firecrawl SDK 依赖和 REST scrape 包装层；`public_web` 在 `homepage` / `collection` / `product` / `blog` 目标上可先尝试 Firecrawl `/v2/scrape` 抽取 Markdown 正文，`robots` / `sitemap` / `rss` 仍走原生 fetch。Firecrawl 失败或无 key 时自动回退原生 fetch，不让外部服务失败阻塞整轮研究。
+- 原因：Tavily/Serper 适合发现候选 URL，Firecrawl 更适合把公开页面抽成干净正文；但 Firecrawl 不应做站点级 crawl、交互动作、登录态访问或绕过限制，否则会突破当前 public_web 合规边界。
+- 影响：
+  - 配置位：`AGENT_FACTORY_FIRECRAWL_ENABLED`、`AGENT_FACTORY_FIRECRAWL_API_KEY`、`AGENT_FACTORY_FIRECRAWL_BASE_URL`、`AGENT_FACTORY_FIRECRAWL_TARGET_KINDS`、`AGENT_FACTORY_FIRECRAWL_TIMEOUT_MS`。
+  - 当前本机和生产只写入非密钥配置，`AGENT_FACTORY_FIRECRAWL_ENABLED=false`；本机实测 Firecrawl keyless scrape 返回 403，需要用户注册 Firecrawl API key 后再启用。
+  - Agent prompt 和 crawl guardrails 明确优先抓品牌/商家官网首页、collection、product、blog/FAQ/reviews/testimonials；社媒和 marketplace 页面默认排除，内容生态只走官方 API。
+
 ## 2026-07-05：生产 LLM provider 确定为自付费 DeepSeek 官方 API
 
 - 决策：`AGENT_FACTORY_LLM_*` 指向 DeepSeek 官方 API（`https://api.deepseek.com` / `deepseek-v4-flash`），本机 `.env.local` 已配置（key 来自 agent-factory 时期已有的付费账号）。9router free 路线继续只作探索，不进生产。

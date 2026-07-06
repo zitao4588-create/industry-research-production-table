@@ -15,6 +15,15 @@
 - [x] 2026-07-06 搜索 provider 新增 Tavily：
   - `AGENT_FACTORY_SEARCH_PROVIDER=tavily` + `AGENT_FACTORY_SEARCH_API_KEY` 可切换到 Tavily Search。
   - Tavily 固定 basic search，不请求 answer/raw content，控制免费 credits 消耗。
+- [x] 2026-07-06 Tavily 已复制并配置到本地和生产：
+  - OpenClaw 的 `TAVILY_API_KEY` 已安全复制到本项目 `.env.local`，未打印密钥。
+  - 轻量服务器 env 已写入 `AGENT_FACTORY_SEARCH_PROVIDER=tavily`、`AGENT_FACTORY_SEARCH_API_KEY`、`AGENT_FACTORY_SEARCH_BASE_URL`，备份为 `industry-research.env.bak-20260706081456`。
+  - 真实 `pnpm sample:public-web` 验证 `run_log.sourceDiscoveryNotes` 出现 `provider=tavily`。
+- [x] 2026-07-06 Firecrawl 已安装并完成代码侧接线：
+  - 新增 `firecrawl@4.29.2` 依赖和 Firecrawl `/v2/scrape` 包装层。
+  - `public_web` 只在公开 `homepage` / `collection` / `product` / `blog` 页面尝试 Firecrawl 正文抽取，`robots` / `sitemap` / `rss` 仍走原生 fetch。
+  - Firecrawl 失败自动回退 native fetch；单测覆盖 Firecrawl 成功、robots 原生 fetch、Firecrawl 空正文回退。
+  - 当前无 Firecrawl API key，本机 keyless scrape 返回 403，因此本地和生产均保持 `AGENT_FACTORY_FIRECRAWL_ENABLED=false`；填入 `AGENT_FACTORY_FIRECRAWL_API_KEY` 后会自动启用。
 - [x] 按 `docs/design_handoff_research_console 2/porting/source/globals.css` 迁移核心 UI 样式。
 - [x] 补齐展示字体：`Space Grotesk`、`Manrope`、`IBM Plex Mono`、`Noto Sans SC`。
 - [x] 移植 `components.tsx`、`KnowledgeGraph.tsx`、`micro.tsx`、`extras.tsx`。
@@ -165,7 +174,7 @@
 - [x] 2026-07-05 生产部署与 n8n 导入完成：已按 **`docs/CODEX_PRODUCTION_ROLLOUT_HANDOFF.md`** 执行 R1-R6，写入生产 LLM env、部署 `7478af7`、验证生产 DeepSeek、导入并激活 `industryResearchWeeklyRerun`、生成生产基线 run `dtc-2026-07-04T17-32-52-910Z`、完成 zvec 增量索引。R7 文档回写和提交由本轮收尾完成。
 - [x] 2026-07-06 UI 统一版 D1/D2 完成：部署 `main` 到轻量服务器并完成线上端到端验证；本轮又把根路由 `/` 改成 redirect 到 `/industry-research`。
 - 需要用户注册的外部凭据（代码侧已就绪，配好即生效；涉及账号/支付信息，无法代注册）：
-  - Tavily API key（推荐，免费档 1,000 credits/month，无需信用卡）→ `AGENT_FACTORY_SEARCH_PROVIDER=tavily` + `AGENT_FACTORY_SEARCH_API_KEY`。
+  - Firecrawl API key（推荐免费档；无 key 本机 keyless 已被 403 拦截）→ `AGENT_FACTORY_FIRECRAWL_API_KEY`，可保持 `AGENT_FACTORY_FIRECRAWL_ENABLED=false`，代码会因 key 存在自动启用。
   - Serper API key（备选，注册送 2,500 free queries）→ `AGENT_FACTORY_SEARCH_PROVIDER=serper` + `AGENT_FACTORY_SEARCH_API_KEY`。
   - YouTube Data API v3 key（console.cloud.google.com → 建项目 → 启用 YouTube Data API v3 → 凭据 → API key）→ `AGENT_FACTORY_YOUTUBE_API_KEY`。
   - Reddit token（需先确认商业使用权限和 token 续期方式）→ `AGENT_FACTORY_REDDIT_ACCESS_TOKEN`。
@@ -177,5 +186,5 @@
 
 1. 继续把 n8n 周报业务流稳定在 `public_web`，保证无 LLM 也能产出 8 文件交付包和周报基线。
 2. 需要 LLM 交付时使用已接入的自付费 DeepSeek 官方 API；不要回退到 9router free/MiMo 作为生产承诺。
-3. 接入 Tavily/Serper/YouTube/Reddit key 前继续复核公开数据边界、robots 约束、provider 成本和平台商业使用权限。
+3. 接入 Firecrawl/Serper/YouTube/Reddit key 前继续复核公开数据边界、robots 约束、provider 成本和平台商业使用权限。
 4. Supabase、zvec、轻量服务器 API、简化 UI、P0/P1/P2 准生产基线、生产 LLM 和 n8n 周报 workflow 都已完成部署闭环；后续重点是真实业务样本质量和付费验证。

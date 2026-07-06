@@ -2,6 +2,13 @@
 
 更新时间：2026-07-06
 
+## 验收备注：Firecrawl keyless scrape 在当前网络环境返回 403
+
+- 现象：本机无 `FIRECRAWL_API_KEY` / `AGENT_FACTORY_FIRECRAWL_API_KEY`，直接 `POST https://api.firecrawl.dev/v2/scrape` 抓 `https://example.com/` 返回 HTTP 403，错误说明无 key 的当前 IP 被 Firecrawl 风控。
+- 判断：这是 Firecrawl keyless free tier 的环境限制，不是本项目 Firecrawl 包装层或 public_web 工作流失败。
+- 处理：代码侧已安装并接入 Firecrawl；本地和生产只写入非密钥配置，保持 `AGENT_FACTORY_FIRECRAWL_ENABLED=false`。用户注册 Firecrawl API key 后，填入 `AGENT_FACTORY_FIRECRAWL_API_KEY` 即可自动启用。
+- 验证：`pnpm check` 通过；`pnpm sample:public-web` 用 Tavily 搜索发现成功，Firecrawl 未启用时 run 正常完成。
+
 ## 验收备注：Codex Browser DOM snapshot 不可用，已用 Playwright 兜底
 
 - 现象：本轮本地/线上 UI 验证时，Browser 插件的 `domSnapshot()` 返回 `TypeError: o.incrementalAriaSnapshot is not a function`。
