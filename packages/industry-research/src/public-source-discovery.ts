@@ -97,6 +97,25 @@ const ignoredCandidateHostnameParts = [
   "ebay.",
   "walmart.",
   "target.",
+  "jd.com",
+  "taobao.",
+  "tmall.",
+  "1688.",
+  "pinduoduo.",
+  "yangkeduo.",
+  "alibaba.",
+  "aliexpress.",
+  "sohu.",
+  "sina.",
+  "163.com",
+  "qq.com",
+  "weibo.",
+  "zhihu.",
+  "baidu.",
+  "bilibili.",
+  "douyin.",
+  "toutiao.",
+  "ifeng.",
 ];
 const ignoredPathExtensionPattern =
   /\.(avif|bmp|css|gif|ico|jpeg|jpg|js|mp3|mp4|pdf|png|svg|webp|zip)(?:$|\?)/i;
@@ -141,9 +160,10 @@ function unique(values: string[]) {
 
 function createSearchQueries(input: ResearchWorkflowInput) {
   return unique([
-    `${input.category} competitor official brand website ${input.market}`,
-    `${input.category} DTC brand store collection product blog ${input.market}`,
-    `${input.industry} ${input.category} best sellers brand reviews ${input.market}`,
+    `${input.category} 品牌 官网 official brand website 竞品 ${input.market}`,
+    `${input.category} competitor DTC brand official store product review ${input.market}`,
+    `${input.industry} ${input.category} independent brand store collection product blog ${input.market}`,
+    `${input.category} best seller brand reviews comparison ${input.market}`,
   ]);
 }
 

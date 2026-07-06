@@ -179,6 +179,8 @@ describe("discoverPublicSources with api search provider", () => {
               results: [
                 { url: "https://newbrand.example/" },
                 { url: "https://www.amazon.com/some-listing" },
+                { url: "https://www.jd.com/" },
+                { url: "https://www.sohu.com/" },
                 { url: "https://www.tiktok.com/@brand" },
               ],
             })
@@ -208,16 +210,20 @@ describe("discoverPublicSources with api search provider", () => {
     expect((tavilyInit?.headers as Record<string, string>)?.Authorization).toBe(
       "Bearer tavily-key",
     );
-    expect(JSON.parse(String(tavilyInit?.body))).toMatchObject({
+    const tavilyBody = JSON.parse(String(tavilyInit?.body));
+    expect(tavilyBody).toMatchObject({
       search_depth: "basic",
       max_results: 5,
       include_answer: false,
       include_raw_content: false,
     });
+    expect(tavilyBody.query).toContain("品牌 官网");
 
     const seeds = result.candidates.map((candidate) => candidate.seed);
     expect(seeds).toContain("https://newbrand.example/");
     expect(seeds.some((seed) => seed.includes("amazon"))).toBe(false);
+    expect(seeds.some((seed) => seed.includes("jd.com"))).toBe(false);
+    expect(seeds.some((seed) => seed.includes("sohu.com"))).toBe(false);
     expect(seeds.some((seed) => seed.includes("tiktok"))).toBe(false);
     expect(result.notes.some((note) => note.includes("provider=tavily"))).toBe(
       true,
