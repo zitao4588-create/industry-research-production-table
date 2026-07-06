@@ -2,6 +2,27 @@
 
 更新时间：2026-07-06
 
+## 已处理：线上输入品类后 public_web run 在 crawl_sources 阶段 180 秒超时
+
+- 现象：生产页输入「男士电动剃须刀」并点击「开始研究」后，UI 正常进入运行态，进度到 `crawl_sources` 后等待，最终显示 `run_timeout_after_180000ms`。
+- 判断：不是按钮、SSE、systemd 服务或持久化坏了；服务 active 且 health OK。根因是 Tavily + Firecrawl 接入后，默认发现/探测/抓取目标过多，再叠加 Firecrawl 30000ms 单页超时，使交互式 run 超过 SSE 180 秒窗口。
+- 处理：`runPublicIndustryResearchWorkflow` 增加 env 可调预算：search queries、search results、probe URLs、sitemap URLs、discovered targets、crawl targets、request timeout；默认交互预算收敛到 2 query、4 results/query、8 probes、4 sitemap URLs、10 discovered targets、8 crawl targets、8000ms request timeout。生产 env 把 `AGENT_FACTORY_FIRECRAWL_TIMEOUT_MS` 降到 12000ms，备份为 `industry-research.env.bak-20260706204443`。
+- 验证：本地 `pnpm check`（89 tests）和 `pnpm build` 通过；提交 `7138356` 已部署生产。Playwright 重新输入「男士电动剃须刀」生成 run `industry-research-2026-07-06T12-46-43-563Z`，完成并自动生成 `?run=` 分享链接。
+
+## 已处理：搜索发现会把明显平台/门户页纳入候选来源
+
+- 现象：第一次修复超时后，线上 run 完成，但回放证据中出现 `jd.com`、`sohu.com` 这类 marketplace / portal 页面，业务价值很低。
+- 判断：当前过滤名单覆盖了 Amazon/TikTok 等英文平台，但没有覆盖中国常见电商平台、门户、内容社区；同时默认 query 对中文品类不够明确，没有强约束“品牌官网”。
+- 处理：发现层 query 改为更偏「品牌官网 / official brand website / 竞品」；新增 JD、淘宝、天猫、1688、拼多多、搜狐、新浪、网易、QQ、微博、知乎、百度、B 站、抖音、头条、凤凰等域名过滤。
+- 验证：本地 `pnpm check` 和 `pnpm build` 通过；提交 `ccad3f4` 已部署生产。最新 run `industry-research-2026-07-06T12-52-48-094Z` 不再出现 JD/Sohu，抓到 Philips 官方站并可分享回放。
+
+## 当前限制：public_web 默认模式仍可能没有竞品/机会结构化结果
+
+- 现象：最新线上 run `industry-research-2026-07-06T12-52-48-094Z` 约 25 秒完成，信息源库 10 条、可溯源证据 2 条，但竞品和机会仍为 0。
+- 判断：这是当前 UI 固定 `DEFAULT_MODE = "public_web"` 的预期边界。真实 public_web lean 路径只构建公开证据和 source database，不做 LLM 结构化抽取；要生成竞品/机会，需要切 `public_web_llm` 或新增深度研究模式。
+- 另一个质量问题：`wabei.cn` 这类财经资讯站仍被 `sourceQuality` 判为 `official_site` 并 accepted，需要继续加严来源分类。
+- 后续：决策 UI 默认模式是否切到 `public_web_llm`；同时把资讯站/百科/问答/内容社区从 `official_site` 中剥离，避免 accepted evidence 误导。
+
 ## 已处理：Firecrawl keyless scrape 在当前网络环境返回 403
 
 - 现象：本机无 `FIRECRAWL_API_KEY` / `AGENT_FACTORY_FIRECRAWL_API_KEY`，直接 `POST https://api.firecrawl.dev/v2/scrape` 抓 `https://example.com/` 返回 HTTP 403，错误说明无 key 的当前 IP 被 Firecrawl 风控。

@@ -2,6 +2,31 @@
 
 更新时间：2026-07-06
 
+## 2026-07-06：交互式 public_web run 使用保守预算，避免 UI 180 秒超时
+
+- 决策：`runPublicIndustryResearchWorkflow` 在 workflow 层解析 `AGENT_FACTORY_PUBLIC_WEB_MAX_*` 预算变量，并把预算传给 source discovery 和 crawler；默认交互预算收敛到小步可完成的一轮研究。生产 Firecrawl 单页超时从 30000ms 降到 12000ms。
+- 原因：Tavily + Firecrawl 接入后，默认发现 32 目标、24 probe、20 sitemap URL、60 crawl target 的配置适合批处理/深度采集，但对同源 SSE 交互式运行过重，会触发 `run_timeout_after_180000ms`。
+- 影响：
+  - 输入品类后能优先完成一轮公开证据扫描，不再把 UI 卡死在 `crawl_sources`。
+  - 深度采集仍可通过 env 调大预算，不需要改代码。
+  - 这是完成性优先的预算，不代表报告质量已经达到可收费交付标准。
+
+## 2026-07-06：搜索发现先过滤明显平台/门户，不把它们当品牌官网候选
+
+- 决策：在候选 URL 过滤层排除中国常见电商平台、门户、百科/问答和内容社区域名，并把默认 query 改得更偏「品牌官网 / official brand website / 竞品」。
+- 原因：真实线上 run 发现 `jd.com`、`sohu.com` 会进入 evidence，虽然流程可回放，但对竞品研究价值低，且与“优先品牌/商家官网”的 agent 抓取策略不一致。
+- 影响：
+  - 明显平台/门户不再进入默认候选来源。
+  - 这只是第一层过滤；`wabei.cn` 这类资讯/财经站仍可能被误判，需要后续加严 `sourceQuality`。
+
+## 2026-07-06：本轮不擅自把 UI 默认模式从 public_web 切到 public_web_llm
+
+- 决策：虽然 public_web lean 模式会导致竞品/机会为 0，本轮仍保持 `SimpleResearch.tsx` 的 `DEFAULT_MODE = "public_web"`，只记录为待决策项。
+- 原因：切到 `public_web_llm` 会改变成本、运行时间、失败模式和 SSE timeout 假设；这不是单纯 bugfix，而是产品/成本决策。
+- 影响：
+  - 当前线上按钮可稳定完成公开证据扫描和分享回放。
+  - 若用户目标是“直接可交付竞品研究”，下一步应明确切 `public_web_llm` 或新增「深度研究」模式，并同步处理 timeout、成本提示、失败兜底和结果质量验收。
+
 ## 2026-07-06：UI 统一版上线后根路由直接进入行业研究
 
 - 决策：部署 Claude UI 统一版后，`/` 不再渲染旧浅色说明页，改为 Next.js `redirect("/industry-research")`；`/industry-research` 是唯一产品入口。

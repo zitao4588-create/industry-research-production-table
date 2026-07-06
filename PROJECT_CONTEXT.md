@@ -18,6 +18,14 @@
 
 ## 当前真实状态
 
+- 2026-07-06 线上从输入品类开始的完整流程已重新验证并修复关键超时：
+  - 复现问题：生产页输入「男士电动剃须刀」并点击「开始研究」后，流程能进入 running，但卡在 `crawl_sources`，最终返回 `run_timeout_after_180000ms`；服务本身 active，说明问题是单轮 public_web 采集预算过重，不是 UI 按钮或服务宕机。
+  - 修复：`public_web` workflow 新增 env 可调预算，默认限制搜索 query、搜索结果、探测入口、sitemap URL、发现目标和实际 crawl 目标；生产 env 把 Firecrawl 单页超时降到 12000ms，备份为 `industry-research.env.bak-20260706204443`。
+  - 追加修复：搜索 query 改为更明确偏「品牌官网 / official brand website」，并过滤 JD、淘宝、天猫、搜狐、微博、百度、B 站、抖音等平台/门户/内容社区域名，避免把明显非品牌官网当作候选来源。
+  - 已部署提交：`7138356`（public_web 预算上限）和 `ccad3f4`（搜索噪音过滤）；两次部署的远端备份分别为 `.deploy-backups/pre-7138356-20260706T124452Z.tar.gz`、`.deploy-backups/pre-ccad3f4-20260706T125120Z.tar.gz`。
+  - 验证：本地 `pnpm check`（89 tests）和 `pnpm build` 通过；两次生产部署均通过远端 build、`server:doctor`、`supabase:doctor` 和公网 health。
+  - 线上 Playwright E2E：重新输入「男士电动剃须刀」生成 run `industry-research-2026-07-06T12-52-48-094Z`，约 25 秒完成，URL 自动带 `?run=`；清空 localStorage 后直接打开分享链接，可看到「来自运行记录」回放报告。
+  - 剩余质量边界：当前 UI 仍固定 `public_web`，只做公开证据采集，不做 LLM 结构化抽取，所以竞品/机会仍可能为 0；最新 run 有 Philips 官方站，但也混入 `wabei.cn` 这类资讯站并被 `sourceQuality` 错判为 `official_site`，后续需继续加严来源分类或切到 `public_web_llm`。
 - 2026-07-06 UI 统一版已由 Codex 验证并部署上线：
   - 已复核 Claude 合并到 `origin/main` 的 UI 统一提交，并在本轮追加根路由 redirect 收尾提交；确认 `/industry-research` 为唯一简化体验，无「高级模式」入口；旧 `IndustryResearchWorkbench.tsx` 运行文件已在用户确认后删除。
   - 本地 `pnpm check` 与 `pnpm build` 通过；`deploy/lightweight-server/deploy.sh --dry-run` 复核后执行 `--execute`，远端 `pnpm install --frozen-lockfile`、`pnpm build`、`pnpm server:doctor`、`pnpm supabase:doctor` 通过，服务重启后公网 health `status=ok`。
