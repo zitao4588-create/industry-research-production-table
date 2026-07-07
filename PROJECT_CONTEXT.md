@@ -22,6 +22,7 @@
   - 新增 `source-registry.ts`，默认覆盖男士电动剃须刀、宠物益生菌、大豆蜡香薰、电解质饮料等低成本公开竞品研究入口；剃须刀类默认优先加入 Philips、Braun、Panasonic、Flyco 官网。
   - `discoverPublicSources` 会先把 `source_registry` 命中的官网 URL 合并进 crawl plan，再由 Tavily/Serper/DDG 搜索补漏，避免“搜索召回窄导致只有 1 个品牌”的问题。
   - 生产可用 `AGENT_FACTORY_SOURCE_REGISTRY_JSON` 按品类覆盖固定官网，用 `AGENT_FACTORY_FIXED_SOURCE_URLS` 临时追加全局官网，用 `AGENT_FACTORY_SOURCE_REGISTRY_DISABLED=true` 在测试或排障时关闭注册表。
+  - 代码提交 `55fc6e4 feat: add trusted source registry` 已推送 `origin/main` 并部署到轻量服务器；远端备份为 `.deploy-backups/pre-55fc6e4-20260707T014809Z.tar.gz`。
   - 本轮保持合规边界不变：只抓公开官网页面；Firecrawl 仍只做公开页面正文抽取增强，不做登录、点击、表单、站点级绕过或社媒页面爬取。
 - 2026-07-06 `public_web_llm` 默认模式上线后，已继续加严来源质量和机会抽取：
   - 提交 `3ba2f8e`：`sourceQuality` 不再把平台、门户、财经资讯、百科/问答、robots、sitemap、search candidate 或 `unknown/low` 来源作为可确认报告证据；LLM 分批抽取只接收 `canConfirmWithSource` 的 raw documents，并在 prompt 中携带 `sourceQuality` 与“机会是待验证候选切入点”的约束。
@@ -185,6 +186,8 @@
 - 2026-07-07 固定可信来源注册表验证：
   - `pnpm check`：通过，workspace typecheck / Vitest 9 文件 97 tests / Biome 87 文件。
   - `pnpm build`：通过，Next.js 生产构建成功。
+  - 生产部署：`deploy/lightweight-server/deploy.sh --dry-run` 复核后执行 `--execute`，远端 `pnpm install --frozen-lockfile`、`pnpm build`、`pnpm server:doctor`、`pnpm supabase:doctor`、systemd restart 和公网 health 均通过。
+  - 生产轻量验证：服务器目录内直接调用 `resolveSourceRegistryMatches`，输入「男士电动剃须刀」命中 Philips China、Braun China、Panasonic China、Flyco 四个默认官网；未消耗 Tavily、Firecrawl 或 LLM 额度。
   - 单测覆盖：无搜索结果时仍会为「男士电动剃须刀」加入 Philips/Braun/Panasonic/Flyco；`AGENT_FACTORY_SOURCE_REGISTRY_JSON` 可按品类追加固定来源；旧 mock workflow 可用 `AGENT_FACTORY_SOURCE_REGISTRY_DISABLED=true` 隔离默认注册表。
 - 2026-07-06 Tavily 生产配置 + Firecrawl 接线验证：
   - 本地 `.env.local`：`AGENT_FACTORY_SEARCH_PROVIDER=tavily`、`AGENT_FACTORY_SEARCH_API_KEY` 已从 OpenClaw 配置复制；Firecrawl 非密钥配置已写入，但无 API key，`AGENT_FACTORY_FIRECRAWL_ENABLED=false`。

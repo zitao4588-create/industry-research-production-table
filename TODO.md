@@ -8,7 +8,8 @@
   - 新增 `source_registry` discovery method 和 `source-registry.ts`，固定官网来源会优先进入 crawl plan，再由 Tavily/Serper/DDG 搜索补漏。
   - 默认注册表已覆盖「男士电动剃须刀」等常用品类；剃须刀类默认加入 Philips、Braun、Panasonic、Flyco 官网。
   - 支持 `AGENT_FACTORY_SOURCE_REGISTRY_JSON` 按品类配置官网、`AGENT_FACTORY_FIXED_SOURCE_URLS` 临时追加全局官网、`AGENT_FACTORY_SOURCE_REGISTRY_DISABLED=true` 关闭注册表。
-  - 验证：`pnpm check` 通过（97 tests），`pnpm build` 通过。
+  - 已提交并推送 `55fc6e4 feat: add trusted source registry`，已部署到轻量服务器；远端 build、doctor、service restart、公网 health 均通过。
+  - 验证：`pnpm check` 通过（97 tests），`pnpm build` 通过；生产轻量验证确认「男士电动剃须刀」命中 Philips / Braun / Panasonic / Flyco 四个默认官网。
 - [x] 2026-07-06 `public_web_llm` 来源质量和机会抽取继续加严并上线：
   - `sourceQuality` 排除平台/门户/财经资讯/百科问答/robots/sitemap/search candidate/unknown/low 作为可确认报告证据。
   - LLM 分批抽取只接收 `canConfirmWithSource` 来源，并在 prompt 中携带 `sourceQuality`、机会抽取和“候选切入点需复核”约束。
