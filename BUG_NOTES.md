@@ -1,6 +1,13 @@
 # Bug Notes
 
-更新时间：2026-07-06
+更新时间：2026-07-07
+
+## 已处理：固定来源注册表影响旧 mock workflow 测试夹具
+
+- 现象：接入默认 `source_registry` 后，旧的宠物益生菌 mock workflow 测试开始额外抓取 Native Pet / Finn / Zesty Paws 等默认官网，导致原本只覆盖 fixture URL 的测试失败。
+- 判断：这是测试边界变化，不是生产 bug；真实运行需要默认固定来源兜底，旧 fixture 则需要保持“只验证 mock URL 和预算上限”的封闭输入。
+- 处理：新增 `AGENT_FACTORY_SOURCE_REGISTRY_DISABLED=true` 开关；旧 mock workflow 测试显式关闭注册表，新增注册表专用测试保持默认开启。
+- 验证：`pnpm check` 通过，Vitest 9 文件 97 tests 全部通过；`pnpm build` 通过。
 
 ## 已处理：sourceQuality 把资讯/门户/无关电商页当作可确认官网证据
 

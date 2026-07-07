@@ -1,9 +1,14 @@
 # TODO
 
-更新时间：2026-07-06
+更新时间：2026-07-07
 
 ## 已完成
 
+- [x] 2026-07-07 固定可信来源注册表已接入 public_web / public_web_llm：
+  - 新增 `source_registry` discovery method 和 `source-registry.ts`，固定官网来源会优先进入 crawl plan，再由 Tavily/Serper/DDG 搜索补漏。
+  - 默认注册表已覆盖「男士电动剃须刀」等常用品类；剃须刀类默认加入 Philips、Braun、Panasonic、Flyco 官网。
+  - 支持 `AGENT_FACTORY_SOURCE_REGISTRY_JSON` 按品类配置官网、`AGENT_FACTORY_FIXED_SOURCE_URLS` 临时追加全局官网、`AGENT_FACTORY_SOURCE_REGISTRY_DISABLED=true` 关闭注册表。
+  - 验证：`pnpm check` 通过（97 tests），`pnpm build` 通过。
 - [x] 2026-07-06 `public_web_llm` 来源质量和机会抽取继续加严并上线：
   - `sourceQuality` 排除平台/门户/财经资讯/百科问答/robots/sitemap/search candidate/unknown/low 作为可确认报告证据。
   - LLM 分批抽取只接收 `canConfirmWithSource` 来源，并在 prompt 中携带 `sourceQuality`、机会抽取和“候选切入点需复核”约束。
@@ -202,7 +207,8 @@
 - [x] 2026-07-05 生产部署与 n8n 导入完成：已按 **`docs/CODEX_PRODUCTION_ROLLOUT_HANDOFF.md`** 执行 R1-R6，写入生产 LLM env、部署 `7478af7`、验证生产 DeepSeek、导入并激活 `industryResearchWeeklyRerun`、生成生产基线 run `dtc-2026-07-04T17-32-52-910Z`、完成 zvec 增量索引。R7 文档回写和提交由本轮收尾完成。
 - [x] 2026-07-06 UI 统一版 D1/D2 完成：部署 `main` 到轻量服务器并完成线上端到端验证；本轮又把根路由 `/` 改成 redirect 到 `/industry-research`。
 - 继续提升 `public_web_llm` 的真实报告覆盖面：
-  - 最新验证已能产出 Philips 竞品和 2 个候选机会，且低质量来源不再 accepted；但自动搜索召回仍偏窄，单品类可能只有 1 个品牌官网。后续重点是扩大多品牌召回、接入更多官方内容 API 或引导用户输入竞品 URL。
+  - 固定可信来源注册表已解决「剃须刀只召回 1 个品牌」的第一层问题；下一步需要用线上真实 run 观察多品牌官网进入后的结构化抽取质量、机会质量和 Firecrawl 成本。
+  - 继续接入更多官方内容 API 或引导用户输入竞品 URL，用于补充官网以外的评论、痛点、内容和价格信号。
 - 需要用户注册的外部凭据（代码侧已就绪，配好即生效；涉及账号/支付信息，无法代注册）：
   - Serper API key（备选，注册送 2,500 free queries）→ `AGENT_FACTORY_SEARCH_PROVIDER=serper` + `AGENT_FACTORY_SEARCH_API_KEY`。
   - YouTube Data API v3 key（console.cloud.google.com → 建项目 → 启用 YouTube Data API v3 → 凭据 → API key）→ `AGENT_FACTORY_YOUTUBE_API_KEY`。

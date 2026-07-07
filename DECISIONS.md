@@ -1,6 +1,19 @@
 # 决策记录
 
-更新时间：2026-07-06
+更新时间：2026-07-07
+
+## 2026-07-07：竞品发现优先固定可信官网，搜索 API 只做补漏
+
+- 决策：`public_web` / `public_web_llm` 的来源发现新增 `source_registry` 层。固定可信官网先进入 crawl plan，Tavily/Serper/DDG 再负责补漏；Firecrawl 继续只做公开页面正文抽取增强，不承担搜索发现、站点级 crawl 或登录态访问。
+- 原因：真实「男士电动剃须刀」线上 run 已证明，仅靠搜索 API 容易召回偏窄或混入平台/门户。竞品研究里有一批低成本、稳定、合规的官网来源，应该用确定性注册表兜底，而不是完全交给搜索排序。
+- 配套：
+  - 默认注册表覆盖剃须刀、宠物益生菌、大豆蜡香薰、电解质饮料等品类；剃须刀默认加入 Philips、Braun、Panasonic、Flyco 官网。
+  - 生产可通过 `AGENT_FACTORY_SOURCE_REGISTRY_JSON` 按品类配置官网，通过 `AGENT_FACTORY_FIXED_SOURCE_URLS` 临时追加全局官网。
+  - 测试或排障可设 `AGENT_FACTORY_SOURCE_REGISTRY_DISABLED=true` 关闭注册表，避免默认来源影响旧 fixture。
+- 影响：
+  - 自动发现召回会更稳定，多品牌官网更容易进入 LLM 抽取。
+  - 注册表不是 evidence 白名单；页面仍需经过 robots、抓取预算、`sourceQuality`、quote validation 和人工复核。
+  - 后续真正扩大评论/痛点/内容覆盖，仍应走官方 API 或明确用户输入来源，不放宽社媒/marketplace 爬取边界。
 
 ## 2026-07-06：自动搜索来源宁可少 accepted，也不让无关站点进入 LLM 证据链
 

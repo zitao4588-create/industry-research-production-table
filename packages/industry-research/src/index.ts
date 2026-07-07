@@ -155,6 +155,13 @@ export {
   type SourceQualitySummary,
   summarizeSourceQuality,
 } from "./source-quality";
+export type { SourceRegistryMatch } from "./source-registry";
+export {
+  FIXED_SOURCE_URLS_ENV,
+  resolveSourceRegistryMatches,
+  SOURCE_REGISTRY_DISABLED_ENV,
+  SOURCE_REGISTRY_JSON_ENV,
+} from "./source-registry";
 export {
   ecommerceCompetitorResearchTemplate,
   findIndustryResearchTemplate,

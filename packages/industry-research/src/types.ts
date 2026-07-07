@@ -20,6 +20,7 @@ export type ResearchSourceType =
 
 export type SourceDiscoveryMethod =
   | "search_query"
+  | "source_registry"
   | "seed_url"
   | "sitemap"
   | "robots"

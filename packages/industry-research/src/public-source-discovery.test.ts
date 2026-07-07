@@ -19,6 +19,18 @@ const input: ResearchWorkflowInput = {
   manualText: "",
 };
 
+const shaverInput: ResearchWorkflowInput = {
+  projectName: "剃须刀发现层测试",
+  industry: "男士电动剃须刀",
+  category: "男士电动剃须刀",
+  market: "中国线上电商 / DTC",
+  researchGoal: "验证固定可信来源优先",
+  templateId: "ecommerce_competitor_research",
+  urls: [],
+  csvText: "",
+  manualText: "",
+};
+
 const emptyCrawlPlan: CrawlPlan = {
   id: "crawl-plan-test",
   projectId: "project-test",
@@ -171,6 +183,84 @@ describe("resolveSearchProviderConfig", () => {
 });
 
 describe("discoverPublicSources with api search provider", () => {
+  it("adds fixed trusted registry sources even when search returns no useful urls", async () => {
+    const { fetcher } = createDiscoveryFetcher({
+      onSearch: (url) =>
+        url === "https://api.tavily.com/search"
+          ? jsonResponse({ results: [] })
+          : null,
+    });
+
+    const result = await discoverPublicSources(
+      "project-test",
+      shaverInput,
+      emptyCrawlPlan,
+      {
+        fetcher,
+        maxProbeUrls: 1,
+        searchProvider: {
+          provider: "tavily",
+          endpoint: "https://api.tavily.com/search",
+          apiKey: "tavily-key",
+        },
+      },
+    );
+
+    const registryCandidates = result.candidates.filter(
+      (candidate) => candidate.method === "source_registry",
+    );
+    const seeds = registryCandidates.map((candidate) => candidate.seed);
+
+    expect(seeds).toContain("https://www.philips.com.cn/");
+    expect(seeds).toContain("https://www.braun.cn/");
+    expect(seeds).toContain("https://www.panasonic.cn/");
+    expect(seeds).toContain("https://www.flyco.com/");
+    expect(
+      registryCandidates.every((candidate) =>
+        candidate.title.startsWith("固定可信来源："),
+      ),
+    ).toBe(true);
+    expect(
+      result.notes.some((note) => note.includes("source_registry 命中")),
+    ).toBe(true);
+  });
+
+  it("uses env source registry urls as category-specific fixed sources", async () => {
+    const { fetcher } = createDiscoveryFetcher({ onSearch: () => null });
+
+    const result = await discoverPublicSources(
+      "project-test",
+      shaverInput,
+      emptyCrawlPlan,
+      {
+        fetcher,
+        maxSearchQueries: 0,
+        maxProbeUrls: 0,
+        env: {
+          AGENT_FACTORY_SOURCE_REGISTRY_JSON: JSON.stringify({
+            categorySources: {
+              男士电动剃须刀: [
+                {
+                  name: "Test Shaver Brand",
+                  url: "https://shaver-registry.example/",
+                },
+              ],
+            },
+          }),
+        },
+      },
+    );
+
+    expect(
+      result.candidates.some(
+        (candidate) =>
+          candidate.method === "source_registry" &&
+          candidate.seed === "https://shaver-registry.example/" &&
+          candidate.title === "固定可信来源：Test Shaver Brand",
+      ),
+    ).toBe(true);
+  });
+
   it("uses tavily results, filters social/marketplace hosts, and notes the provider", async () => {
     const { fetcher, requestedUrls, requestedInits } = createDiscoveryFetcher({
       onSearch: (url) =>

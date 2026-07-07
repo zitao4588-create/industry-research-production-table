@@ -4,6 +4,10 @@ import {
   type SearchProviderConfig,
   searchWithApiProvider,
 } from "./search-providers";
+import {
+  resolveSourceRegistryMatches,
+  type SourceRegistryMatch,
+} from "./source-registry";
 import type {
   CrawlPlan,
   CrawlPlanTarget,
@@ -720,13 +724,16 @@ function createCandidate(
   id: string,
   kind: CrawlTargetKind,
   url: string,
+  registryMatch?: SourceRegistryMatch,
 ): SourceDiscoveryCandidate {
   return {
     id,
     projectId,
     sourceType: sourceTypeForKind(kind),
-    method: methodForKind(kind),
-    title: titleForKind(kind),
+    method: registryMatch ? "source_registry" : methodForKind(kind),
+    title: registryMatch
+      ? `固定可信来源：${registryMatch.name}`
+      : titleForKind(kind),
     seed: url,
     priority:
       kind === "homepage" || kind === "sitemap" || kind === "collection"
@@ -745,6 +752,7 @@ function createTarget(
   id: string,
   kind: CrawlTargetKind,
   url: string,
+  registryMatch?: SourceRegistryMatch,
 ): CrawlPlanTarget {
   return {
     id,
@@ -752,7 +760,9 @@ function createTarget(
     candidateId,
     kind,
     target: url,
-    reason: reasonForKind(kind),
+    reason: registryMatch
+      ? `固定可信来源注册表命中 ${registryMatch.name}，优先抽取官网公开页面。`
+      : reasonForKind(kind),
     maxPages: kind === "sitemap" || kind === "rss" ? 20 : 3,
     databaseTargets: databaseTargetsForKind(kind),
   };
@@ -775,6 +785,18 @@ export async function discoverPublicSources(
     fetcher,
     options,
   );
+  const registryMatches = resolveSourceRegistryMatches(
+    input,
+    options.env ?? {},
+  );
+  const registryUrls = registryMatches
+    .map((match) => normalizeDiscoveredUrl(match.url))
+    .filter(isUsefulPublicCandidateUrl);
+  const registryMatchByUrl = new Map(
+    registryMatches
+      .map((match) => [normalizeDiscoveredUrl(match.url), match] as const)
+      .filter(([url]) => isUsefulPublicCandidateUrl(url)),
+  );
   const existingTargets = new Set(
     crawlPlan.targets
       .map((target) => normalizeDiscoveredUrl(target.target) || target.target)
@@ -783,6 +805,7 @@ export async function discoverPublicSources(
   const seedUrls = unique(
     [
       ...normalizeUrls(input.urls),
+      ...registryUrls,
       ...searchDiscovery.urls,
       ...crawlPlan.targets
         .map((target) => target.target)
@@ -800,6 +823,14 @@ export async function discoverPublicSources(
   const robotsDisallowsByOrigin = new Map<string, string[]>();
   let reachableProbeCount = 0;
   let failedProbeCount = 0;
+
+  discoveredUrls.push(...registryUrls);
+
+  if (registryUrls.length > 0) {
+    notes.push(
+      `source_registry 命中 ${registryUrls.length} 个固定可信来源，已优先合并到 crawl plan。`,
+    );
+  }
 
   for (const url of probeUrls) {
     const result = await fetchPublicUrl(url, fetcher, requestTimeoutMs);
@@ -878,9 +909,15 @@ export async function discoverPublicSources(
 
   for (const [index, url] of normalizedDiscoveredUrls.entries()) {
     const kind = inferTargetKind(url);
-    const candidateId = `discovery-public-source-${index + 1}`;
+    const registryMatch = registryMatchByUrl.get(url);
+    const prefix = registryMatch
+      ? "discovery-source-registry"
+      : "discovery-public-source";
+    const candidateId = `${prefix}-${index + 1}`;
 
-    candidates.push(createCandidate(projectId, candidateId, kind, url));
+    candidates.push(
+      createCandidate(projectId, candidateId, kind, url, registryMatch),
+    );
     targets.push(
       createTarget(
         projectId,
@@ -888,6 +925,7 @@ export async function discoverPublicSources(
         `crawl-target-public-discovered-${index + 1}`,
         kind,
         url,
+        registryMatch,
       ),
     );
   }

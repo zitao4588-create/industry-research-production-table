@@ -935,6 +935,9 @@ describe("industry research public workflow", () => {
         fetcher: fakeFetch,
         maxDiscoveredTargets: 8,
         maxSitemapUrls: 4,
+        env: {
+          AGENT_FACTORY_SOURCE_REGISTRY_DISABLED: "true",
+        },
       },
     );
     const targets = result.crawl_plans[0]?.targets.map(
@@ -1037,7 +1040,12 @@ describe("industry research public workflow", () => {
           "https://brand.example/sitemap.xml",
         ],
       },
-      { fetcher: fakeFetch },
+      {
+        fetcher: fakeFetch,
+        env: {
+          AGENT_FACTORY_SOURCE_REGISTRY_DISABLED: "true",
+        },
+      },
     );
 
     expect(result.crawl_plans[0]?.mode).toBe("public_web");
@@ -1147,6 +1155,7 @@ describe("industry research public workflow", () => {
           AGENT_FACTORY_PUBLIC_WEB_MAX_SITEMAP_URLS: "1",
           AGENT_FACTORY_PUBLIC_WEB_MAX_DISCOVERED_TARGETS: "1",
           AGENT_FACTORY_PUBLIC_WEB_MAX_CRAWL_TARGETS: "2",
+          AGENT_FACTORY_SOURCE_REGISTRY_DISABLED: "true",
         },
       },
     );
