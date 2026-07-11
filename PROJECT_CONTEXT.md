@@ -1,6 +1,6 @@
 # 项目上下文
 
-更新时间：2026-07-11
+更新时间：2026-07-12
 
 ## 当前项目目标
 
@@ -17,6 +17,16 @@
 - 真实 LLM 使用 9router / OpenAI-compatible provider；UI 默认业务流走 `public_web_llm`，n8n 周报仍走低成本 `public_web`
 
 ## 当前真实状态
+
+- 2026-07-12 移动端 H5 双端改造已完成并部署生产，当前完成等级 C3：
+  - 保持同一 `/industry-research` 路由和单一简化流程；`≤720px` 使用移动端 H5 信息架构，桌面继续保留宽屏表格与完整报告。
+  - 手机端已覆盖输入、SSE 运行、摘要优先报告、竞品卡片、Markdown 分章节展开、Web Share/复制回退、下载、分享回放和再次研究；修复 `body overflow:hidden` 导致长报告可能截断的问题，并加入 `100dvh`、safe-area、44px 触控区和 16px 输入字号。
+  - 知识图谱保留为签名视觉；窄屏自动隐藏标签，页面进入后台、图谱离开视口或 reduced-motion 开启时暂停连续动画。
+  - 公开只读报告端点升级为 `industry_research_run_report.v2`，只返回白名单项目字段、报告 Markdown 和最多 5 个竞品/3 个机会摘要；生产检查未暴露 raw/path/evidenceIds/providerMetadata。
+  - 功能提交 `001573b feat: optimize research studio for mobile h5` 已推送 `origin/main` 并部署；远端备份 `.deploy-backups/pre-001573b-20260711T164610Z.tar.gz`。远端 build、server doctor、Supabase doctor、service restart 和公网 health 全部通过。
+  - 本地 `pnpm check` 通过：17 个测试文件、160 条测试；联网生产构建通过。Playwright 验证 360/390/430px 无横向溢出，390px 长报告末尾与固定操作栏保留约 103px 间距，1440px 桌面完整报告正常。
+  - 在两个阿里云免费池标志均为 `true` 后，只执行一次生产手机流程：run `industry-research-2026-07-11T16-48-34-426Z`，产出 8 raw documents、27 条 evidence、6 个 review items、3 个竞品、3 个机会，8/8 artifacts 完整写入交付包；模型路由 policy 为 `aliyun_free_model_pool_v1`，未充值、未切付费 provider、未执行 zvec backfill/index。
+  - 该 run 的分享链接在新标签页可回放，Markdown 下载成功；这是受控工程验收，不是外部真实用户反馈，因此不标记 C4/C5。机会分仍为 0 且结论主要处于 needs_review，不能因 H5 上线而升级商业交付质量结论。
 
 - 2026-07-11 新证据轨与阿里云免费模型池已部署到轻量服务器并完成真实生产 canary，当前完成等级 C3：
   - 生产 LLM 端点已从 DeepSeek 官方切换为阿里云 MaaS，默认模型 `kimi-k2.6`；`AGENT_FACTORY_ALIYUN_FREE_MODEL_ROUTING_ENABLED=true`、`AGENT_FACTORY_ALIYUN_FREE_TIER_ONLY_CONFIRMED=true`。本次调用记录没有 DeepSeek 或 Qwen。

@@ -1,8 +1,15 @@
 # TODO
 
-更新时间：2026-07-11
+更新时间：2026-07-12
 
 ## 已完成
+
+- [x] 2026-07-12 同址双端 H5 改造、生产部署和免费池手机流程闭环：
+  - 修复长报告滚动、动态视口与 safe-area；输入、运行、摘要报告、竞品卡、章节展开、分享/下载/回放均完成移动端适配。
+  - 报告 API 升级为 v2 白名单摘要；旧报告无 databases 时继续降级显示 Markdown。
+  - `pnpm check` 17 files / 160 tests、`pnpm build`、360/390/430px 与 1440px Playwright 回归通过。
+  - 提交 `001573b` 已推送并部署，备份 `.deploy-backups/pre-001573b-20260711T164610Z.tar.gz`，远端 build/doctor/health 全绿。
+  - 唯一生产 H5 run `industry-research-2026-07-11T16-48-34-426Z` 完成，27 evidence、3 competitors、3 opportunities、8/8 artifacts；分享回放与下载通过，路由 policy 为 `aliyun_free_model_pool_v1`。
 
 - [x] 2026-07-11 阿里云免费模型池接入生产并完成真实品类 canary：
   - GLM/Kimi 免费模型按任务分工接入，权威抽取固定 `glm-4.7`，最终成稿固定 `kimi-k2.6`，两路辅助模型稳定轮换；Kimi Code 不进入生产。
@@ -12,6 +19,9 @@
   - 最终 `pnpm check` 通过：15 files / 155 tests。
 
 ## 下一步
+
+- [ ] 找 1 名真实目标用户用手机自行完成输入、等待、报告阅读和分享，记录是否能独立走完；完成前维持 C3，不标记 C4。
+- [ ] 根据真实手机阅读反馈决定是否继续压缩完整报告的证据索引章节；当前工程验收已通过，但报告内容本身仍很长。
 
 - [ ] 用相同评分口径再跑剩余核心品类，形成统一 3–5 品类 benchmark；任何非免费调用仍需单独确认费用。
 - [ ] 将目标生成数与单轮 crawl cap 对齐，避免 11 个目标中最后 3 个被记为 `TARGET_CAP_EXCEEDED`。

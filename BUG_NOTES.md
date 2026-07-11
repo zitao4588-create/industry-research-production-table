@@ -1,6 +1,24 @@
 # Bug Notes
 
-更新时间：2026-07-11
+更新时间：2026-07-12
+
+## 已处理：页面仅无横向溢出，但长报告仍可能被全局 overflow 截断
+
+- 现象：旧版只验证 390px `scrollWidth=clientWidth`；全局 `body { overflow:hidden }`，完成页/分享回放没有独立纵向滚动容器，长报告在手机上存在无法滚到底的风险。竞品仍使用最小宽度 560px 表格横滑，顶部操作按钮也会堆叠。
+- 处理：根页面改为 `100dvh` + `overflow-y:auto` + safe-area；手机端竞品改为卡片、完整报告按 H2 分章节、底部操作栏固定并为正文保留尾部空间。
+- 验证：本地 360/390/430px 无横向溢出；390px 历史报告高度 2026px，可滚动到底，最后章节与操作栏间距约 103px。生产新 run 在 360/390/430px 均保持 `document.scrollWidth === viewport width`。
+
+## 验收备注：本地构建首次被 Google Fonts 网络边界拦截
+
+- 现象：沙箱内 `pnpm build` 无法访问 `fonts.googleapis.com`，四个 `next/font/google` 字体下载失败；TypeScript、160 条测试和 Biome 同时已通过。
+- 判断：这是构建时网络权限问题，不是 H5 代码或字体声明错误。
+- 处理：在允许联网的同一工作区重跑 `pnpm build`，本地与轻量服务器生产构建均成功，`/icon.svg` 进入静态路由。
+
+## 验收备注：部署 dry-run 只显示 rsync 输出最后 20 行
+
+- 现象：dry-run 预览只出现 scripts/Supabase/n8n 文件，未显示本轮 H5 文件，看起来像同步遗漏。
+- 判断：脚本使用 `rsync ... | tail -20`，H5 文件实际位于更前面的输出；本地/远端哈希和大小对比确认远端仍是旧版，正式 rsync 输出随后确认 H5 文件已同步。
+- 处理：未盲目执行；先完成哈希、大小、时间戳和脚本参数只读核查，再执行部署。生产构建、doctor、service active 和 health 全部通过。
 
 ## 验收备注：canary 生成目标超过单轮 crawl cap
 
