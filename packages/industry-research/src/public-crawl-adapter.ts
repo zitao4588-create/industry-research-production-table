@@ -1,4 +1,6 @@
+import { cleanDocumentText } from "./document-cleaner";
 import {
+  type FirecrawlCrawlDocument,
   resolveFirecrawlConfig,
   scrapeWithFirecrawl,
   shouldUseFirecrawlForTarget,
@@ -43,6 +45,8 @@ export type PublicCrawlAdapterOptions = {
   maxTargets?: number;
   /** Firecrawl / provider 配置解析用 env；核心包不直接读取 process.env。 */
   env?: Record<string, string | undefined>;
+  /** Firecrawl Crawl fallback 已经抽取的页面，命中时复用正文，避免再次 Scrape 计费。 */
+  prefetchedDocuments?: FirecrawlCrawlDocument[];
 };
 
 export type PublicCrawlAdapterResult = {
@@ -66,6 +70,17 @@ function hostnameFor(value: string) {
     return new URL(value).hostname.toLowerCase();
   } catch {
     return "";
+  }
+}
+
+function canonicalUrlKey(value: string) {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase().replace(/^www\./, "");
+    const path = url.pathname.replace(/\/+$/, "") || "/";
+    return `${url.protocol}//${host}${path}`;
+  } catch {
+    return value;
   }
 }
 const fallbackQualityInput: ResearchWorkflowInput = {
@@ -211,6 +226,7 @@ function extractPublicText(
       title: "robots.txt",
       contentType: "text" as const,
       text: normalizeText(body),
+      format: "text" as const,
     };
   }
 
@@ -219,6 +235,7 @@ function extractPublicText(
       title: extractTagValue(body, "title") || "RSS feed",
       contentType: "rss" as const,
       text: extractRssText(body),
+      format: "text" as const,
     };
   }
 
@@ -227,6 +244,7 @@ function extractPublicText(
       title: "Sitemap URL list",
       contentType: "text" as const,
       text: extractSitemapText(body),
+      format: "text" as const,
     };
   }
 
@@ -235,13 +253,15 @@ function extractPublicText(
       title: target.reason,
       contentType: "text" as const,
       text: normalizeText(body),
+      format: "text" as const,
     };
   }
 
   return {
     title: extractTagValue(body, "title") || target.reason,
     contentType: "html" as const,
-    text: stripHtmlToText(body),
+    text: body,
+    format: "html" as const,
   };
 }
 
@@ -278,6 +298,12 @@ export async function runPublicCrawler(
   const extractionJobs: ExtractionJob[] = [];
   const lastFetchAtByHost = new Map<string, number>();
   const firecrawlConfig = resolveFirecrawlConfig(options.env ?? {});
+  const prefetchedByUrl = new Map(
+    (options.prefetchedDocuments ?? []).map((document) => [
+      canonicalUrlKey(document.url),
+      document,
+    ]),
+  );
 
   for (const [index, target] of crawlPlan.targets.entries()) {
     const jobId = `public-crawl-job-${index + 1}`;
@@ -370,10 +396,22 @@ export async function runPublicCrawler(
             title: string;
             contentType: "text";
             text: string;
+            format: "markdown";
           }
         | null = null;
 
-      if (shouldUseFirecrawlForTarget(target, firecrawlConfig)) {
+      const prefetched = prefetchedByUrl.get(canonicalUrlKey(target.target));
+      if (prefetched) {
+        extractionTool = "firecrawl_crawl_prefetch";
+        extracted = {
+          title: prefetched.title,
+          contentType: "text",
+          text: prefetched.text,
+          format: "markdown",
+        };
+      }
+
+      if (!extracted && shouldUseFirecrawlForTarget(target, firecrawlConfig)) {
         const firecrawlResult = await scrapeWithFirecrawl(
           target,
           firecrawlConfig,
@@ -385,7 +423,8 @@ export async function runPublicCrawler(
           extracted = {
             title: firecrawlResult.title,
             contentType: "text",
-            text: normalizeText(firecrawlResult.text),
+            text: firecrawlResult.text,
+            format: "markdown",
           };
         } else {
           firecrawlFallbackNote = `Firecrawl 未产出可用正文（${firecrawlResult.error}），已回退 native fetch。`;
@@ -420,7 +459,12 @@ export async function runPublicCrawler(
         extracted = extractPublicText(target, body, contentType);
       }
 
-      const extractedText = extracted.text.slice(0, maxTextLength);
+      const cleanedDocument = cleanDocumentText({
+        text: extracted.text,
+        format: extracted.format,
+        maxTextLength,
+      });
+      const extractedText = cleanedDocument.cleanedText;
       const qualityInput = options.input ?? fallbackQualityInput;
       const rawDocument: RawDocument = {
         id: `public-raw-document-${index + 1}`,
@@ -431,7 +475,9 @@ export async function runPublicCrawler(
         title: extracted.title,
         contentType: extracted.contentType,
         excerpt: extractedText.slice(0, 160),
+        originalText: cleanedDocument.originalText,
         extractedText,
+        cleaningAudit: cleanedDocument.audit,
         databaseTargets: target.databaseTargets,
         sourceQuality: assessSourceQuality({
           target,
@@ -453,7 +499,7 @@ export async function runPublicCrawler(
         startedAt: now,
         finishedAt: now,
         documentsCreated: 1,
-        summary: `${extractionTool} 已抽取 1 条 ${extracted.contentType} raw document；sourceQuality=${rawDocument.sourceQuality.sourceType}/${rawDocument.sourceQuality.sourceRelevance}/${rawDocument.sourceQuality.sourceConfidence}；acceptedForReport=${rawDocument.sourceQuality.acceptedForReport}。${firecrawlFallbackNote ? ` ${firecrawlFallbackNote}` : ""}`,
+        summary: `${extractionTool} 已抽取 1 条 ${extracted.contentType} raw document；sourceQuality=${rawDocument.sourceQuality.sourceType}/${rawDocument.sourceQuality.sourceRelevance}/${rawDocument.sourceQuality.sourceConfidence}；acceptedForReport=${rawDocument.sourceQuality.acceptedForReport}；cleaningResidualNoise=${rawDocument.cleaningAudit?.residualNoiseRatio ?? 0}。${firecrawlFallbackNote ? ` ${firecrawlFallbackNote}` : ""}`,
       });
     } catch (error) {
       jobs[index] = { ...jobs[index], status: "failed" };

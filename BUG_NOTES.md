@@ -1,6 +1,69 @@
 # Bug Notes
 
-更新时间：2026-07-07
+更新时间：2026-07-11
+
+## 验收备注：canary 生成目标超过单轮 crawl cap
+
+- 现象：生产 canary 生成 11 个 crawl jobs，但单轮实际 crawl 上限为 8，最后 3 个被记录为 `TARGET_CAP_EXCEEDED`，最终状态为 `needs_review_with_crawl_failures`。
+- 判断：这是确定性预算门禁触发，不是网络、Firecrawl 或模型故障；前 8 个目标正常产出 8 份文档、7 份 accepted source。
+- 后续：让发现阶段的最终 target 数直接服从 crawl cap，或把预算跳过单列为 `skipped`，避免与真实抓取失败混合统计。
+
+## 已处理：部署脚本只打包 HEAD，且 worktree 暂存曾带入本地缓存
+
+- 现象：原 `deploy.sh` 使用 `git archive HEAD`，不会部署本轮未提交 baseline；首次新增 worktree 暂存时又把 `.pnpm-store`、`.playwright-cli`、`.DS_Store` 和 tsbuildinfo 同步到了远端项目目录。
+- 处理：新增显式 `--worktree` 模式，默认仍为 HEAD；排除清单补充上述缓存和构建记录。远端已同步修正版脚本。
+- 影响：已同步的缓存不影响运行，本轮遵守禁止批量删除约束，没有在服务器上自动清理；后续部署不会再次传输。
+
+## 已处理：线上仍指向 DeepSeek 官方端点
+
+- 现象：部署前只读核查发现生产 env 仍为 `api.deepseek.com / deepseek-v4-flash`，两个阿里云免费路由开关不存在。
+- 处理：先备份生产 env，再安全同步阿里云 MaaS key/base URL、默认 `kimi-k2.6` 和两个免费路由开关；全过程未打印 key。
+- 验证：生产 env 受管变量 5/5，最终 host 为阿里云 MaaS、routing/free-only 均为 true；真实 run 的调用记录只包含 GLM/Kimi。
+
+## 已处理：正文噪音在抽取前未确定性清洗，且 sourceQuality 存在跨语种 false negative
+
+- 现象：核心 benchmark 的 accepted 首页含约 49%–68% 导航、图片 target、隐私/法律声明、重复菜单和扩展拦截错误；英文宠物官网在中文品类输入下还可能被判 low，Cosmopolitan 等生活方式媒体则可能因护肤词被误当候选官网。
+- 根因：旧链路直接把 Firecrawl Markdown / native HTML 的扁平文本送进评分和抽取；相关性主要靠输入词面，没有三品类确定性概念组；来源弱域名名单不完整。
+- 处理：新增 `document-cleaner.ts`，同时保存 `originalText` 和清洗审计；评分和抽取只使用 `cleanedText`。补宠物益生菌、洗碗机、日本护肤概念组，并把 Cosmopolitan/Trustpilot 等弱来源降为 unknown/rejected。
+- 验证：最终三品类离线 replay 的 accepted 已知残余噪音中位数均为 `0%`，无 accepted 文档超过 50%；宠物可信首页从自动 1 份校准为 Native Pet / Zesty Paws / Honest Paws 3 份。该数值是确定性 residual proxy，不替代未来 live 样例人工审计。
+
+## 已处理：全局 quote 首命中、全部 sourceIds 和第一个 URL 导致实体串线
+
+- 现象：洗碗机的方太/海尔 website 记录都挂到 `robam.com`，资生堂 website 记录挂到 Cosmopolitan；相同短 quote 出现在多个文档时旧 validator 直接取数组第一个文档。
+- 根因：quote validator 没有 expected rawDocument/source/domain 约束；structured database 组装使用 `result.raw_documents[0]?.url` 和 `result.research_sources.map(...)`，content/keyword evidence 也从全局数组截取。
+- 处理：evidence reference 支持 rawDocumentId/sourceId/URL/domain；无约束重复 quote 标为 ambiguous，不再首命中。competitor/website/pain point/keyword 只继承自己的 evidence，website URL 只在单一域名唯一绑定时生成，未知 competitorName 不再回退第一个竞品。
+- 验证：方太→`fotile.com`、海尔→`haier.com`、资生堂→`shiseidogroup.cn`；离线 replay 三品类实体串线为 0，专项 fixture 覆盖原三类错绑。
+
+## 已处理：部分证据或缺失 validation 可被人工 approved 绕过，provider 自由文本可进入正式报告
+
+- 现象：旧门禁只要至少 1 个 accepted evidence 就允许确认，`quoteMatched/sourceAccepted` 为 undefined 也能通过；provider 原始报告仅在 `acceptedForReport=0` 时阻断，有 accepted source 时仍可附带未逐条支持的机会评分。
+- 处理：确认区改为全量门禁：全部 evidence 必须明确 validation=true、claimSupportComplete=true、唯一 trace 到 rawDocumentId/URL，高风险数字必须在直接 quote 中；任一 partial/unsupported 使整个声明留在候选区。provider 原始自由文本始终与正式 report 隔离。
+- 验证：负向测试覆盖 validation 缺失、2 条 quote 仅 1 条命中、无证据 `30% market share` 和人工误标 approved；正向测试确认完整支持结论仍能进入确认区并打印唯一 rawDocumentId/URL。
+
+## 已处理：深层页发现被首页/robots/sitemap 挤出目标上限
+
+- 现象：原核心 3 品类保存 run 的可信来源全部是首页，深层页为 0；发现目标紧张时，低证据目标会先占满 cap，robots 声明的 nested sitemap 也可能未继续读取。
+- 处理：目标选择改为 evidence-first，保留 product/collection/blog/rss 多样性；在既有 probe cap 内跟随 robots 声明的 nested sitemap；扩展 `/product/`、`/category/`、`/article/` 等常见深页分类。
+- 验证：宠物 product、洗碗机 product、护肤 collection 三品类离线 fixtures 均读取 nested sitemap 并保留正确页型，3/3 PASS。fixture 通过不代表旧保存 run 已经实际抓到深页。
+
+## 当前限制：旧 benchmark 产物不能恢复“同一声明全部 quotes”完整性
+
+- 现象：旧 `databases.json` 只保存已经匹配并生成的 evidence，没有保存 provider 原始声明期望的全部 quote 列表；离线 replay 无法证明是否还有未命中 quote 被丢弃。
+- 处理：旧样例单条 quote 即使重放成功，也只记为 `partial_legacy_claim_metadata_missing`，不追认 full 或 confirmed；新 extraction evidence 会保存 `claimSupportComplete / claimQuoteCount / confirmedQuoteCount`。
+- 影响：内部清洗、绑定和门禁可在离线 C2 验证，但原商业 benchmark 仍为 0/3 PASS；真实解冻必须在重新确认预算后受控复跑同一核心 3 品类。
+
+## 已处理：零可信来源时 provider 报告仍附带 mock / 待验证行业常识
+
+- 现象：首轮本地「洗碗机」run `dishwasher-dtc-2026-07-07T02-16-29-685Z` 中，8 个 raw document 全部 `acceptedForReport=false`，evidence / review items / 竞品 / 机会均为 0；但 `report.md` 的「原始研究报告」仍出现方太、美的、海尔等 mock / 待验证内容和机会评分。
+- 判断：LLM 节点已经声明待验证，但交付报告仍原样附上 provider 内容，会让无证据结论看起来像研究结果。这是交付层风险，不是 LLM 调用失败。
+- 处理：2026-07-07 先在 `acceptedForReport=0` 时阻断；2026-07-10 已进一步收紧为始终隔离 provider 原始自由文本，不论是否存在 accepted source，正式 report 都只走逐条证据门禁。
+- 验证：新增单测用 `LLM_MOCK_DISHWASHER_CONTENT_SHOULD_NOT_SHIP` 断言零可信来源时不会进入 `reportMarkdown`；`pnpm check` 通过，Vitest 9 文件 99 tests 全部通过。
+
+## 验收备注：洗碗机只靠搜索会空跑，补品牌官网后仍只是内部复核级
+
+- 现象：首轮「洗碗机」run 没有 registry 命中，Tavily 召回 Scribd 和中研网，全部被 sourceQuality 拒绝；修复后 run `dishwasher-dtc-2026-07-07T02-25-01-084Z` 命中 6 个默认官网，产出 7 raw documents、2 个 accepted source、20 条 evidence、5 个 review items、2 个竞品、3 个机会。
+- 判断：固定官网解决了“完全跑偏 / 空跑”的第一层问题，但没有解决交付质量。当前有效来源主要是方太和海尔首页；方太正文混入大量隐私声明，美的/老板/松下等首页低相关或抓取失败，痛点/评论/价格/内容信号仍不足。
+- 后续：洗碗机要继续补具体产品页、类目页、公开评论/内容 API 或用户手动 URL；也需要优化正文清洗和运行预算。不要为了让报告更满而放宽 `acceptedForReport`。
 
 ## 已处理：固定来源注册表影响旧 mock workflow 测试夹具
 

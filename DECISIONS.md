@@ -1,6 +1,73 @@
 # 决策记录
 
-更新时间：2026-07-07
+更新时间：2026-07-11
+
+## 2026-07-11：生产 LLM 改用阿里云 MaaS 免费 GLM/Kimi 模型池
+
+- 决策：生产 `public_web_llm` 使用阿里云 MaaS 兼容端点；`glm-4.7` 负责权威抽取/证据验证，`kimi-k2.6` 负责最终报告，`Moonshot-Kimi-K2-Instruct`、稳定轮换的 GLM/Kimi 只做辅助审核。DeepSeek、Qwen 和 Kimi Code 不进入当前生产调用。
+- 原因：用户要求尽可能利用已确认的免费额度，同时避免单模型既抽取又成稿造成证据权威边界模糊。
+- 影响：免费模型池只有在“阿里云 host + 路由启用 + 免费额度已确认”三道门同时满足时启用；辅助输出只保留短 preview，不回写权威数据库。默认兜底模型也设为 `kimi-k2.6`，避免路由未触发时回退 DeepSeek。
+
+## 2026-07-11：允许显式部署当前 worktree，但默认部署语义仍保持 HEAD
+
+- 决策：`deploy.sh` 新增显式 `--worktree`，本轮按用户确认的未提交 baseline 部署；未传参数时仍使用 `git archive HEAD`。
+- 原因：原脚本只部署已提交 HEAD，会让已确认的未提交 baseline 在线上完全缺失；直接改变默认语义又会增加误部署风险。
+- 影响：worktree 模式继续使用非删除式 rsync，并排除 env、运行数据、依赖、缓存、Playwright 临时记录和 tsbuildinfo；真实执行仍必须显式 `--execute`。
+
+## 2026-07-10：商业化继续冻结，内部修复通过不等于解冻
+
+- 决策：核心 3 品类原 benchmark 的 `0/3 PASS` 结论保持有效；本轮只完成采集/清洗/绑定/门禁的本地 C2，不新增品类、provider、数据库、n8n 或基础设施，不自动重跑 live benchmark。
+- 原因：离线 replay 证明内部缺陷可被修复，但旧保存样例实际深页仍为 0，且缺声明级完整性元数据；fixture 通过和残余噪音下降不能证明真实报告已经达到 ≥70% full。
+- 影响：重新跑相同核心 3 品类前仍需新的预算确认；现有 L2-L4 授权不自动包含付费调用、commit、push 或部署。真实卖家反馈和付费试单已按用户要求取消，不再作为当前验收。
+
+## 2026-07-10：正文先确定性清洗，再做 sourceQuality、抽取与 quote 校验
+
+- 决策：raw document 同时保存受长度限制的 `originalText` 和进入下游的 `extractedText`；HTML/Markdown/text 统一通过确定性 cleaner，输出 removed/residual audit。sourceQuality 和结构化抽取只读取 cleaned text。
+- 原因：原 benchmark 的 accepted 正文近半是导航、图片 URL、隐私/法律声明、重复模板和浏览器错误；直接送入评分/抽取会制造假相关、脏 quote 和实体误判。
+- 影响：清洗规则必须可重复、可审计并保留原文；不得用 LLM 清洗替代确定性流程。残余噪音 proxy 达标仍不能取代未来 live 样例的人工逐字符审计。
+
+## 2026-07-10：证据从“字符串能匹配”升级为唯一来源绑定和完整声明门禁
+
+- 决策：evidence quote 可声明 expected rawDocumentId/sourceId/URL/domain；无约束且命中多个文档时直接 needs_review。正式确认要求人工 approved、全部 evidence 明确通过、claimSupportComplete=true、每条 evidence 唯一 trace 到 rawDocumentId/URL、高风险量化内容由直接 quote 支持。
+- 原因：旧实现全局取第一个 quote match，只要 1 条 accepted evidence 就允许确认，validation undefined 也能通过；这会把 partial/unsupported 结论和错误实体推入确认区。
+- 影响：缺失、partial、ambiguous、cross-source 或高风险无直接证据的声明都保留为候选，不删除原始候选；旧样例因缺 claim completeness 元数据不追认 full。
+
+## 2026-07-10：结构化数据库只继承自身 evidence，不做第一个 URL 或全局 sourceIds 兜底
+
+- 决策：competitor、website structure、pain point、keyword 等记录从自己的 evidenceIds 反推 source/raw document；website 只有单一域名唯一绑定时才生成 URL，content signal 只关联共享 evidence source 的实体；未知 competitorName 不再回退第一个竞品。
+- 原因：洗碗机和护肤 benchmark 已出现方太/海尔共用 `robam.com`、资生堂挂 Cosmopolitan，以及 keyword evidence 全局截取等串线。
+- 影响：无法唯一绑定时记录保持 needs_review 或不生成 website row，宁可稀疏也不伪造关联。
+
+## 2026-07-10：provider 原始自由文本始终与正式交付报告隔离
+
+- 决策：`research_reports[0].content` 只保留在内部 workflow 结果，不再拼进正式 `report.md`；正式报告只显示逐条门禁后的确认/候选/阻塞和 evidence index。
+- 原因：只在 `acceptedForReport=0` 时阻断仍不够；只要有一个可信来源，provider 自由文本里的需求、竞争、商业价值和机会分数仍可能绕过逐条证据校验。
+- 影响：本决策取代 2026-07-07 的“仅零可信来源时阻断”规则。provider 报告可供内部审计，但不能因语言流畅或篇幅完整进入交付结论。
+
+## 2026-07-10：深页 fixtures 只验证发现逻辑，不计作真实来源覆盖
+
+- 决策：用宠物 product、洗碗机 product、护肤 collection 三个完全离线 nested-sitemap fixture 验证 deep discovery；fixture 结果单列，不计入旧 benchmark 的可信文档、深页数或商业得分。
+- 原因：测试需要证明代码能在固定 probe cap 内保留 evidence-bearing deep page，但 synthetic fixture 不能替代真实品牌页面。
+- 影响：内部 G 项可在零网络/零费用下 C2；商业解冻仍需受控 live run 实际抓到深页。
+
+## 2026-07-07：无可信来源时阻断 provider 原始报告进入交付报告
+
+- 状态：已被 2026-07-10“始终隔离 provider 原始自由文本”决策取代；以下保留为历史演进记录。
+- 决策：`createIndustryResearchDeliveryReport` 在 `acceptedForReport=0` 时，不再附上 `research_reports[0].content`，而是输出「Provider 原始报告已阻断」和补充可信来源的建议。
+- 原因：首轮「洗碗机」本地真实 run 中，Tavily 召回 Scribd / 中研网等无关来源，全部被 `sourceQuality` 拒绝；但 provider 原始报告仍基于行业常识生成方太、美的、海尔等 mock / 待验证内容。即使报告里标注了待验证，仍容易被用户误读成真实研究结论。
+- 影响：
+  - 零可信来源的交付包会更“硬阻塞”，不再用 LLM 常识填补空白。
+  - `manifest.notes` 仍保留「没有 acceptedForReport=true 的数据源，报告只能作为内部分析草稿」提示。
+  - provider 仍可以在 workflow 内部运行；阻断发生在交付报告组装层，避免改变 LLM workflow 的兼容行为。
+
+## 2026-07-07：洗碗机先补品牌官网兜底，但仍不把首页等同于可交付证据
+
+- 决策：默认 `source_registry` 增加洗碗机固定官网来源：FOTILE、美的、海尔、西门子家电中国、老板电器、Panasonic China。
+- 原因：首轮只输入「洗碗机」时，搜索 API 没有稳定召回品牌官网，导致整轮 `public_web_llm` 没有任何可采信来源。洗碗机和剃须刀一样，存在一批低风险、公开、可确定的官网种子，适合作为搜索前的兜底。
+- 影响：
+  - 修复后本地 run `dishwasher-dtc-2026-07-07T02-25-01-084Z` 已从空跑提升到内部复核级：2 个 accepted source、20 条 evidence、5 个 review items、2 个竞品、3 个机会。
+  - 品牌首页仍只是 discovery 起点，不是交付充分证据；本轮方太首页混入大量隐私声明，海尔首页只提供泛分类信息，美的/老板/松下等首页未形成可确认业务结论。
+  - 后续要把洗碗机推进到可交付，需要补产品页、类目页、价格、评论、内容 API 或用户手动竞品 URL，而不是放宽 `sourceQuality`。
 
 ## 2026-07-07：竞品发现优先固定可信官网，搜索 API 只做补漏
 

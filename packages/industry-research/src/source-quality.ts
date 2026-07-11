@@ -71,6 +71,8 @@ const weakHomepageHostnameParts = [
   "pinduoduo.",
   "alibaba.",
   "aliexpress.",
+  "cosmopolitan.",
+  "trustpilot.",
 ];
 
 const weakHomepageTitleTerms = [
@@ -88,6 +90,49 @@ const weakHomepageTitleTerms = [
   "论坛",
   "门户",
   "头条",
+  "时尚潮流",
+  "星座运势",
+  "cosmopolitan",
+];
+
+type DeterministicCategoryProfile = {
+  applies: (inputText: string) => boolean;
+  requiredSignalGroups: string[][];
+};
+
+const deterministicCategoryProfiles: DeterministicCategoryProfile[] = [
+  {
+    applies: (inputText) =>
+      inputText.includes("益生菌") || inputText.includes("宠物肠胃"),
+    requiredSignalGroups: [
+      ["宠物", "犬", "狗", "猫", "pet", "dog", "cat"],
+      [
+        "益生菌",
+        "肠胃",
+        "消化",
+        "probiotic",
+        "prebiotic",
+        "gut health",
+        "digestion",
+        "digestive",
+      ],
+    ],
+  },
+  {
+    applies: (inputText) => inputText.includes("洗碗机"),
+    requiredSignalGroups: [
+      ["洗碗机", "洗碗", "dishwasher", "dish washer", "dishwashing"],
+    ],
+  },
+  {
+    applies: (inputText) =>
+      inputText.includes("日本") &&
+      (inputText.includes("护肤") || inputText.includes("護膚")),
+    requiredSignalGroups: [
+      ["日本", "japan", "japanese"],
+      ["护肤", "護膚", "skincare", "skin care"],
+    ],
+  },
 ];
 
 function hostnameFor(value: string) {
@@ -195,6 +240,22 @@ function includesAny(text: string, terms: string[]) {
   return terms.some((term) => normalized.includes(term.toLowerCase()));
 }
 
+function hasDeterministicCategorySignal(
+  text: string,
+  input: ResearchWorkflowInput,
+) {
+  const inputText = `${input.industry}\n${input.category}`.toLowerCase();
+  const normalizedText = text.toLowerCase();
+
+  return deterministicCategoryProfiles.some(
+    (profile) =>
+      profile.applies(inputText) &&
+      profile.requiredSignalGroups.every((group) =>
+        group.some((term) => normalizedText.includes(term.toLowerCase())),
+      ),
+  );
+}
+
 function cjkNgrams(term: string) {
   const compact = term.replace(/\s+/g, "");
   if (!/[\u3400-\u9fff]/.test(compact) || compact.length < 5) {
@@ -239,7 +300,8 @@ function scoreRelevance({
 
   const text = `${title}\n${target.target}\n${extractedText}`;
   const terms = relevanceTerms(input);
-  const hasCategorySignal = includesAny(text, terms);
+  const hasCategorySignal =
+    includesAny(text, terms) || hasDeterministicCategorySignal(text, input);
   const isUserSeed = isUserProvidedTarget({
     input,
     title,
@@ -282,6 +344,10 @@ function scoreConfidence(
   { target, url, extractedText }: SourceQualityInput,
   sourceType: SourceQualityType,
 ): SourceQualityLevel {
+  if (isLikelyNavigationShell(url, extractedText)) {
+    return "low";
+  }
+
   if (sourceType === "unknown") {
     return "low";
   }
@@ -311,11 +377,56 @@ function scoreConfidence(
   return extractedText.length >= 160 ? "medium" : "low";
 }
 
+function navigationShellMetrics(extractedText: string) {
+  const lines = extractedText
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length === 0) return { lineCount: 0, ratio: 1 };
+
+  const shellCharacters = lines
+    .filter(
+      (line) =>
+        line.length <= 24 &&
+        !/[.!?。！？；;，,]/.test(line) &&
+        !/\d/.test(line),
+    )
+    .reduce((sum, line) => sum + line.length + 1, 0);
+
+  return {
+    lineCount: lines.length,
+    ratio: shellCharacters / Math.max(1, extractedText.length),
+  };
+}
+
+function isLikelyNavigationShell(url: string, extractedText: string) {
+  const { lineCount, ratio } = navigationShellMetrics(extractedText);
+  let path = "";
+  try {
+    path = new URL(url).pathname.replace(/\/+$/, "").toLowerCase();
+  } catch {
+    path = "";
+  }
+
+  const indexShell =
+    /^\/(?:news|blog|blogs|article|articles|search|media|press)$/i.test(path);
+
+  return (
+    (extractedText.length >= 500 && lineCount >= 20 && ratio >= 0.45) ||
+    (indexShell && (extractedText.length < 1_200 || ratio >= 0.25))
+  );
+}
+
 function reviewReason(
   sourceType: SourceQualityType,
   relevance: SourceQualityLevel,
   confidence: SourceQualityLevel,
+  navigationShell = false,
 ) {
+  if (navigationShell) {
+    return "页面主要是导航、搜索结果壳、地区入口或重复短菜单，不能作为正文证据。";
+  }
+
   if (sourceType === "robots") {
     return "robots.txt 只能证明公开采集边界，不能直接支撑业务结论。";
   }
@@ -351,6 +462,10 @@ export function assessSourceQuality(input: SourceQualityInput): SourceQuality {
   const sourceType = inferSourceType(input);
   const sourceRelevance = scoreRelevance(input);
   const sourceConfidence = scoreConfidence(input, sourceType);
+  const navigationShell = isLikelyNavigationShell(
+    input.url,
+    input.extractedText,
+  );
   const acceptedForReport =
     sourceRelevance !== "low" &&
     sourceConfidence !== "low" &&
@@ -367,6 +482,7 @@ export function assessSourceQuality(input: SourceQualityInput): SourceQuality {
       sourceType,
       sourceRelevance,
       sourceConfidence,
+      navigationShell,
     ),
     acceptedForReport,
   };

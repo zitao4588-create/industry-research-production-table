@@ -1,4 +1,8 @@
 import {
+  hasUnsupportedQuantifiedClaim,
+  highRiskClaimHasDirectQuote,
+} from "./extraction-validator";
+import {
   coerceRunDiffDatabases,
   createBaselineWeeklyIntelligenceReport,
   createWeeklyIntelligenceReportFromDiff,
@@ -324,6 +328,38 @@ function evidenceSourceFor(
     rawDocuments.find((document) => document.sourceId === evidence.sourceId);
   const source = sources.find((item) => item.id === evidence.sourceId);
 
+  const quoteContext = (() => {
+    if (!rawDocument || !evidence.quote.trim()) return "";
+    const exactIndex = rawDocument.extractedText.indexOf(evidence.quote);
+
+    if (exactIndex >= 0) {
+      const start = Math.max(0, exactIndex - 100);
+      const end = Math.min(
+        rawDocument.extractedText.length,
+        exactIndex + evidence.quote.length + 100,
+      );
+      return rawDocument.extractedText.slice(start, end).trim();
+    }
+
+    const tokens = evidence.quote
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 8);
+    if (tokens.length < 2) return "";
+    const firstTokenIndex = rawDocument.extractedText
+      .toLowerCase()
+      .indexOf(tokens[0]?.toLowerCase() ?? "");
+    if (firstTokenIndex < 0) return "";
+
+    return rawDocument.extractedText
+      .slice(
+        Math.max(0, firstTokenIndex - 100),
+        Math.min(rawDocument.extractedText.length, firstTokenIndex + 360),
+      )
+      .trim();
+  })();
+
   return {
     evidenceId: evidence.id,
     sourceId: evidence.sourceId,
@@ -333,7 +369,7 @@ function evidenceSourceFor(
     rawDocumentTitle: rawDocument?.title ?? "未匹配 raw document",
     url: rawDocument?.url ?? source?.value ?? "",
     contentType: rawDocument?.contentType ?? "text",
-    excerpt: rawDocument?.excerpt ?? "",
+    excerpt: quoteContext || rawDocument?.excerpt || "",
     sourceQuality: rawDocument?.sourceQuality,
     quote: evidence.quote,
     note: evidence.note,
@@ -651,6 +687,51 @@ function evidenceIdsForReviewItem(
   }
 }
 
+function claimTextsForReviewItem(
+  result: ResearchWorkflowResult,
+  item: ResearchReviewItem,
+) {
+  switch (item.targetType) {
+    case "competitor": {
+      const target = result.competitors.find(
+        (candidate) => candidate.id === item.targetId,
+      );
+      return target
+        ? [
+            target.name,
+            target.positioning,
+            ...target.websiteStructure,
+            ...target.collectionSignals,
+          ]
+        : [];
+    }
+    case "product_signal": {
+      const target = result.product_signals.find(
+        (candidate) => candidate.id === item.targetId,
+      );
+      return target ? [target.category, target.signal, ...target.tags] : [];
+    }
+    case "pain_point": {
+      const target = result.pain_points.find(
+        (candidate) => candidate.id === item.targetId,
+      );
+      return target ? [target.theme, target.userNeed] : [];
+    }
+    case "content_signal": {
+      const target = result.content_signals.find(
+        (candidate) => candidate.id === item.targetId,
+      );
+      return target ? [target.topic, target.whyItWorks] : [];
+    }
+    case "opportunity": {
+      const target = result.opportunities.find(
+        (candidate) => candidate.id === item.targetId,
+      );
+      return target ? [target.title, target.summary, target.reviewNote] : [];
+    }
+  }
+}
+
 function reviewItemTitle(
   result: ResearchWorkflowResult,
   item: ResearchReviewItem,
@@ -697,9 +778,12 @@ function acceptedEvidenceIds(
     const validation = evidence?.validation;
 
     return (
+      Boolean(evidence?.rawDocumentId) &&
+      Boolean(rawDocument?.url) &&
       rawDocument?.sourceQuality.acceptedForReport &&
-      validation?.quoteMatched !== false &&
-      validation?.sourceAccepted !== false
+      validation?.quoteMatched === true &&
+      validation?.sourceAccepted === true &&
+      validation.claimSupportComplete === true
     );
   });
 }
@@ -708,10 +792,25 @@ function canConfirmReviewItem(
   result: ResearchWorkflowResult,
   item: ResearchReviewItem,
 ) {
+  const evidenceIds = [...new Set(evidenceIdsForReviewItem(result, item))];
+  const acceptedIds = acceptedEvidenceIds(result, evidenceIds);
+  const evidenceQuotes = acceptedIds
+    .map((evidenceId) =>
+      result.evidence.find((evidence) => evidence.id === evidenceId),
+    )
+    .filter((evidence): evidence is Evidence => Boolean(evidence))
+    .map((evidence) => evidence.quote);
+  const highRiskClaims = claimTextsForReviewItem(result, item).filter(
+    hasUnsupportedQuantifiedClaim,
+  );
+
   return (
     item.status === "approved" &&
-    acceptedEvidenceIds(result, evidenceIdsForReviewItem(result, item)).length >
-      0
+    evidenceIds.length > 0 &&
+    acceptedIds.length === evidenceIds.length &&
+    highRiskClaims.every((claim) =>
+      highRiskClaimHasDirectQuote(claim, evidenceQuotes),
+    )
   );
 }
 
@@ -804,7 +903,7 @@ export function createReviewedIndustryResearchReport(
     `- rejected：${summary.rejected}`,
     `- confirmedFindings：${credibility.confirmedFindings}`,
     `- needsReviewFindings：${credibility.needsReviewFindings}`,
-    "- 规则：只有人工标记 approved 且证据对应数据源 `acceptedForReport=true` 的结论，才进入已确认发现。",
+    "- 规则：只有人工标记 approved、全部 evidence 均唯一绑定 rawDocumentId / URL、validation 明确通过且数据源 `acceptedForReport=true` 的结论，才进入已确认发现。",
     "- 注意：本报告仍不承诺 100% 自动事实判断，交付客户前需由负责人最终复核。",
     "",
     "## 已确认发现",
@@ -846,6 +945,15 @@ export function createIndustryResearchDeliveryReport(
   }
   const metadata = runMetadata(result);
   const credibility = createCredibilityMetrics(result);
+  const providerReportSection = [
+    "## Provider 原始报告已隔离",
+    "",
+    "原始研究报告仅保留在内部 `research_reports` 结果中，不进入正式 `report.md`。正式交付正文只使用经过逐条证据门禁的已确认发现与候选发现。",
+    "",
+    `- 原始报告标题：${report.title}`,
+    `- Provider：${metadata.provider}`,
+    `- 隔离原因：provider 自由文本可能包含未逐条绑定 rawDocumentId / URL 的推断或评分。`,
+  ];
 
   return [
     `# ${project.name} - 最小交付级 Agent 运行报告`,
@@ -905,9 +1013,7 @@ export function createIndustryResearchDeliveryReport(
     "",
     formatEvidenceIndex(result),
     "",
-    "## 原始研究报告",
-    "",
-    report.content,
+    ...providerReportSection,
   ].join("\n");
 }
 
@@ -925,7 +1031,8 @@ export function createIndustryResearchDeliveryManifest(
       : "ready_for_internal_review";
   const notes = [
     "这是 v0.3 边界扩展交付包清单；它只描述本地 JSON/Markdown 产物，不代表 SaaS 历史记录已上线。",
-    "所有结论交付前仍需人工审核；reviewed_report.md 只把 approved 且 acceptedForReport=true 的证据列为已确认发现。",
+    "所有结论交付前仍需人工审核；reviewed_report.md 只把 approved、全部证据完整通过且 acceptedForReport=true 的结论列为已确认发现。",
+    "provider 原始自由文本报告与正式 report.md 隔离，不能绕过逐条证据门禁进入交付正文。",
     "manifest.json 不包含 API Key、服务器地址、SSH 信息或 n8n 密钥。",
   ];
 

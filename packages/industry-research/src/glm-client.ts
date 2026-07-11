@@ -76,6 +76,20 @@ function pickOpenAICompatibleModel(env: GlmRuntimeEnv) {
   return env.AGENT_FACTORY_LLM_MODEL || "mmf/mimo-auto";
 }
 
+function resolveOpenAICompatibleThinking(env: GlmRuntimeEnv) {
+  const rawValue =
+    env.AGENT_FACTORY_LLM_THINKING ?? env.AGENT_FACTORY_DEEPSEEK_THINKING ?? "";
+  const value = rawValue.trim().toLowerCase();
+
+  if (!value) return undefined;
+  if (["disabled", "false", "0"].includes(value)) return false;
+  if (["enabled", "true", "1"].includes(value)) return true;
+
+  throw new Error(
+    "AGENT_FACTORY_LLM_THINKING 仅支持 enabled/disabled、true/false 或 1/0。",
+  );
+}
+
 export function resolveOpenAICompatibleConfig(env: GlmRuntimeEnv): GlmConfig {
   const apiKey =
     env.AGENT_FACTORY_LLM_API_KEY ||
@@ -193,17 +207,20 @@ export async function callOpenAICompatibleChatCompletion({
   temperature = 0.2,
   maxTokens = 4000,
   responseFormat,
+  stream = false,
   timeoutMs = 30_000,
 }: {
   env: GlmRuntimeEnv;
   messages: GlmChatMessage[];
   fetcher?: GlmFetch;
   temperature?: number;
-  maxTokens?: number;
+  maxTokens?: number | null;
   responseFormat?: "json_object";
+  stream?: boolean;
   timeoutMs?: number;
 }) {
   const config = resolveOpenAICompatibleConfig(env);
+  const enableThinking = resolveOpenAICompatibleThinking(env);
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let response: Awaited<ReturnType<GlmFetch>>;
@@ -219,8 +236,11 @@ export async function callOpenAICompatibleChatCompletion({
         model: config.model,
         messages,
         temperature,
-        max_tokens: maxTokens,
-        stream: false,
+        ...(maxTokens === null ? {} : { max_tokens: maxTokens }),
+        stream,
+        ...(enableThinking === undefined
+          ? {}
+          : { enable_thinking: enableThinking }),
         ...(responseFormat
           ? { response_format: { type: responseFormat } }
           : {}),
@@ -355,15 +375,18 @@ export async function generateOpenAICompatibleResearchMarkdownReport({
   dataset,
   env,
   fetcher,
+  stream,
 }: {
   dataset: ResearchWorkflowDataset;
   env: GlmRuntimeEnv;
   fetcher?: GlmFetch;
+  stream?: boolean;
 }) {
   return callOpenAICompatibleChatCompletion({
     env,
     fetcher,
     messages: createDeepSeekReportMessages(dataset),
+    stream,
     timeoutMs: 180_000,
   });
 }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 轻量服务器部署脚本（T10）：把 DECISIONS 2026-06-29 记录的手工 runbook 固化。
 #
-# 流程：git archive HEAD → 服务器备份 → 非删除式 rsync（固定排除清单）→
+# 流程：git archive HEAD（或显式选择当前 worktree）→ 服务器备份 → 非删除式 rsync（固定排除清单）→
 #       pnpm install --frozen-lockfile → pnpm build → doctor 三件套 →
 #       systemctl restart → health 检查。
 #
@@ -18,13 +18,15 @@ REMOTE_DIR="${DEPLOY_REMOTE_DIR:-/opt/playgamelab/industry-research}"
 HEALTH_URL="${DEPLOY_HEALTH_URL:-https://research.playgamelab.cn/api/health}"
 SERVICE_NAME="${DEPLOY_SERVICE_NAME:-industry-research.service}"
 MODE="dry-run"
+SOURCE_MODE="head"
 
 for arg in "$@"; do
   case "$arg" in
     --execute) MODE="execute" ;;
     --dry-run) MODE="dry-run" ;;
+    --worktree) SOURCE_MODE="worktree" ;;
     *)
-      echo "未知参数：${arg}（支持 --dry-run / --execute）" >&2
+      echo "未知参数：${arg}（支持 --dry-run / --execute / --worktree）" >&2
       exit 2
       ;;
   esac
@@ -43,6 +45,10 @@ RSYNC_EXCLUDES=(
   --exclude ".env.local"
   --exclude "industry-research.env*"
   --exclude "node_modules"
+  --exclude ".pnpm-store"
+  --exclude ".playwright-cli"
+  --exclude ".DS_Store"
+  --exclude "*.tsbuildinfo"
   --exclude ".next"
   --exclude ".cache"
   --exclude "outputs"
@@ -54,6 +60,7 @@ RSYNC_EXCLUDES=(
 )
 
 echo "== 行业研究生产台部署（mode=${MODE}）=="
+echo "source:      $SOURCE_MODE"
 echo "repo:        $REPO_ROOT"
 echo "ssh host:    $SSH_HOST"
 echo "remote dir:  $REMOTE_DIR"
@@ -61,8 +68,13 @@ echo "service:     $SERVICE_NAME"
 echo "health:      $HEALTH_URL"
 echo
 
-echo "[1/8] git archive HEAD → 暂存目录"
-git -C "$REPO_ROOT" archive --format=tar HEAD | tar -x -C "$STAGE_DIR"
+if [[ "$SOURCE_MODE" == "worktree" ]]; then
+  echo "[1/8] 当前 worktree → 暂存目录（显式模式）"
+  rsync -a "${RSYNC_EXCLUDES[@]}" "$REPO_ROOT/" "$STAGE_DIR/"
+else
+  echo "[1/8] git archive HEAD → 暂存目录"
+  git -C "$REPO_ROOT" archive --format=tar HEAD | tar -x -C "$STAGE_DIR"
+fi
 echo "  staged files: $(find "$STAGE_DIR" -type f | wc -l | tr -d ' ')"
 HEAD_SHA="$(git -C "$REPO_ROOT" rev-parse --short HEAD)"
 echo "  HEAD: $HEAD_SHA"
@@ -86,7 +98,7 @@ if [[ "$MODE" == "dry-run" ]]; then
   echo "  ssh $SSH_HOST \"sudo systemctl restart $SERVICE_NAME && systemctl is-active $SERVICE_NAME\""
   echo "  curl -fsS $HEALTH_URL"
   echo
-  echo "确认无误后运行：bash deploy/lightweight-server/deploy.sh --execute"
+  echo "确认无误后运行：bash deploy/lightweight-server/deploy.sh --execute${SOURCE_MODE:+ --$SOURCE_MODE}"
   exit 0
 fi
 

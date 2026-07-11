@@ -58,7 +58,7 @@ export const researchAutomationCapabilityAssessments: ReusableCapabilityAssessme
       maintenanceSignal:
         "本机 Hermes skills 中存在，支持 search/extract/map/crawl/research；核心 workflow 已接入 Tavily Search API 作为候选 URL 发现 provider。",
       useCase:
-        "用于陌生行业的信息源发现；extract/map/crawl/research 仍先不接入核心 workflow。",
+        "用于陌生行业的候选官网发现；extract/map/crawl/research 不接入核心 workflow，站内深页补充由已接入且显式启用的 Firecrawl Map 负责。",
       reason:
         "依赖 Tavily API Key；Search endpoint 返回结构稳定，适合替代 DDG HTML 做候选公开 URL 发现。",
     },

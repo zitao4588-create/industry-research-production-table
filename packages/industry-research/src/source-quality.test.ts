@@ -62,6 +62,75 @@ describe("assessSourceQuality", () => {
     expect(quality.acceptedForReport).toBe(true);
   });
 
+  it("matches deterministic English commerce signals for a Chinese pet probiotic category", () => {
+    const petInput: ResearchWorkflowInput = {
+      ...input,
+      projectName: "宠物肠胃益生菌竞品研究",
+      industry: "宠物健康电商",
+      category: "宠物肠胃益生菌",
+    };
+    const quality = assessSourceQuality({
+      target: target("https://www.zestypaws.com/"),
+      input: petInput,
+      title: "Zesty Paws | Premium Quality Cat and Dog Supplements",
+      url: "https://www.zestypaws.com/",
+      extractedText:
+        "Dog probiotic bites with prebiotic fiber for gut health and healthy digestion. Product reviews and bundles. ".repeat(
+          8,
+        ),
+    });
+
+    expect(quality.sourceType).toBe("official_site");
+    expect(quality.sourceRelevance).toBe("high");
+    expect(quality.sourceConfidence).toBe("high");
+    expect(quality.acceptedForReport).toBe(true);
+  });
+
+  it("does not accept an official-looking domain without category evidence", () => {
+    const petInput: ResearchWorkflowInput = {
+      ...input,
+      projectName: "宠物肠胃益生菌竞品研究",
+      industry: "宠物健康电商",
+      category: "宠物肠胃益生菌",
+    };
+    const quality = assessSourceQuality({
+      target: target("https://official-brand.example/"),
+      input: petInput,
+      title: "Official Brand Store",
+      url: "https://official-brand.example/",
+      extractedText:
+        "Official store shop products collection reviews bundle subscription ".repeat(
+          20,
+        ),
+    });
+
+    expect(quality.sourceType).toBe("official_site");
+    expect(quality.sourceRelevance).toBe("low");
+    expect(quality.acceptedForReport).toBe(false);
+  });
+
+  it("keeps lifestyle media out of accepted evidence even when it mentions skincare", () => {
+    const skincareInput: ResearchWorkflowInput = {
+      ...input,
+      projectName: "日本小众护肤品牌竞品研究",
+      industry: "日本小众护肤品牌",
+      category: "日本小众护肤品牌",
+    };
+    const quality = assessSourceQuality({
+      target: target("https://www.cosmopolitan.com.hk/"),
+      input: skincareInput,
+      title: "Cosmopolitan HK - 美容護膚、時尚潮流、星座運勢、女性生活",
+      url: "https://www.cosmopolitan.com.hk/",
+      extractedText:
+        "美容護膚 時尚潮流 女性生活 日本护肤新品 新闻 专题文章 产品推荐 ".repeat(
+          20,
+        ),
+    });
+
+    expect(quality.sourceType).toBe("unknown");
+    expect(quality.acceptedForReport).toBe(false);
+  });
+
   it("rejects auto-discovered commerce homepages without category relevance", () => {
     const quality = assessSourceQuality({
       target: target("https://www.sayweee.com/"),
@@ -118,5 +187,70 @@ describe("assessSourceQuality", () => {
     expect(sitemapQuality.acceptedForReport).toBe(false);
     expect(searchQuality.sourceType).toBe("search_candidate");
     expect(searchQuality.acceptedForReport).toBe(false);
+  });
+
+  it("rejects a long navigation shell even when it repeats the target category", () => {
+    const dishwasherInput: ResearchWorkflowInput = {
+      ...input,
+      industry: "洗碗机",
+      category: "洗碗机",
+    };
+    const navigationLines = [
+      "首页",
+      "品牌故事",
+      "智慧家庭",
+      "产品中心",
+      "洗碗机",
+      "厨房电器",
+      "服务支持",
+      "联系我们",
+    ];
+    const quality = assessSourceQuality({
+      target: target("https://haier-shell.example/"),
+      input: dishwasherInput,
+      title: "洗碗机品牌官网",
+      url: "https://haier-shell.example/",
+      extractedText: Array.from({ length: 15 }, () => navigationLines)
+        .flat()
+        .join("\n"),
+    });
+
+    expect(quality.sourceConfidence).toBe("low");
+    expect(quality.acceptedForReport).toBe(false);
+    expect(quality.needsReviewReason).toContain("导航");
+  });
+
+  it("rejects a short news index shell without rejecting ordinary short pages", () => {
+    const quality = assessSourceQuality({
+      target: target("https://brand.example/news", "blog"),
+      input,
+      title: "品牌资讯",
+      url: "https://brand.example/news",
+      extractedText:
+        "首页\n产品中心\n品牌资讯\n媒体报道\n男士电动剃须刀\n服务支持\n联系我们",
+    });
+
+    expect(quality.sourceConfidence).toBe("low");
+    expect(quality.acceptedForReport).toBe(false);
+    expect(quality.needsReviewReason).toContain("导航");
+  });
+
+  it("accepts a substantive FAQ page even when a few navigation labels remain", () => {
+    const quality = assessSourceQuality({
+      target: target("https://brand.example/guides/shaver-faq", "blog"),
+      input,
+      title: "男士电动剃须刀常见问题",
+      url: "https://brand.example/guides/shaver-faq",
+      extractedText: [
+        "首页\n产品\n支持",
+        "男士电动剃须刀常见问题。湿剃前应先确认机身支持全身水洗，并按照说明书安装刀头。",
+        "用户经常询问敏感肌是否适合每日使用。建议从较低档位开始，并保持刀网清洁，减少重复摩擦。",
+        "产品页面同时说明充电时间、续航方式、替换刀头周期和保修服务，购买前可以逐项比较。",
+        "如果剃须后仍有拉扯感，应检查刀头磨损和胡须长度，而不是仅根据品牌宣传判断效果。",
+      ].join("\n"),
+    });
+
+    expect(quality.sourceConfidence).not.toBe("low");
+    expect(quality.acceptedForReport).toBe(true);
   });
 });

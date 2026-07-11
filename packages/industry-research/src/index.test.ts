@@ -18,6 +18,8 @@ import {
   runPublicCrawler,
   runPublicDeepSeekIndustryResearchWorkflow,
   runPublicIndustryResearchWorkflow,
+  selectRotatedFreeModelRoutes,
+  shouldUseAliyunFreeModelRouting,
   validateEvidenceQuotes,
 } from "./index";
 
@@ -142,6 +144,367 @@ describe("industry research mock workflow", () => {
     expect(artifacts.reportMarkdown).toContain("needs_review");
   });
 
+  it("prints evidence context around the matched quote instead of the page prefix", () => {
+    const result = runMockIndustryResearchWorkflow(input);
+    const evidence = result.evidence[0];
+    if (!evidence) throw new Error("mock fixture must provide evidence");
+    const rawDocument = result.raw_documents.find(
+      (document) =>
+        document.id === evidence.rawDocumentId ||
+        document.sourceId === evidence.sourceId,
+    );
+    if (!rawDocument) throw new Error("mock evidence must match a document");
+
+    const navigationPrefix = "首页 产品 分类 品牌 服务 ".repeat(20);
+    const distinctiveContext = "这是引用后方的关键上下文，用于解释证据边界。";
+    const contextualResult = {
+      ...result,
+      raw_documents: result.raw_documents.map((document) =>
+        document.id === rawDocument.id
+          ? {
+              ...document,
+              excerpt: navigationPrefix.slice(0, 160),
+              extractedText: `${navigationPrefix}${evidence.quote}${distinctiveContext}`,
+            }
+          : document,
+      ),
+      competitors: result.competitors.map((competitor, index) =>
+        index === 0
+          ? { ...competitor, evidenceIds: [evidence.id] }
+          : competitor,
+      ),
+    };
+
+    const artifacts = createIndustryResearchDeliveryArtifacts({
+      input,
+      result: contextualResult,
+      runId: "quote-context-run",
+      startedAt: "2026-07-11T00:00:00.000Z",
+      finishedAt: "2026-07-11T00:00:01.000Z",
+    });
+
+    expect(artifacts.reportMarkdown).toContain(distinctiveContext);
+  });
+
+  it("isolates provider report content when no source is accepted for report", () => {
+    const result = runMockIndustryResearchWorkflow(input);
+    const blockedResult = {
+      ...result,
+      raw_documents: result.raw_documents.map((document) => ({
+        ...document,
+        sourceQuality: {
+          sourceType: "unknown" as const,
+          sourceRelevance: "low" as const,
+          sourceConfidence: "low" as const,
+          needsReviewReason: "测试用低质量来源，不能作为交付报告证据。",
+          acceptedForReport: false,
+        },
+      })),
+      research_reports: result.research_reports.map((report) => ({
+        ...report,
+        content:
+          "LLM_MOCK_DISHWASHER_CONTENT_SHOULD_NOT_SHIP 方太 美的 海尔 mock 机会评分",
+      })),
+    };
+
+    const artifacts = createIndustryResearchDeliveryArtifacts({
+      input,
+      result: blockedResult,
+      runId: "blocked-provider-report-run",
+      startedAt: "2026-07-07T00:00:00.000Z",
+      finishedAt: "2026-07-07T00:00:01.000Z",
+    });
+
+    expect(artifacts.run_log.sourceQualitySummary.acceptedForReport).toBe(0);
+    expect(artifacts.reportMarkdown).toContain("Provider 原始报告已隔离");
+    expect(artifacts.reportMarkdown).not.toContain(
+      "LLM_MOCK_DISHWASHER_CONTENT_SHOULD_NOT_SHIP",
+    );
+    expect(artifacts.manifest.notes).toContain(
+      "没有 acceptedForReport=true 的数据源，报告只能作为内部分析草稿。",
+    );
+  });
+
+  it("keeps provider free text out of formal report even with accepted sources", () => {
+    const result = runMockIndustryResearchWorkflow(input);
+    const providerMarker =
+      "LLM_ACCEPTED_SOURCE_CONTENT_MUST_STILL_NOT_ENTER_FORMAL_REPORT";
+    const providerResult = {
+      ...result,
+      research_reports: result.research_reports.map((report) => ({
+        ...report,
+        content: `${providerMarker} 未逐条绑定来源的机会评分与市场判断`,
+      })),
+      runMetadata: {
+        canonicalMode: "public_web_llm" as const,
+        provider: "openai_compatible" as const,
+        llmUsed: true,
+      },
+    };
+
+    const artifacts = createIndustryResearchDeliveryArtifacts({
+      input,
+      result: providerResult,
+      runId: "accepted-source-provider-isolation-run",
+      startedAt: "2026-07-10T00:00:00.000Z",
+      finishedAt: "2026-07-10T00:00:01.000Z",
+    });
+
+    expect(
+      artifacts.run_log.sourceQualitySummary.acceptedForReport,
+    ).toBeGreaterThan(0);
+    expect(artifacts.reportMarkdown).toContain("Provider 原始报告已隔离");
+    expect(artifacts.reportMarkdown).not.toContain(providerMarker);
+    expect(artifacts.reviewedReportMarkdown).not.toContain(providerMarker);
+    expect(artifacts.manifest.notes).toContain(
+      "provider 原始自由文本报告与正式 report.md 隔离，不能绕过逐条证据门禁进入交付正文。",
+    );
+  });
+
+  it("keeps missing, partial, and high-risk unsupported evidence out of confirmed findings", () => {
+    const result = runMockIndustryResearchWorkflow(input);
+    const baseDocument = result.raw_documents[0];
+    const baseCompetitor = result.competitors[0];
+    const baseOpportunity = result.opportunities[0];
+
+    if (!baseDocument || !baseCompetitor || !baseOpportunity) {
+      throw new Error(
+        "mock fixture must provide a document and review targets",
+      );
+    }
+
+    const rawDocument = {
+      ...baseDocument,
+      url: "https://brand.example/evidence",
+      sourceQuality: {
+        sourceType: "official_site" as const,
+        sourceRelevance: "high" as const,
+        sourceConfidence: "high" as const,
+        needsReviewReason: "",
+        acceptedForReport: true,
+      },
+    };
+    const competitor = {
+      ...baseCompetitor,
+      id: "competitor-missing-validation",
+      name: "缺失 validation 的候选",
+      evidenceIds: ["evidence-missing-validation"],
+    };
+    const metadataMissingCompetitor = {
+      ...baseCompetitor,
+      id: "competitor-missing-claim-metadata",
+      name: "缺失声明完整性元数据的候选",
+      evidenceIds: ["evidence-missing-claim-metadata"],
+    };
+    const partialOpportunity = {
+      ...baseOpportunity,
+      id: "opportunity-partial-support",
+      title: "部分证据候选",
+      summary: "一条 quote 命中，但同一声明的另一条 quote 未命中。",
+      reviewStatus: "approved" as const,
+      evidenceIds: ["evidence-partial-support"],
+    };
+    const highRiskOpportunity = {
+      ...baseOpportunity,
+      id: "opportunity-high-risk",
+      title: "高风险数字候选",
+      summary: "该品牌拥有 30% market share。",
+      reviewStatus: "approved" as const,
+      evidenceIds: ["evidence-high-risk"],
+    };
+    const strictResult = {
+      ...result,
+      raw_documents: [rawDocument],
+      competitors: [competitor, metadataMissingCompetitor],
+      opportunities: [partialOpportunity, highRiskOpportunity],
+      evidence: [
+        {
+          id: "evidence-missing-validation",
+          projectId: rawDocument.projectId,
+          sourceId: rawDocument.sourceId,
+          rawDocumentId: rawDocument.id,
+          quote: "直接观察到的品牌页面",
+          note: "缺失 validation",
+        },
+        {
+          id: "evidence-partial-support",
+          projectId: rawDocument.projectId,
+          sourceId: rawDocument.sourceId,
+          rawDocumentId: rawDocument.id,
+          quote: "直接观察到的一条事实",
+          note: "同一声明只有部分 quote 通过",
+          validation: {
+            quoteMatched: true,
+            sourceAccepted: true,
+            matchedRawDocumentId: rawDocument.id,
+            claimSupportComplete: false,
+            claimQuoteCount: 2,
+            confirmedQuoteCount: 1,
+          },
+        },
+        {
+          id: "evidence-missing-claim-metadata",
+          projectId: rawDocument.projectId,
+          sourceId: rawDocument.sourceId,
+          rawDocumentId: rawDocument.id,
+          quote: "直接观察到的另一品牌页面",
+          note: "quote/source 已通过但没有 claimSupportComplete",
+          validation: {
+            quoteMatched: true,
+            sourceAccepted: true,
+            matchedRawDocumentId: rawDocument.id,
+          },
+        },
+        {
+          id: "evidence-high-risk",
+          projectId: rawDocument.projectId,
+          sourceId: rawDocument.sourceId,
+          rawDocumentId: rawDocument.id,
+          quote: "The brand sells a starter kit.",
+          note: "没有直接支持市场份额数字",
+          validation: {
+            quoteMatched: true,
+            sourceAccepted: true,
+            matchedRawDocumentId: rawDocument.id,
+            claimSupportComplete: true,
+            claimQuoteCount: 1,
+            confirmedQuoteCount: 1,
+          },
+        },
+      ],
+      reviewItems: [
+        {
+          id: "review-missing-validation",
+          targetType: "competitor" as const,
+          targetId: competitor.id,
+          status: "approved" as const,
+          note: "人工误标 approved",
+        },
+        {
+          id: "review-partial-support",
+          targetType: "opportunity" as const,
+          targetId: partialOpportunity.id,
+          status: "approved" as const,
+          note: "人工误标 approved",
+        },
+        {
+          id: "review-missing-claim-metadata",
+          targetType: "competitor" as const,
+          targetId: metadataMissingCompetitor.id,
+          status: "approved" as const,
+          note: "人工误标 approved",
+        },
+        {
+          id: "review-high-risk",
+          targetType: "opportunity" as const,
+          targetId: highRiskOpportunity.id,
+          status: "approved" as const,
+          note: "人工误标 approved",
+        },
+      ],
+    };
+
+    const artifacts = createIndustryResearchDeliveryArtifacts({
+      input,
+      result: strictResult,
+      runId: "strict-confirmation-gate-run",
+      startedAt: "2026-07-10T00:00:00.000Z",
+      finishedAt: "2026-07-10T00:00:01.000Z",
+    });
+    const confirmedSection = artifacts.reviewedReportMarkdown
+      .split("## 已确认发现")[1]
+      ?.split("## 候选发现")[0];
+
+    expect(artifacts.run_log.credibility.confirmedFindings).toBe(0);
+    expect(artifacts.run_log.credibility.needsReviewFindings).toBe(4);
+    expect(confirmedSection).not.toContain("缺失 validation 的候选");
+    expect(confirmedSection).not.toContain("缺失声明完整性元数据的候选");
+    expect(confirmedSection).not.toContain("部分证据候选");
+    expect(confirmedSection).not.toContain("高风险数字候选");
+    expect(artifacts.reviewedReportMarkdown).toContain("部分证据候选");
+    expect(artifacts.reviewedReportMarkdown).toContain("高风险数字候选");
+  });
+
+  it("allows a fully supported approved finding and prints its unique raw document trace", () => {
+    const result = runMockIndustryResearchWorkflow(input);
+    const baseDocument = result.raw_documents[0];
+    const baseCompetitor = result.competitors[0];
+
+    if (!baseDocument || !baseCompetitor) {
+      throw new Error("mock fixture must provide a document and competitor");
+    }
+
+    const rawDocument = {
+      ...baseDocument,
+      url: "https://confirmed-brand.example/products/probiotic",
+      sourceQuality: {
+        sourceType: "product_page" as const,
+        sourceRelevance: "high" as const,
+        sourceConfidence: "high" as const,
+        needsReviewReason: "",
+        acceptedForReport: true,
+      },
+    };
+    const competitor = {
+      ...baseCompetitor,
+      id: "competitor-fully-supported",
+      name: "可确认品牌",
+      positioning: "公开产品页展示宠物益生菌产品",
+      websiteStructure: [],
+      collectionSignals: [],
+      evidenceIds: ["evidence-fully-supported"],
+    };
+    const fullySupportedResult = {
+      ...result,
+      raw_documents: [rawDocument],
+      competitors: [competitor],
+      opportunities: [],
+      evidence: [
+        {
+          id: "evidence-fully-supported",
+          projectId: rawDocument.projectId,
+          sourceId: rawDocument.sourceId,
+          rawDocumentId: rawDocument.id,
+          quote: "公开产品页展示宠物益生菌产品",
+          note: "完整声明由唯一产品页直接支持",
+          validation: {
+            quoteMatched: true,
+            sourceAccepted: true,
+            matchedRawDocumentId: rawDocument.id,
+            claimSupportComplete: true,
+            claimQuoteCount: 1,
+            confirmedQuoteCount: 1,
+          },
+        },
+      ],
+      reviewItems: [
+        {
+          id: "review-fully-supported",
+          targetType: "competitor" as const,
+          targetId: competitor.id,
+          status: "approved" as const,
+          note: "人工已核对完整声明与证据",
+        },
+      ],
+    };
+
+    const artifacts = createIndustryResearchDeliveryArtifacts({
+      input,
+      result: fullySupportedResult,
+      runId: "fully-supported-confirmation-run",
+      startedAt: "2026-07-10T00:00:00.000Z",
+      finishedAt: "2026-07-10T00:00:01.000Z",
+    });
+    const confirmedSection = artifacts.reviewedReportMarkdown
+      .split("## 已确认发现")[1]
+      ?.split("## 候选发现")[0];
+
+    expect(artifacts.run_log.credibility.confirmedFindings).toBe(1);
+    expect(confirmedSection).toContain("可确认品牌");
+    expect(confirmedSection).toContain(`rawDocumentId：${rawDocument.id}`);
+    expect(confirmedSection).toContain(`URL：${rawDocument.url}`);
+  });
+
   it("stores the minimum v0.3 persistence boundary in a local JSON repository", async () => {
     const result = runMockIndustryResearchWorkflow(input);
     const artifacts = createIndustryResearchDeliveryArtifacts({
@@ -198,6 +561,130 @@ describe("industry research mock workflow", () => {
 });
 
 describe("industry research OpenAI-compatible workflow", () => {
+  it("requires explicit Aliyun free-tier routing gates", () => {
+    const base = {
+      AGENT_FACTORY_LLM_BASE_URL:
+        "https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+      AGENT_FACTORY_ALIYUN_FREE_MODEL_ROUTING_ENABLED: "true",
+      AGENT_FACTORY_ALIYUN_FREE_TIER_ONLY_CONFIRMED: "true",
+    };
+
+    expect(shouldUseAliyunFreeModelRouting(base)).toBe(true);
+    expect(
+      shouldUseAliyunFreeModelRouting({
+        ...base,
+        AGENT_FACTORY_ALIYUN_FREE_TIER_ONLY_CONFIRMED: "false",
+      }),
+    ).toBe(false);
+    expect(
+      shouldUseAliyunFreeModelRouting({
+        ...base,
+        AGENT_FACTORY_LLM_BASE_URL: "https://provider.example/v1",
+      }),
+    ).toBe(false);
+  });
+
+  it("selects two stable advisory routes without the development-only code model", () => {
+    const first = selectRotatedFreeModelRoutes("project-stable");
+    const second = selectRotatedFreeModelRoutes("project-stable");
+
+    expect(first).toHaveLength(2);
+    expect(first).toEqual(second);
+    expect(first.every((route) => route.authority === "advisory")).toBe(true);
+    expect(first.map((route) => route.model)).not.toContain("kimi-k2.7-code");
+  });
+
+  it("runs the gated Aliyun free-model production chain without advisory write-back", async () => {
+    const calledModels: string[] = [];
+    const fakePublicFetch: PublicCrawlerFetch = async () => ({
+      ok: true,
+      status: 200,
+      text: async () => `
+        <html>
+          <head><title>GutPet Labs</title></head>
+          <body>
+            <h1>Daily Gut Starter Kit</h1>
+            <p>Subscription probiotic bundle for sensitive stomach support.</p>
+          </body>
+        </html>
+      `,
+      headers: {
+        get: (name) =>
+          name.toLowerCase() === "content-type" ? "text/html" : null,
+      },
+    });
+    const fakeModelFetch: DeepSeekFetch = async (_url, init) => {
+      const body = JSON.parse(init.body) as {
+        model: string;
+        response_format?: { type?: string };
+      };
+      calledModels.push(body.model);
+      const content = body.response_format
+        ? JSON.stringify({
+            competitors: [
+              {
+                name: "GutPet Labs",
+                channel: "DTC",
+                positioning: "Subscription probiotic bundle",
+                websiteStructure: [],
+                collectionSignals: [],
+                evidenceReferences: [
+                  {
+                    rawDocumentId: "public-raw-document-1",
+                    quote: "Daily Gut Starter Kit",
+                  },
+                ],
+              },
+            ],
+            productSignals: [],
+            painPoints: [],
+            contentSignals: [],
+            opportunities: [],
+          })
+        : body.model === "kimi-k2.6"
+          ? "# Kimi 路由报告\n\n仅使用已校验证据。"
+          : "# 内部辅助审计\n\n不得进入 confirmed findings。";
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({ choices: [{ message: { content } }] }),
+      };
+    };
+
+    const result = await runPublicDeepSeekIndustryResearchWorkflow(
+      { ...input, urls: ["https://brand.example"] },
+      {
+        env: {
+          AGENT_FACTORY_LLM_API_KEY: "test-key",
+          AGENT_FACTORY_LLM_BASE_URL:
+            "https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+          AGENT_FACTORY_LLM_MODEL: "unused-default",
+          AGENT_FACTORY_ALIYUN_FREE_MODEL_ROUTING_ENABLED: "true",
+          AGENT_FACTORY_ALIYUN_FREE_TIER_ONLY_CONFIRMED: "true",
+        },
+        fetcher: fakeModelFetch,
+        publicFetcher: fakePublicFetch,
+      },
+    );
+
+    expect(calledModels).toHaveLength(5);
+    expect(calledModels).toContain("Moonshot-Kimi-K2-Instruct");
+    expect(calledModels).toContain("glm-4.7");
+    expect(calledModels).toContain("kimi-k2.6");
+    expect(calledModels).not.toContain("kimi-k2.7-code");
+    expect(result.research_reports[0]?.content).toContain("Kimi 路由报告");
+    expect(result.runMetadata?.model).toBe("kimi-k2.6");
+    expect(result.runMetadata?.modelRouting).toMatchObject({
+      enabled: true,
+      reportModel: "kimi-k2.6",
+      extractionModel: "glm-4.7",
+      sourceDigestModel: "Moonshot-Kimi-K2-Instruct",
+    });
+    expect(result.runMetadata?.modelRouting?.rotatedModels).toHaveLength(2);
+    expect(result.runMetadata?.modelRouting?.calls).toHaveLength(5);
+  });
+
   it("resolves DeepSeek config from the DeepSeek env shape", () => {
     const config = resolveDeepSeekConfig({
       AGENT_FACTORY_DEEPSEEK_API_KEY: "test-key",
@@ -250,17 +737,84 @@ describe("industry research OpenAI-compatible workflow", () => {
     expect(calls[0]?.init.body).not.toContain("thinking");
   });
 
-  it("parses OpenAI-compatible SSE chat completion chunks", async () => {
-    const fakeFetch: DeepSeekFetch = async () => ({
-      ok: true,
-      status: 200,
-      text: async () =>
-        [
-          'data: {"choices":[{"delta":{"role":"assistant","content":"# 报告"}}]}',
-          'data: {"choices":[{"delta":{"content":"\\n\\nDeepSeek 路由可用。"}}]}',
-          "data: [DONE]",
-        ].join("\n\n"),
+  it("can disable Alibaba-hosted DeepSeek thinking for structured output", async () => {
+    const calls: Array<Parameters<DeepSeekFetch>[1]> = [];
+    const fakeFetch: DeepSeekFetch = async (_input, init) => {
+      calls.push(init);
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            choices: [{ message: { content: '{"ok":true}' } }],
+          }),
+      };
+    };
+
+    await callDeepSeekChatCompletion({
+      env: {
+        AGENT_FACTORY_LLM_API_KEY: "secret-key",
+        AGENT_FACTORY_LLM_BASE_URL:
+          "https://workspace.cn-beijing.maas.aliyuncs.com/compatible-mode/v1",
+        AGENT_FACTORY_LLM_MODEL: "deepseek-v4-flash",
+        AGENT_FACTORY_LLM_THINKING: "disabled",
+      },
+      fetcher: fakeFetch,
+      messages: [{ role: "user", content: "只返回 JSON" }],
+      responseFormat: "json_object",
     });
+
+    expect(JSON.parse(calls[0]?.body ?? "{}")).toMatchObject({
+      model: "deepseek-v4-flash",
+      enable_thinking: false,
+      response_format: { type: "json_object" },
+    });
+  });
+
+  it("can omit the structured-output token cap explicitly", async () => {
+    const calls: Array<Parameters<DeepSeekFetch>[1]> = [];
+    const fakeFetch: DeepSeekFetch = async (_input, init) => {
+      calls.push(init);
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            choices: [{ message: { content: '{"ok":true}' } }],
+          }),
+      };
+    };
+
+    await callDeepSeekChatCompletion({
+      env: {
+        AGENT_FACTORY_LLM_API_KEY: "secret-key",
+        AGENT_FACTORY_LLM_BASE_URL: "https://example.test",
+        AGENT_FACTORY_LLM_MODEL: "test-model",
+      },
+      fetcher: fakeFetch,
+      messages: [{ role: "user", content: "只返回 JSON" }],
+      maxTokens: null,
+      responseFormat: "json_object",
+    });
+
+    expect(JSON.parse(calls[0]?.body ?? "{}")).not.toHaveProperty("max_tokens");
+  });
+
+  it("parses OpenAI-compatible SSE chat completion chunks", async () => {
+    const calls: Array<Parameters<DeepSeekFetch>[1]> = [];
+    const fakeFetch: DeepSeekFetch = async (_input, init) => {
+      calls.push(init);
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          [
+            'data: {"choices":[{"delta":{"role":"assistant","content":"# 报告"}}]}',
+            'data: {"choices":[{"delta":{"content":"\\n\\nDeepSeek 路由可用。"}}]}',
+            "data: [DONE]",
+          ].join("\n\n"),
+      };
+    };
 
     const result = await callDeepSeekChatCompletion({
       env: {
@@ -269,12 +823,14 @@ describe("industry research OpenAI-compatible workflow", () => {
       },
       fetcher: fakeFetch,
       messages: [{ role: "user", content: "生成报告" }],
+      stream: true,
     });
 
     expect(result).toEqual({
       content: "# 报告\n\nDeepSeek 路由可用。",
       model: "deepseek-v4-flash",
     });
+    expect(JSON.parse(calls[0]?.body ?? "{}")).toMatchObject({ stream: true });
   });
 
   it("redacts provider error messages before surfacing them", async () => {
@@ -973,7 +1529,7 @@ describe("industry research public workflow", () => {
         "https://brand.example": {
           body: `
             <html><head><title>Brand Home</title></head>
-            <body><nav>Best Sellers Blog Reviews</nav><p>Subscription starter kits for sensitive stomach.</p></body></html>
+            <body><nav>Home Catalog Contact</nav><main><h1>Best Sellers</h1><p>Subscription starter kits for sensitive stomach.</p></main></body></html>
           `,
           contentType: "text/html",
         },
@@ -1052,6 +1608,9 @@ describe("industry research public workflow", () => {
     expect(result.raw_documents.length).toBeGreaterThanOrEqual(3);
     expect(result.crawl_runs.every((run) => run.status === "done")).toBe(true);
     expect(result.raw_documents[0]?.extractedText).toContain("Best Sellers");
+    expect(result.raw_documents[0]?.extractedText).not.toContain(
+      "Home Catalog Contact",
+    );
     expect(
       result.source_discovery_plans[0]?.candidates.some(
         (candidate) => candidate.status === "discovered",

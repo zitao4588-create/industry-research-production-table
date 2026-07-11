@@ -1,6 +1,7 @@
 import {
   canConfirmWithSource,
-  type EvidenceQuoteValidation,
+  type EvidenceQuoteInput,
+  type EvidenceQuoteReference,
   mergeReviewStatus,
   validateEvidenceQuotes,
   validationNote,
@@ -30,6 +31,8 @@ import type {
   WeeklyIntelligenceReportEntry,
 } from "./types";
 
+type GlmEvidenceReference = Partial<EvidenceQuoteReference>;
+
 type GlmExtractedCompetitor = {
   name?: string;
   channel?: string;
@@ -37,6 +40,7 @@ type GlmExtractedCompetitor = {
   websiteStructure?: string[];
   collectionSignals?: string[];
   evidenceQuotes?: string[];
+  evidenceReferences?: GlmEvidenceReference[];
 };
 
 type GlmExtractedProductSignal = {
@@ -45,6 +49,7 @@ type GlmExtractedProductSignal = {
   signal?: string;
   tags?: string[];
   evidenceQuotes?: string[];
+  evidenceReferences?: GlmEvidenceReference[];
 };
 
 type GlmExtractedPainPoint = {
@@ -52,6 +57,7 @@ type GlmExtractedPainPoint = {
   userNeed?: string;
   frequency?: "low" | "medium" | "high";
   evidenceQuotes?: string[];
+  evidenceReferences?: GlmEvidenceReference[];
 };
 
 type GlmExtractedContentSignal = {
@@ -60,6 +66,7 @@ type GlmExtractedContentSignal = {
   contentType?: ContentSignal["contentType"];
   whyItWorks?: string;
   evidenceQuotes?: string[];
+  evidenceReferences?: GlmEvidenceReference[];
 };
 
 type GlmExtractedOpportunity = {
@@ -73,6 +80,7 @@ type GlmExtractedOpportunity = {
   reviewStatus?: ResearchReviewStatus;
   reviewNote?: string;
   evidenceQuotes?: string[];
+  evidenceReferences?: GlmEvidenceReference[];
 };
 
 export type GlmStructuredExtraction = {
@@ -99,6 +107,29 @@ function asStringArray(value: unknown) {
   return asArray(value)
     .map((item) => asString(item))
     .filter(Boolean);
+}
+
+function asEvidenceReferences(value: unknown): EvidenceQuoteReference[] {
+  return asArray(value)
+    .filter(isRecord)
+    .map((item) => ({
+      quote: asString(item.quote),
+      rawDocumentId: asString(item.rawDocumentId) || undefined,
+      sourceId: asString(item.sourceId) || undefined,
+      url: asString(item.url) || undefined,
+      domain: asString(item.domain) || undefined,
+    }))
+    .filter((item) => Boolean(item.quote));
+}
+
+function evidenceInputsFor(item: {
+  evidenceQuotes?: string[];
+  evidenceReferences?: GlmEvidenceReference[];
+}): EvidenceQuoteInput[] {
+  const references = asEvidenceReferences(item.evidenceReferences);
+  return references.length > 0
+    ? references
+    : asStringArray(item.evidenceQuotes);
 }
 
 function asNumber(value: unknown, fallback: number) {
@@ -312,7 +343,14 @@ export function createGlmStructuredExtractionMessages(
                 positioning: "string",
                 websiteStructure: ["string"],
                 collectionSignals: ["string"],
-                evidenceQuotes: ["string"],
+                evidenceReferences: [
+                  {
+                    rawDocumentId: "string",
+                    sourceId: "string",
+                    url: "string",
+                    quote: "string",
+                  },
+                ],
               },
             ],
             productSignals: [
@@ -321,7 +359,9 @@ export function createGlmStructuredExtractionMessages(
                 category: "string",
                 signal: "string",
                 tags: ["string"],
-                evidenceQuotes: ["string"],
+                evidenceReferences: [
+                  { rawDocumentId: "string", quote: "string" },
+                ],
               },
             ],
             painPoints: [
@@ -329,7 +369,9 @@ export function createGlmStructuredExtractionMessages(
                 theme: "string",
                 userNeed: "string",
                 frequency: "low|medium|high",
-                evidenceQuotes: ["string"],
+                evidenceReferences: [
+                  { rawDocumentId: "string", quote: "string" },
+                ],
               },
             ],
             contentSignals: [
@@ -338,7 +380,9 @@ export function createGlmStructuredExtractionMessages(
                 topic: "string",
                 contentType: "exposure|growth|save|conversion|personal_brand",
                 whyItWorks: "string",
-                evidenceQuotes: ["string"],
+                evidenceReferences: [
+                  { rawDocumentId: "string", quote: "string" },
+                ],
               },
             ],
             opportunities: [
@@ -352,7 +396,9 @@ export function createGlmStructuredExtractionMessages(
                 evidenceQualityScore: 0,
                 reviewStatus: "approved|needs_review|rejected",
                 reviewNote: "string",
-                evidenceQuotes: ["string"],
+                evidenceReferences: [
+                  { rawDocumentId: "string", quote: "string" },
+                ],
               },
             ],
           },
@@ -364,7 +410,14 @@ export function createGlmStructuredExtractionMessages(
         "- 只使用 rawDocuments 中能看到的信息。",
         "- 证据不足时 reviewStatus 用 needs_review。",
         "- 不要编造价格、销量、私人信息或登录后数据。",
-        "- evidenceQuotes 必须是 rawDocuments 里的短句或摘要片段。",
+        "- evidenceReferences 必须逐条提供 rawDocumentId 与该文档里的短句或摘要片段 quote；不要只给无来源绑定的通用短句。",
+        "- quote 必须是 rawDocument.extractedText 中可逐字搜索到的连续原文，不得改写、翻译、拼接或概括。",
+        "- 需要标记 approved 时，name/channel/positioning 或 title/summary 的核心词必须直接出现在 quote 中；优先让结论贴近原文措辞，不要先扩写再找证据。",
+        "- reviewStatus=approved 表示这条措辞克制的候选结论已被引用完整支持，不表示市场规模、商业价值或机会已验证；若 title/summary 只陈述评论里直接出现的具体场景，可以 approved，同时在 reviewNote 说明商业验证仍待完成。",
+        "- 机会 title/summary 不得加入 quote 中没有的产品形态、目标客群、市场缺口、竞争判断或行动建议；把这些未证实推断放进 reviewNote，并保持 needs_review。",
+        "- 用户痛点、需求和机会若使用 Amazon 买家证据，quote 必须连同 `Customer review excerpt:` 前缀一起逐字引用，以证明它是直接评论而非商品宣传。",
+        "- 宁可只输出 2-3 个证据完整的关键结论，也不要用弱引用凑数量。",
+        "- 同一 quote 若可能出现在多个文档，必须用 rawDocumentId 唯一绑定；不能确定时将 reviewStatus 设为 needs_review。",
         "- rawDocuments 已经过 sourceQuality 过滤；仍要优先使用 acceptedForReport=true 且 sourceType 为 official_site / product_page / collection_page / blog / content_api 的证据。",
         "- 如果文档中有产品系列、价格、定位、购买路径、内容主题或明显未覆盖场景，请尽量抽取 1-3 个机会；没有直接需求证据时 reviewStatus 必须是 needs_review。",
         "- 机会必须解释为“可进一步验证的候选切入点”，不要写成已经被市场验证的结论。",
@@ -444,6 +497,35 @@ function unionStrings(a?: string[], b?: string[]) {
   ];
 }
 
+function unionEvidenceReferences(
+  a?: GlmEvidenceReference[],
+  b?: GlmEvidenceReference[],
+) {
+  const byKey = new Map<string, GlmEvidenceReference>();
+
+  for (const reference of [...(a ?? []), ...(b ?? [])]) {
+    const quote = asString(reference.quote);
+    if (!quote) continue;
+    const normalized = {
+      quote,
+      rawDocumentId: asString(reference.rawDocumentId) || undefined,
+      sourceId: asString(reference.sourceId) || undefined,
+      url: asString(reference.url) || undefined,
+      domain: asString(reference.domain) || undefined,
+    } satisfies GlmEvidenceReference;
+    const key = [
+      normalized.quote.toLowerCase(),
+      normalized.rawDocumentId,
+      normalized.sourceId,
+      normalized.url,
+      normalized.domain,
+    ].join("|");
+    byKey.set(key, normalized);
+  }
+
+  return [...byKey.values()];
+}
+
 function preferLonger(a?: string, b?: string) {
   const left = a?.trim() ?? "";
   const right = b?.trim() ?? "";
@@ -498,6 +580,10 @@ export function mergeGlmStructuredExtractions(
             existing.evidenceQuotes,
             incoming.evidenceQuotes,
           ),
+          evidenceReferences: unionEvidenceReferences(
+            existing.evidenceReferences,
+            incoming.evidenceReferences,
+          ),
         }),
       );
     }
@@ -513,6 +599,10 @@ export function mergeGlmStructuredExtractions(
           evidenceQuotes: unionStrings(
             existing.evidenceQuotes,
             incoming.evidenceQuotes,
+          ),
+          evidenceReferences: unionEvidenceReferences(
+            existing.evidenceReferences,
+            incoming.evidenceReferences,
           ),
         }),
       );
@@ -535,6 +625,10 @@ export function mergeGlmStructuredExtractions(
             existing.evidenceQuotes,
             incoming.evidenceQuotes,
           ),
+          evidenceReferences: unionEvidenceReferences(
+            existing.evidenceReferences,
+            incoming.evidenceReferences,
+          ),
         }),
       );
     }
@@ -550,6 +644,10 @@ export function mergeGlmStructuredExtractions(
           evidenceQuotes: unionStrings(
             existing.evidenceQuotes,
             incoming.evidenceQuotes,
+          ),
+          evidenceReferences: unionEvidenceReferences(
+            existing.evidenceReferences,
+            incoming.evidenceReferences,
           ),
         }),
       );
@@ -567,6 +665,10 @@ export function mergeGlmStructuredExtractions(
           evidenceQuotes: unionStrings(
             existing.evidenceQuotes,
             incoming.evidenceQuotes,
+          ),
+          evidenceReferences: unionEvidenceReferences(
+            existing.evidenceReferences,
+            incoming.evidenceReferences,
           ),
         }),
       );
@@ -697,8 +799,11 @@ function createEvidenceBuilder(result: ResearchWorkflowResult) {
     throw new Error("Cannot build GLM extraction evidence without project.");
   }
 
-  return (validatedQuotes: EvidenceQuoteValidation[], note: string) => {
-    return validatedQuotes
+  return (
+    validation: ReturnType<typeof validateEvidenceQuotes>,
+    note: string,
+  ) => {
+    return validation.matchedQuotes
       .filter((quote) => quote.quoteMatched && quote.rawDocumentId)
       .map((quote) => {
         index += 1;
@@ -722,6 +827,9 @@ function createEvidenceBuilder(result: ResearchWorkflowResult) {
             sourceAccepted: quote.sourceAccepted,
             matchedRawDocumentId: quote.matchedRawDocumentId,
             failureReason: quote.failureReason,
+            claimSupportComplete: validation.claimSupportComplete,
+            claimQuoteCount: validation.matchedQuotes.length,
+            confirmedQuoteCount: validation.confirmedEvidenceCount,
           },
         } satisfies Evidence;
       });
@@ -758,7 +866,7 @@ export function applyGlmStructuredExtraction(
     validation: ReturnType<typeof validateEvidenceQuotes>,
     note: string,
   ) => {
-    const items = buildEvidence(validation.matchedQuotes, note);
+    const items = buildEvidence(validation, note);
     evidence.push(...items);
     return items.map((item) => item.id);
   };
@@ -766,8 +874,22 @@ export function applyGlmStructuredExtraction(
   const competitors: Competitor[] = extraction.competitors.flatMap(
     (competitor, index) => {
       const validation = validateEvidenceQuotes(
-        asStringArray(competitor.evidenceQuotes),
+        evidenceInputsFor(competitor),
         result.raw_documents,
+        {
+          claimTexts: [
+            asString(competitor.name),
+            asString(competitor.channel),
+            asString(competitor.positioning),
+            ...asStringArray(competitor.websiteStructure),
+            ...asStringArray(competitor.collectionSignals),
+          ],
+          requiredClaimTexts: [
+            asString(competitor.name),
+            asString(competitor.channel),
+            asString(competitor.positioning),
+          ],
+        },
       );
 
       if (validation.status === "rejected") {
@@ -797,7 +919,8 @@ export function applyGlmStructuredExtraction(
       ];
     },
   );
-  const fallbackCompetitor = competitors[0] ?? result.competitors[0];
+  const fallbackCompetitor =
+    competitors.length === 1 ? competitors[0] : undefined;
   const competitorIdsByName = new Map(
     competitors.map((competitor) => [
       competitor.name.toLowerCase(),
@@ -807,12 +930,26 @@ export function applyGlmStructuredExtraction(
   const productSignals: ProductSignal[] = extraction.productSignals.flatMap(
     (signal, index) => {
       const competitorName = asString(signal.competitorName).toLowerCase();
+      const competitorId =
+        competitorIdsByName.get(competitorName) ??
+        (competitorName ? undefined : fallbackCompetitor?.id);
       const validation = validateEvidenceQuotes(
-        asStringArray(signal.evidenceQuotes),
+        evidenceInputsFor(signal),
         result.raw_documents,
+        {
+          claimTexts: [
+            asString(signal.category),
+            asString(signal.signal),
+            ...asStringArray(signal.tags),
+          ],
+          requiredClaimTexts: [
+            asString(signal.category),
+            asString(signal.signal),
+          ],
+        },
       );
 
-      if (validation.status === "rejected") {
+      if (validation.status === "rejected" || !competitorId) {
         return [];
       }
 
@@ -820,10 +957,7 @@ export function applyGlmStructuredExtraction(
         {
           id: `deepseek-product-signal-${index + 1}`,
           projectId: project.id,
-          competitorId:
-            competitorIdsByName.get(competitorName) ??
-            fallbackCompetitor?.id ??
-            "deepseek-competitor-1",
+          competitorId,
           category: asString(signal.category, project.category),
           signal: asString(
             signal.signal,
@@ -841,8 +975,13 @@ export function applyGlmStructuredExtraction(
   const painPoints: PainPoint[] = extraction.painPoints.flatMap(
     (point, index) => {
       const validation = validateEvidenceQuotes(
-        asStringArray(point.evidenceQuotes),
+        evidenceInputsFor(point),
         result.raw_documents,
+        {
+          claimTexts: [asString(point.theme), asString(point.userNeed)],
+          requiredClaimTexts: [asString(point.theme), asString(point.userNeed)],
+          requireDemandEvidence: true,
+        },
       );
 
       if (validation.status === "rejected") {
@@ -867,8 +1006,15 @@ export function applyGlmStructuredExtraction(
   const contentSignals: ContentSignal[] = extraction.contentSignals.flatMap(
     (signal, index) => {
       const validation = validateEvidenceQuotes(
-        asStringArray(signal.evidenceQuotes),
+        evidenceInputsFor(signal),
         result.raw_documents,
+        {
+          claimTexts: [asString(signal.topic), asString(signal.whyItWorks)],
+          requiredClaimTexts: [
+            asString(signal.topic),
+            asString(signal.whyItWorks),
+          ],
+        },
       );
 
       if (validation.status === "rejected") {
@@ -894,8 +1040,20 @@ export function applyGlmStructuredExtraction(
   const opportunities: Opportunity[] = extraction.opportunities.flatMap(
     (opportunity, index) => {
       const validation = validateEvidenceQuotes(
-        asStringArray(opportunity.evidenceQuotes),
+        evidenceInputsFor(opportunity),
         result.raw_documents,
+        {
+          claimTexts: [
+            asString(opportunity.title),
+            asString(opportunity.summary),
+            asString(opportunity.reviewNote),
+          ],
+          requiredClaimTexts: [
+            asString(opportunity.title),
+            asString(opportunity.summary),
+          ],
+          requireDemandEvidence: true,
+        },
       );
 
       if (validation.status === "rejected") {
@@ -949,6 +1107,39 @@ export function applyGlmStructuredExtraction(
       ];
     },
   );
+  const allEvidence = [...result.evidence, ...evidence];
+  const evidenceById = new Map(allEvidence.map((item) => [item.id, item]));
+  const rawDocumentById = new Map(
+    result.raw_documents.map((document) => [document.id, document]),
+  );
+  const evidenceRecordsFor = (evidenceIds: string[]) =>
+    evidenceIds
+      .map((evidenceId) => evidenceById.get(evidenceId))
+      .filter((item): item is Evidence => Boolean(item));
+  const sourceIdsFor = (evidenceIds: string[]) =>
+    uniqueValues(evidenceRecordsFor(evidenceIds).map((item) => item.sourceId));
+  const rawDocumentsFor = (evidenceIds: string[]) =>
+    evidenceRecordsFor(evidenceIds)
+      .map((item) =>
+        item.rawDocumentId
+          ? rawDocumentById.get(item.rawDocumentId)
+          : undefined,
+      )
+      .filter((item): item is RawDocument => Boolean(item));
+  const uniquelyBoundUrlFor = (evidenceIds: string[]) => {
+    const documents = rawDocumentsFor(evidenceIds);
+    const hosts = uniqueValues(
+      documents.map((document) => {
+        try {
+          return new URL(document.url).hostname.toLowerCase();
+        } catch {
+          return document.url;
+        }
+      }),
+    );
+
+    return hosts.length === 1 ? documents[0]?.url : undefined;
+  };
   const competitorDatabase: CompetitorDatabaseEntry[] = competitors.map(
     (competitor) => ({
       id: `competitor-db-${competitor.id}`,
@@ -958,21 +1149,41 @@ export function applyGlmStructuredExtraction(
       market: project.market,
       channel: competitor.channel,
       positioning: competitor.positioning,
-      sourceIds: result.research_sources.map((source) => source.id),
+      sourceIds: sourceIdsFor(competitor.evidenceIds),
       evidenceIds: competitor.evidenceIds,
     }),
   );
   const websiteStructureDatabase: WebsiteStructureDatabaseEntry[] =
-    competitors.map((competitor) => ({
-      id: `website-structure-db-${competitor.id}`,
-      projectId: project.id,
-      competitorId: competitor.id,
-      url: result.raw_documents[0]?.url ?? "待补充",
-      sections: competitor.websiteStructure,
-      commerceSignals: competitor.collectionSignals,
-      contentSignals: contentSignals.map((signal) => signal.topic),
-      sourceIds: result.research_sources.map((source) => source.id),
-    }));
+    competitors.flatMap((competitor) => {
+      const sourceIds = sourceIdsFor(competitor.evidenceIds);
+      const url = uniquelyBoundUrlFor(competitor.evidenceIds);
+
+      if (!url || sourceIds.length === 0) {
+        return [];
+      }
+
+      const sourceIdSet = new Set(sourceIds);
+      const boundContentSignals = contentSignals
+        .filter((signal) =>
+          sourceIdsFor(signal.evidenceIds).some((sourceId) =>
+            sourceIdSet.has(sourceId),
+          ),
+        )
+        .map((signal) => signal.topic);
+
+      return [
+        {
+          id: `website-structure-db-${competitor.id}`,
+          projectId: project.id,
+          competitorId: competitor.id,
+          url,
+          sections: competitor.websiteStructure,
+          commerceSignals: competitor.collectionSignals,
+          contentSignals: boundContentSignals,
+          sourceIds,
+        } satisfies WebsiteStructureDatabaseEntry,
+      ];
+    });
   const productDatabase: ProductDatabaseEntry[] = productSignals.map(
     (signal, index) => ({
       id: `product-db-${signal.id}`,
@@ -985,21 +1196,55 @@ export function applyGlmStructuredExtraction(
       evidenceIds: signal.evidenceIds,
     }),
   );
-  const keywordValues = uniqueValues([
-    ...productSignals.flatMap((signal) => signal.tags),
-    ...painPoints.map((point) => point.theme),
-    ...contentSignals.map((signal) => signal.topic),
-  ]);
-  const keywordDatabase: KeywordDatabaseEntry[] = keywordValues.map(
-    (keyword, index) => ({
-      id: `keyword-db-deepseek-${index + 1}`,
-      projectId: project.id,
-      keyword,
-      intent: index % 2 === 0 ? "research" : "purchase",
-      source: "openai_compatible_structured_extraction",
-      evidenceIds: evidence.slice(0, 3).map((item) => item.id),
-    }),
-  );
+  const keywordSeeds: Array<{
+    keyword: string;
+    intent: KeywordDatabaseEntry["intent"];
+    evidenceIds: string[];
+  }> = [
+    ...productSignals.flatMap((signal) =>
+      signal.tags.map((keyword) => ({
+        keyword,
+        intent: "purchase" as const,
+        evidenceIds: signal.evidenceIds,
+      })),
+    ),
+    ...painPoints.map((point) => ({
+      keyword: point.theme,
+      intent: "pain_point" as const,
+      evidenceIds: point.evidenceIds,
+    })),
+    ...contentSignals.map((signal) => ({
+      keyword: signal.topic,
+      intent: "research" as const,
+      evidenceIds: signal.evidenceIds,
+    })),
+  ];
+  const keywordByValue = new Map<
+    string,
+    Omit<KeywordDatabaseEntry, "id" | "projectId" | "source">
+  >();
+
+  for (const seed of keywordSeeds) {
+    const key = seed.keyword.toLowerCase().trim();
+    const existing = keywordByValue.get(key);
+    keywordByValue.set(key, {
+      keyword: existing?.keyword ?? seed.keyword,
+      intent: existing?.intent ?? seed.intent,
+      evidenceIds: uniqueValues([
+        ...(existing?.evidenceIds ?? []),
+        ...seed.evidenceIds,
+      ]),
+    });
+  }
+
+  const keywordDatabase: KeywordDatabaseEntry[] = [
+    ...keywordByValue.values(),
+  ].map((item, index) => ({
+    id: `keyword-db-deepseek-${index + 1}`,
+    projectId: project.id,
+    source: "openai_compatible_structured_extraction",
+    ...item,
+  }));
   const painPointDatabase: PainPointDatabaseEntry[] = painPoints.map(
     (point) => ({
       id: `pain-point-db-${point.id}`,
@@ -1007,7 +1252,7 @@ export function applyGlmStructuredExtraction(
       theme: point.theme,
       userNeed: point.userNeed,
       frequency: point.frequency,
-      sourceIds: result.research_sources.map((source) => source.id),
+      sourceIds: sourceIdsFor(point.evidenceIds),
       evidenceIds: point.evidenceIds,
     }),
   );
@@ -1070,7 +1315,7 @@ export function applyGlmStructuredExtraction(
         ? competitorDatabase
         : result.competitor_database,
     website_structure_database:
-      websiteStructureDatabase.length > 0
+      competitors.length > 0
         ? websiteStructureDatabase
         : result.website_structure_database,
     product_database:

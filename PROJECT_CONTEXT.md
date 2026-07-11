@@ -1,6 +1,6 @@
 # 项目上下文
 
-更新时间：2026-07-07
+更新时间：2026-07-11
 
 ## 当前项目目标
 
@@ -18,6 +18,31 @@
 
 ## 当前真实状态
 
+- 2026-07-11 新证据轨与阿里云免费模型池已部署到轻量服务器并完成真实生产 canary，当前完成等级 C3：
+  - 生产 LLM 端点已从 DeepSeek 官方切换为阿里云 MaaS，默认模型 `kimi-k2.6`；`AGENT_FACTORY_ALIYUN_FREE_MODEL_ROUTING_ENABLED=true`、`AGENT_FACTORY_ALIYUN_FREE_TIER_ONLY_CONFIRMED=true`。本次调用记录没有 DeepSeek 或 Qwen。
+  - 生产模型分工：`Moonshot-Kimi-K2-Instruct` 做来源摘要，`glm-4.7` 做权威抽取/证据验证，`glm-4.6` 与 `glm-4.5` 做辅助审核，`kimi-k2.6` 生成最终报告；辅助输出不回写权威数据库。
+  - 真实品类 canary run：`production-free-pool-canary-20260711-2026-07-11T11-59-14-626Z`，耗时 162385ms；8 份 raw documents、7 份 accepted source、20 条 evidence、7 个 review items，其中 5 个 confirmed、2 个 needs review，完整可证实结论比例 `5/7=71.4%`，超过 70% 目标。
+  - Amazon 公开证据覆盖 3 个 ASIN：`B001650NNW`、`B0050JM626`、`B01N17VJF7`；三个页面均含评论内容且进入正式/复核报告，残余已知噪音约 1.2%–1.9%。
+  - 交付包 8/8 artifacts 已写入 Supabase；服务 active，公网与本机 health 均为 ok，近 10 分钟无 provider/fatal/429 错误。
+  - `pnpm check` 通过：15 个测试文件、155 条测试、TypeScript 与 Biome 全绿。
+
+- 2026-07-10 证据质量 benchmark 内部修复已完成本地 C2，尚未 commit、push、部署或重新产生付费调用：
+  - 原核心 3 品类 benchmark 仍是 `0/3` 通过，商业化扩建继续冻结；真实卖家反馈和付费试单已按用户要求取消，不再作为当前验收。
+  - 本轮以用户确认的当前未提交 worktree 为 baseline，完成正文确定性清洗、三品类来源质量校准、quote 唯一文档约束、实体/source/URL 绑定、全声明支持门禁、provider 原始自由文本隔离、三品类离线 replay 和三品类深页 fixture。
+  - 正文清洗同时保留 `originalText` 与 `cleaningAudit`；旧样例最终离线重放后，三个品类 accepted 文档的残余已知噪音中位数均为 `0%`，所有 accepted 文档均低于 50%。该指标是确定性已知噪音 proxy，不冒充新的人工逐字符审计。
+  - 方太、海尔、资生堂的 `website_structure` 已按各自 evidence 绑定到 `fotile.com / haier.com / shiseidogroup.cn`，重放实体串线为 0；无法唯一绑定时不再用第一个 raw document 或全部 sourceIds 兜底。
+  - 交付确认区现在要求：人工 `approved`、全部 evidence validation 明确为 true、同一声明全部 quotes 完整通过、每条 evidence 唯一落到 rawDocumentId/URL、且高风险数字被直接 quote 支持。缺失 validation、partial 或 unsupported 均只能留在候选区。
+  - `report.md` 不再附带 provider 原始自由文本，不论本轮是否有 accepted source；provider 内容只保留内部 `research_reports`，不能绕过逐条门禁。
+  - 离线 replay：`outputs/industry-research-benchmarks/evidence-repair-replay-v1/evidence-repair-replay-v1-2026-07-10T13-47-38-314Z/`；全程 36ms、0 provider 请求、0 公网请求、增量 API 成本 ¥0，未改写三个原始样例目录。
+  - 内部修复验收通过，但不是商业 benchmark 解冻：保存样例实际深页仍为 0，旧 provider 产物没有“同一声明全部 quotes”元数据，full 可证实比例不能追认；真实复跑仍需新的预算确认。
+- 2026-07-07 本轮「洗碗机」验证和代码收口已完成本地阶段，尚未提交、推送或部署：
+  - 首轮只输入「洗碗机」运行 `public_web_llm`，生成 run `dishwasher-dtc-2026-07-07T02-16-29-685Z`，耗时约 186 秒；Tavily 召回 Scribd / 中研网等无关来源，8 raw documents 全部 `acceptedForReport=false`，evidence / review items / 竞品 / 机会均为 0。
+  - 首轮暴露两个问题：`source-registry` 未覆盖洗碗机；零可信来源时 provider 原始报告仍会附上基于常识的 mock / 待验证内容，存在误读成研究结论的风险。
+  - 代码侧已新增洗碗机默认固定官网来源：FOTILE、美的、海尔、西门子家电中国、老板电器、Panasonic China；`resolveSourceRegistryMatches` 对「洗碗机」可命中 6 个默认官网。
+  - `createIndustryResearchDeliveryReport` 已加保护：当 `acceptedForReport=0` 时，不再把 provider 原始报告内容附进交付报告，改为输出「Provider 原始报告已阻断」和补充来源建议。
+  - 重跑「洗碗机」生成 run `dishwasher-dtc-2026-07-07T02-25-01-084Z`，耗时约 292 秒，`llmStatus=openai_compatible`，7 raw documents、2 个 accepted source、20 条 evidence、5 个 review items、2 个竞品、2 个产品信号、3 个机会。
+  - 重跑后质量仍只是内部复核级：有效来源主要是方太和海尔首页；老板、美的、Panasonic 等首页被判低相关或抓取失败；方太页面正文混入大量隐私声明，证据摘录质量不够适合直接交付。
+  - 当前工作区未提交文件：`source-registry.ts`、`delivery-run.ts`、`public-source-discovery.test.ts`、`index.test.ts`，以及本轮新生成的本地 run 交付包。
 - 2026-07-07 已新增固定可信来源注册表，作为 Tavily/Serper 搜索之前的确定性官网种子：
   - 新增 `source-registry.ts`，默认覆盖男士电动剃须刀、宠物益生菌、大豆蜡香薰、电解质饮料等低成本公开竞品研究入口；剃须刀类默认优先加入 Philips、Braun、Panasonic、Flyco 官网。
   - `discoverPublicSources` 会先把 `source_registry` 命中的官网 URL 合并进 crawl plan，再由 Tavily/Serper/DDG 搜索补漏，避免“搜索召回窄导致只有 1 个品牌”的问题。
@@ -183,6 +208,19 @@
 
 ## 验证结果
 
+- 2026-07-10 证据修复本地验证：
+  - 针对性 Vitest：正文清洗、来源质量、quote 校验、实体绑定、交付门禁、provider 隔离和三品类深页 fixture 共 7 个测试文件 / 88 tests 通过。
+  - 三品类离线 replay：内部修复门槛全部 PASS；商业硬门槛仍为 0/3 PASS，统一分数为宠物 `50.00`、洗碗机 `46.67`、护肤 `38.33`。
+  - 三品类深页 fixture：宠物 product、洗碗机 product、护肤 collection 均从 nested sitemap 在固定 probe cap 内发现并保留，3/3 PASS。
+  - 正向门禁用例证明完整支持的 `approved` 结论可以进入确认区并打印唯一 rawDocumentId/URL；负向用例证明 validation 缺失、partial 和高风险无证据数字即使被人工误标 approved 也不能进入确认区。
+  - 最终全量 `pnpm check` 通过：2 个 workspace typecheck、11 个测试文件 120/120、Biome 93 文件；`pnpm build` 通过 Next.js 16.2.10 生产构建。`git diff --check` 和 secret/diff 审查结果见本轮最终交接；本轮未运行 live/provider benchmark，未 commit、push 或部署。
+- 2026-07-07 洗碗机注册表和报告阻断本地验证：
+  - 针对性测试：`pnpm exec vitest run packages/industry-research/src/public-source-discovery.test.ts packages/industry-research/src/index.test.ts` 通过，3 个测试文件 51 tests。
+  - 完整检查：`pnpm check` 通过，workspace typecheck / Vitest 9 文件 99 tests / Biome 87 文件。
+  - 注册表解析：`resolveSourceRegistryMatches` 输入「洗碗机」命中 FOTILE、美的、海尔、西门子家电中国、老板电器、Panasonic China 6 个默认官网。
+  - 首轮本地真实 run：`dishwasher-dtc-2026-07-07T02-16-29-685Z`，mode=`public_web_llm`，`llmStatus=openai_compatible`，耗时约 186 秒；8 raw documents 全部 rejected，`acceptedForReport=0`、evidence=0、reviewItems=0。
+  - 修复后本地真实 run：`dishwasher-dtc-2026-07-07T02-25-01-084Z`，mode=`public_web_llm`，`llmStatus=openai_compatible`，耗时约 292 秒；7 raw documents、`acceptedForReport=2`、evidence=20、reviewItems=5、competitor_database=2、product_database=2、opportunity_database=3。
+  - 未验证：本轮未部署轻量服务器，未跑线上 Playwright E2E，未把新 run 写入生产 Supabase；新生成交付包仅在本机 `outputs/industry-research-runs/`。
 - 2026-07-07 固定可信来源注册表验证：
   - `pnpm check`：通过，workspace typecheck / Vitest 9 文件 97 tests / Biome 87 文件。
   - `pnpm build`：通过，Next.js 生产构建成功。
@@ -346,7 +384,10 @@
 - 不做登录。
 - 不做支付。
 - 不做复杂多租户。
-- Supabase 代码侧接入和远程 migration 已完成；当前第一版仍只允许服务端 `service_role` 访问，不开放客户端直连表。
+- 商业化扩建继续保持受控：本次单品类生产 canary 已达到 71.4%，但尚未完成统一 3–5 品类 benchmark；不恢复真实卖家反馈和付费试单板块。
+- 当前已达到生产技术验证 C3，仍未达到产品 C4/C5：单品类 canary 不能替代统一 3–5 品类 benchmark，也不能写成已经可对外付费交付。
+- 如要重新运行核心 3 品类 live benchmark，必须先重新预注册相同门槛并取得新的预算确认；现有 L2-L4 授权不等于授权付费调用、commit、push 或部署。
+- 本轮未触碰 Supabase；后续 migration 按草案处理，应用前必须复核 RLS、`owner_id` 和 policy，当前仍不开放客户端直连表。
 - 远端最小同步和本轮 P0/P1/P2 完整部署均已完成；server/Supabase/zvec/API/health 验收均通过。
 - GitHub `main` 已包含 Claude Code 简化 UI，且轻量服务器生产服务已部署该 UI。
 - 生产运行和 API 固定在轻量服务器；不要把正式运行态拆到 Vercel、本机或其他托管面。

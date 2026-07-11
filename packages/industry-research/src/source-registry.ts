@@ -52,6 +52,36 @@ const defaultSourceRegistryEntries: SourceRegistryEntry[] = [
     matchTerms: ["男士电动剃须刀", "电动剃须刀", "剃须刀", "shaver"],
   },
   {
+    name: "FOTILE",
+    url: "https://www.fotile.com/",
+    matchTerms: ["洗碗机", "家用洗碗机", "嵌入式洗碗机", "dishwasher"],
+  },
+  {
+    name: "Midea China",
+    url: "https://www.midea.com.cn/",
+    matchTerms: ["洗碗机", "家用洗碗机", "嵌入式洗碗机", "dishwasher"],
+  },
+  {
+    name: "Haier China",
+    url: "https://www.haier.com/cn/",
+    matchTerms: ["洗碗机", "家用洗碗机", "嵌入式洗碗机", "dishwasher"],
+  },
+  {
+    name: "Siemens Home Appliances China",
+    url: "https://www.siemens-home.bsh-group.cn/",
+    matchTerms: ["洗碗机", "家用洗碗机", "嵌入式洗碗机", "dishwasher"],
+  },
+  {
+    name: "ROBAM",
+    url: "https://www.robam.com/",
+    matchTerms: ["洗碗机", "家用洗碗机", "嵌入式洗碗机", "dishwasher"],
+  },
+  {
+    name: "Panasonic China Dishwasher",
+    url: "https://www.panasonic.cn/",
+    matchTerms: ["洗碗机", "家用洗碗机", "台式洗碗机", "dishwasher"],
+  },
+  {
     name: "Native Pet",
     url: "https://nativepet.com/",
     matchTerms: ["宠物肠胃益生菌", "宠物益生菌", "dog probiotics"],

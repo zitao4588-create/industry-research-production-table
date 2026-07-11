@@ -21,6 +21,7 @@ export type ResearchSourceType =
 export type SourceDiscoveryMethod =
   | "search_query"
   | "source_registry"
+  | "firecrawl_map"
   | "seed_url"
   | "sitemap"
   | "robots"
@@ -66,6 +67,37 @@ export type SourceQuality = {
   sourceConfidence: SourceQualityLevel;
   needsReviewReason: string;
   acceptedForReport: boolean;
+};
+
+export type DocumentTextFormat = "html" | "markdown" | "text";
+
+export type DocumentNoiseReason =
+  | "navigation"
+  | "footer"
+  | "privacy_legal"
+  | "image_target"
+  | "repeated_cta"
+  | "duplicate_template"
+  | "crawler_error"
+  | "markup";
+
+export type DocumentNoiseSegment = {
+  reason: DocumentNoiseReason;
+  characterCount: number;
+  excerpt: string;
+};
+
+export type DocumentCleaningAudit = {
+  sourceLength: number;
+  cleanedLength: number;
+  removedCharacterCount: number;
+  removedRatio: number;
+  residualNoiseCharacterCount: number;
+  residualNoiseRatio: number;
+  originalTextTruncated: boolean;
+  cleanedTextTruncated: boolean;
+  removedSegments: DocumentNoiseSegment[];
+  residualNoiseSegments: DocumentNoiseSegment[];
 };
 
 export type ResearchWorkflowStepStatus =
@@ -121,6 +153,10 @@ export type EvidenceValidation = {
   sourceAccepted: boolean;
   matchedRawDocumentId?: string;
   failureReason?: string;
+  /** 同一条结构化声明的全部 quote 是否均通过唯一来源绑定与质量门禁。 */
+  claimSupportComplete?: boolean;
+  claimQuoteCount?: number;
+  confirmedQuoteCount?: number;
 };
 
 export type SourceDiscoveryCandidate = {
@@ -197,7 +233,10 @@ export type RawDocument = {
   title: string;
   contentType: "html" | "rss" | "csv" | "text";
   excerpt: string;
+  /** 抽取器返回、进入确定性清洗前的原始文本快照（受 maxTextLength 限制）。 */
+  originalText?: string;
   extractedText: string;
+  cleaningAudit?: DocumentCleaningAudit;
   databaseTargets: IndustryResearchDatabaseName[];
   sourceQuality: SourceQuality;
 };
@@ -487,6 +526,23 @@ export type ResearchRunMetadata = {
   timings?: {
     crawlMs?: number;
     llmMs?: number;
+  };
+  modelRouting?: {
+    enabled: boolean;
+    policy: "aliyun_free_model_pool_v1";
+    reportModel: string;
+    extractionModel: string;
+    sourceDigestModel: string;
+    rotatedModels: string[];
+    calls: Array<{
+      model: string;
+      task: string;
+      authority: "authoritative" | "advisory" | "development_only";
+      status: "completed" | "failed" | "skipped";
+      durationMs: number;
+      outputPreview?: string;
+      error?: string;
+    }>;
   };
 };
 

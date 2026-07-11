@@ -1,4 +1,12 @@
 import {
+  type AliyunFreeModelCode,
+  type AliyunFreeModelRoute,
+  aliyunFreeModelRoutes,
+  routesForCadence,
+} from "./aliyun-free-model-routing";
+import type { AmazonPublicEvidenceResult } from "./amazon-public-evidence";
+import {
+  callOpenAICompatibleChatCompletion,
   type GlmFetch,
   type GlmRuntimeEnv,
   generateOpenAICompatibleResearchMarkdownReport,
@@ -18,6 +26,150 @@ import {
 } from "./public-workflow";
 import { generateResearchMarkdownReport } from "./report";
 import type { ResearchWorkflowInput, ResearchWorkflowResult } from "./types";
+
+const freeModelRoutingEnabledEnv =
+  "AGENT_FACTORY_ALIYUN_FREE_MODEL_ROUTING_ENABLED";
+const freeTierOnlyConfirmedEnv =
+  "AGENT_FACTORY_ALIYUN_FREE_TIER_ONLY_CONFIRMED";
+
+function truthyEnv(value: string | undefined) {
+  return value === "1" || value === "true";
+}
+
+function isAliyunCompatibleBaseUrl(value: string | undefined) {
+  if (!value) return false;
+  try {
+    return new URL(value).hostname.endsWith("aliyuncs.com");
+  } catch {
+    return false;
+  }
+}
+
+export function shouldUseAliyunFreeModelRouting(env: GlmRuntimeEnv) {
+  return (
+    truthyEnv(env[freeModelRoutingEnabledEnv]) &&
+    truthyEnv(env[freeTierOnlyConfirmedEnv]) &&
+    isAliyunCompatibleBaseUrl(env.AGENT_FACTORY_LLM_BASE_URL)
+  );
+}
+
+function envForFreeModel(env: GlmRuntimeEnv, model: AliyunFreeModelCode) {
+  const routedEnv: GlmRuntimeEnv = {
+    ...env,
+    AGENT_FACTORY_LLM_MODEL: model,
+    AGENT_FACTORY_DEEPSEEK_API_KEY: "",
+    AGENT_FACTORY_DEEPSEEK_BASE_URL: "",
+    AGENT_FACTORY_DEEPSEEK_MODEL: "",
+    DEEPSEEK_API_KEY: "",
+    DEEPSEEK_BASE_URL: "",
+    DEEPSEEK_MODEL: "",
+  };
+  routedEnv.AGENT_FACTORY_LLM_THINKING =
+    model === "kimi-k2-thinking" || model === "kimi-k2.7-code"
+      ? "enabled"
+      : model === "Moonshot-Kimi-K2-Instruct"
+        ? undefined
+        : "disabled";
+  routedEnv.AGENT_FACTORY_DEEPSEEK_THINKING = undefined;
+  return routedEnv;
+}
+
+function stableHash(value: string) {
+  let hash = 0;
+  for (const character of value) {
+    hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
+  }
+  return hash;
+}
+
+export function selectRotatedFreeModelRoutes(projectId: string) {
+  const candidates = routesForCadence("sampled_rotation");
+  if (candidates.length <= 2) return candidates;
+  const start = stableHash(projectId) % candidates.length;
+  return [candidates[start], candidates[(start + 1) % candidates.length]];
+}
+
+function routeFor(model: AliyunFreeModelCode) {
+  const route = aliyunFreeModelRoutes.find((item) => item.model === model);
+  if (!route) throw new Error(`Aliyun free model route missing: ${model}`);
+  return route;
+}
+
+function advisoryInput(result: ResearchWorkflowResult) {
+  return JSON.stringify(
+    {
+      project: result.research_projects[0],
+      rawDocuments: result.raw_documents.slice(0, 10).map((document) => ({
+        id: document.id,
+        url: document.url,
+        title: document.title,
+        excerpt: document.excerpt,
+        sourceQuality: document.sourceQuality,
+      })),
+      competitors: result.competitor_database,
+      opportunities: result.opportunity_database,
+      reviewItems: result.reviewItems,
+    },
+    null,
+    2,
+  ).slice(0, 36_000);
+}
+
+type ModelRoutingCall = NonNullable<
+  NonNullable<ResearchWorkflowResult["runMetadata"]>["modelRouting"]
+>["calls"][number];
+
+async function runAdvisoryRoute({
+  route,
+  result,
+  env,
+  fetcher,
+}: {
+  route: AliyunFreeModelRoute;
+  result: ResearchWorkflowResult;
+  env: GlmRuntimeEnv;
+  fetcher?: GlmFetch;
+}): Promise<ModelRoutingCall> {
+  const started = Date.now();
+  try {
+    const response = await callOpenAICompatibleChatCompletion({
+      env: envForFreeModel(env, route.model),
+      fetcher,
+      messages: [
+        {
+          role: "system",
+          content:
+            "你是行业研究生产台的内部审计节点。只执行指定辅助任务。不得新增 confirmed findings，不得把假设写成事实。输出简洁 Markdown。",
+        },
+        {
+          role: "user",
+          content: [route.instruction, "", advisoryInput(result)].join("\n"),
+        },
+      ],
+      temperature: 0,
+      maxTokens: 1200,
+      stream: route.stream,
+      timeoutMs: 90_000,
+    });
+    return {
+      model: route.model,
+      task: route.task,
+      authority: route.authority,
+      status: "completed",
+      durationMs: Date.now() - started,
+      outputPreview: response.content.slice(0, 1_000),
+    };
+  } catch (error) {
+    return {
+      model: route.model,
+      task: route.task,
+      authority: route.authority,
+      status: "failed",
+      durationMs: Date.now() - started,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
 
 async function replaceReportWithProvider(
   baseResult: ResearchWorkflowResult,
@@ -136,16 +288,21 @@ export async function runPublicDeepSeekIndustryResearchWorkflow(
     onProgress?: WorkflowProgressHandler;
     /** 上一次 run 的结论摘要（T8）；只作为抽取对比提示，不得作为证据来源。 */
     historicalContext?: string[];
+    /** 已完成质量门禁的 Amazon 证据，可由 benchmark 预检后复用，避免重复请求。 */
+    amazonPublicEvidenceResult?: AmazonPublicEvidenceResult;
   },
 ): Promise<ResearchWorkflowResult> {
   const emit = options.onProgress ?? (() => {});
   const ts = () => new Date().toISOString();
+  const useFreeModelRouting = shouldUseAliyunFreeModelRouting(options.env);
+  const routingCalls: ModelRoutingCall[] = [];
   const publicResult = await runPublicIndustryResearchWorkflow(input, {
     fetcher: options.publicFetcher,
     maxDiscoveredTargets: options.maxDiscoveredTargets,
     maxSitemapUrls: options.maxSitemapUrls,
     now: options.now,
     env: options.env,
+    amazonPublicEvidenceResult: options.amazonPublicEvidenceResult,
     // 内层 public 的 discover/crawl/build 直接透传;report 阶段抑制掉,
     // 因为 public + LLM 的真正报告由下面的 provider 抽取 + 生成承担。
     onProgress: options.onProgress
@@ -158,11 +315,29 @@ export async function runPublicDeepSeekIndustryResearchWorkflow(
   emit({ type: "phase", phase: "report", status: "start", at: ts() });
   let structuredResult = publicResult;
 
+  if (useFreeModelRouting && publicResult.raw_documents.length > 0) {
+    const digestCall = await runAdvisoryRoute({
+      route: routeFor("Moonshot-Kimi-K2-Instruct"),
+      result: publicResult,
+      env: options.env,
+      fetcher: options.fetcher,
+    });
+    routingCalls.push(digestCall);
+    emit({
+      type: "log",
+      at: ts(),
+      message: `免费模型来源摘要 ${digestCall.model}：${digestCall.status}`,
+    });
+  }
+
   if (publicResult.raw_documents.length > 0) {
+    const extractionStarted = Date.now();
     try {
       const batched = await generateGlmStructuredExtractionBatched({
         dataset: publicResult,
-        env: options.env,
+        env: useFreeModelRouting
+          ? envForFreeModel(options.env, "glm-4.7")
+          : options.env,
         fetcher: options.fetcher,
         historicalContext: options.historicalContext,
         onBatch: options.onProgress
@@ -180,6 +355,15 @@ export async function runPublicDeepSeekIndustryResearchWorkflow(
         publicResult,
         batched.extraction,
       );
+      if (useFreeModelRouting) {
+        routingCalls.push({
+          model: "glm-4.7",
+          task: "evidence_verification",
+          authority: "authoritative",
+          status: "completed",
+          durationMs: Date.now() - extractionStarted,
+        });
+      }
 
       if (batched.failedBatchCount > 0) {
         const failedDocumentIds = new Set(batched.failedBatchDocumentIds);
@@ -198,6 +382,16 @@ export async function runPublicDeepSeekIndustryResearchWorkflow(
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      if (useFreeModelRouting) {
+        routingCalls.push({
+          model: "glm-4.7",
+          task: "evidence_verification",
+          authority: "authoritative",
+          status: "failed",
+          durationMs: Date.now() - extractionStarted,
+          error: message,
+        });
+      }
       structuredResult = {
         ...publicResult,
         extraction_jobs: publicResult.extraction_jobs.map((job) => ({
@@ -214,15 +408,75 @@ export async function runPublicDeepSeekIndustryResearchWorkflow(
     reviewItems: createResearchReviewItems(structuredResult),
   };
 
+  const projectId = reviewedResult.research_projects[0]?.id ?? "research";
+  const rotatedRoutes = useFreeModelRouting
+    ? selectRotatedFreeModelRoutes(projectId)
+    : [];
+  if (rotatedRoutes.length > 0) {
+    const calls = await Promise.all(
+      rotatedRoutes.map((route) =>
+        runAdvisoryRoute({
+          route,
+          result: reviewedResult,
+          env: options.env,
+          fetcher: options.fetcher,
+        }),
+      ),
+    );
+    routingCalls.push(...calls);
+  }
+
   const finalResult = await replaceReportWithProvider(reviewedResult, {
     ...options,
+    env: useFreeModelRouting
+      ? envForFreeModel(options.env, "kimi-k2.6")
+      : options.env,
     fallbackToLocalReport: true,
   });
+  const routedResult = useFreeModelRouting
+    ? {
+        ...finalResult,
+        runMetadata: {
+          ...finalResult.runMetadata,
+          canonicalMode:
+            finalResult.runMetadata?.canonicalMode ?? "public_web_llm",
+          provider:
+            finalResult.runMetadata?.provider ?? ("openai_compatible" as const),
+          llmUsed: true,
+          modelRouting: {
+            enabled: true,
+            policy: "aliyun_free_model_pool_v1" as const,
+            reportModel: "kimi-k2.6",
+            extractionModel: "glm-4.7",
+            sourceDigestModel: "Moonshot-Kimi-K2-Instruct",
+            rotatedModels: rotatedRoutes.map((route) => route.model),
+            calls: [
+              ...routingCalls,
+              {
+                model: "kimi-k2.6",
+                task: "final_report",
+                authority: "authoritative" as const,
+                status:
+                  finalResult.runMetadata?.provider === "local_fallback"
+                    ? ("failed" as const)
+                    : ("completed" as const),
+                durationMs: 0,
+                error: finalResult.runMetadata?.fallbackReason,
+              },
+            ],
+          },
+        },
+      }
+    : finalResult;
   emit({ type: "phase", phase: "report", status: "done", at: ts() });
-  return finalResult;
+  return routedResult;
 }
 
 export const run9RouterIndustryResearchWorkflow =
   runDeepSeekIndustryResearchWorkflow;
 export const runPublic9RouterIndustryResearchWorkflow =
+  runPublicDeepSeekIndustryResearchWorkflow;
+export const runOpenAICompatibleIndustryResearchWorkflow =
+  runDeepSeekIndustryResearchWorkflow;
+export const runPublicOpenAICompatibleIndustryResearchWorkflow =
   runPublicDeepSeekIndustryResearchWorkflow;

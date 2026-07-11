@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  deepPageDiscoveryFixtures,
+  verifyDeepPageDiscoveryFixture,
+} from "./deep-page-fixtures";
+import {
   type PublicCrawlerFetch,
   runPublicCrawler,
 } from "./public-crawl-adapter";
 import { discoverPublicSources } from "./public-source-discovery";
+import { runPublicIndustryResearchWorkflow } from "./public-workflow";
 import { resolveSearchProviderConfig } from "./search-providers";
 import type { CrawlPlan, ResearchSource, ResearchWorkflowInput } from "./types";
 
@@ -30,6 +35,45 @@ const shaverInput: ResearchWorkflowInput = {
   csvText: "",
   manualText: "",
 };
+
+const dishwasherInput: ResearchWorkflowInput = {
+  projectName: "洗碗机发现层测试",
+  industry: "洗碗机",
+  category: "洗碗机",
+  market: "中国线上电商 / DTC",
+  researchGoal: "验证洗碗机固定可信来源优先",
+  templateId: "ecommerce_competitor_research",
+  urls: [],
+  csvText: "",
+  manualText: "",
+};
+
+const firecrawlMapCategoryFixtures = [
+  {
+    id: "pet-probiotics",
+    category: "宠物肠胃益生菌",
+    baseUrl: "https://pet-map.example/",
+    deepUrl: "https://pet-map.example/discover/daily-gut",
+    title: "Daily Gut Probiotic Product for Dogs",
+    expectedKind: "product" as const,
+  },
+  {
+    id: "dishwasher",
+    category: "洗碗机",
+    baseUrl: "https://dishwasher-map.example/",
+    deepUrl: "https://dishwasher-map.example/series/x1",
+    title: "洗碗机 产品 型号 X1",
+    expectedKind: "product" as const,
+  },
+  {
+    id: "japan-niche-skincare",
+    category: "日本小众护肤品牌",
+    baseUrl: "https://skincare-map.example/",
+    deepUrl: "https://skincare-map.example/brand-line/hada",
+    title: "日本护肤 系列 分类",
+    expectedKind: "collection" as const,
+  },
+];
 
 const emptyCrawlPlan: CrawlPlan = {
   id: "crawl-plan-test",
@@ -225,6 +269,38 @@ describe("discoverPublicSources with api search provider", () => {
     ).toBe(true);
   });
 
+  it("adds dishwasher official registry sources before search discovery", async () => {
+    const { fetcher } = createDiscoveryFetcher({ onSearch: () => null });
+
+    const result = await discoverPublicSources(
+      "project-test",
+      dishwasherInput,
+      emptyCrawlPlan,
+      {
+        fetcher,
+        maxSearchQueries: 0,
+        maxProbeUrls: 0,
+      },
+    );
+
+    const registryCandidates = result.candidates.filter(
+      (candidate) => candidate.method === "source_registry",
+    );
+    const seeds = registryCandidates.map((candidate) => candidate.seed);
+
+    expect(seeds).toContain("https://www.fotile.com/");
+    expect(seeds).toContain("https://www.midea.com.cn/");
+    expect(seeds).toContain("https://www.haier.com/cn/");
+    expect(seeds).toContain("https://www.siemens-home.bsh-group.cn/");
+    expect(seeds).toContain("https://www.robam.com/");
+    expect(seeds).toContain("https://www.panasonic.cn/");
+    expect(
+      registryCandidates.every((candidate) =>
+        candidate.title.startsWith("固定可信来源："),
+      ),
+    ).toBe(true);
+  });
+
   it("uses env source registry urls as category-specific fixed sources", async () => {
     const { fetcher } = createDiscoveryFetcher({ onSearch: () => null });
 
@@ -415,6 +491,512 @@ describe("discoverPublicSources with api search provider", () => {
   });
 });
 
+describe("discoverPublicSources with bounded Firecrawl Map", () => {
+  it.each(
+    firecrawlMapCategoryFixtures,
+  )("$category discovers an evidence-bearing deep page from category-only input", async (fixture) => {
+    const requestedUrls: string[] = [];
+    const requestedInits: Array<RequestInit | undefined> = [];
+    const fetcher: PublicCrawlerFetch = async (url, init) => {
+      requestedUrls.push(url);
+      requestedInits.push(init);
+
+      if (url === "https://api.tavily.com/search") {
+        return jsonResponse({ results: [{ url: fixture.baseUrl }] });
+      }
+      if (url === fixture.baseUrl) {
+        return htmlResponse(
+          "<html><body><main>Official brand homepage</main></body></html>",
+        );
+      }
+      if (url === "https://api.firecrawl.dev/v2/map") {
+        return jsonResponse({
+          success: true,
+          creditsUsed: 1,
+          links: [
+            {
+              url: fixture.deepUrl,
+              title: fixture.title,
+              description: "Official ecommerce evidence page",
+            },
+            {
+              url: new URL("/privacy", fixture.baseUrl).toString(),
+              title: "Privacy Policy",
+            },
+            {
+              url: "https://external.example/products/wrong-site",
+              title: "External Product",
+            },
+          ],
+        });
+      }
+
+      return notFound();
+    };
+    const categoryOnlyInput: ResearchWorkflowInput = {
+      ...input,
+      projectName: `${fixture.category} Map 测试`,
+      industry: fixture.category,
+      category: fixture.category,
+      urls: [],
+    };
+
+    const result = await discoverPublicSources(
+      "project-map-test",
+      categoryOnlyInput,
+      emptyCrawlPlan,
+      {
+        fetcher,
+        maxSearchQueries: 1,
+        maxSearchResultsPerQuery: 1,
+        maxProbeUrls: 4,
+        maxSitemapUrls: 4,
+        maxDiscoveredTargets: 7,
+        maxFirecrawlMapSites: 1,
+        maxFirecrawlMapLinksPerSite: 30,
+        searchProvider: {
+          provider: "tavily",
+          endpoint: "https://api.tavily.com/search",
+          apiKey: "tavily-test-key",
+        },
+        env: {
+          AGENT_FACTORY_SOURCE_REGISTRY_DISABLED: "true",
+          AGENT_FACTORY_FIRECRAWL_ENABLED: "true",
+          AGENT_FACTORY_FIRECRAWL_MAP_ENABLED: "true",
+          AGENT_FACTORY_FIRECRAWL_API_KEY: "fc-test-key",
+        },
+      },
+    );
+
+    expect(
+      result.targets.some(
+        (target) =>
+          target.target === fixture.deepUrl &&
+          target.kind === fixture.expectedKind,
+      ),
+    ).toBe(true);
+    expect(
+      result.candidates.some(
+        (candidate) =>
+          candidate.seed === fixture.deepUrl &&
+          candidate.method === "firecrawl_map",
+      ),
+    ).toBe(true);
+    expect(
+      result.targets.some((target) => target.target.includes("/privacy")),
+    ).toBe(false);
+    expect(
+      result.targets.some((target) =>
+        target.target.includes("external.example"),
+      ),
+    ).toBe(false);
+    const mapRequestIndex = requestedUrls.indexOf(
+      "https://api.firecrawl.dev/v2/map",
+    );
+    const mapInit = requestedInits[mapRequestIndex];
+    const mapBody = JSON.parse(String(mapInit?.body));
+    expect(mapInit?.method).toBe("POST");
+    expect((mapInit?.headers as Record<string, string>)?.Authorization).toBe(
+      "Bearer fc-test-key",
+    );
+    expect(mapBody).toMatchObject({
+      url: fixture.baseUrl,
+      sitemap: "include",
+      includeSubdomains: false,
+      ignoreQueryParameters: true,
+      limit: 30,
+      timeout: 8000,
+    });
+    expect(mapBody.search).toContain(fixture.category);
+    expect(
+      result.notes.some(
+        (note) =>
+          note.includes("firecrawl_map 受限补充完成") &&
+          note.includes("creditsUsed=1"),
+      ),
+    ).toBe(true);
+  });
+
+  it("skips Firecrawl Map when native discovery already found a deep page", async () => {
+    const { fetcher, requestedUrls } = createDiscoveryFetcher({
+      onSearch: () => null,
+    });
+
+    const result = await discoverPublicSources(
+      "project-map-skip-test",
+      input,
+      emptyCrawlPlan,
+      {
+        fetcher,
+        maxSearchQueries: 0,
+        maxProbeUrls: 4,
+        maxSitemapUrls: 4,
+        maxDiscoveredTargets: 7,
+        maxFirecrawlMapSites: 1,
+        env: {
+          AGENT_FACTORY_SOURCE_REGISTRY_DISABLED: "true",
+          AGENT_FACTORY_FIRECRAWL_ENABLED: "true",
+          AGENT_FACTORY_FIRECRAWL_MAP_ENABLED: "true",
+          AGENT_FACTORY_FIRECRAWL_API_KEY: "fc-test-key",
+        },
+      },
+    );
+
+    expect(result.targets.some((target) => target.kind === "product")).toBe(
+      true,
+    );
+    expect(requestedUrls).not.toContain("https://api.firecrawl.dev/v2/map");
+  });
+
+  it("keeps a root URL as homepage and deduplicates www and non-www variants", async () => {
+    const baseUrl = "https://canonical.example/";
+    const productUrl = "https://canonical.example/products/daily-gut";
+    const fetcher: PublicCrawlerFetch = async (url) => {
+      if (url === "https://api.tavily.com/search") {
+        return jsonResponse({
+          results: [
+            { url: baseUrl },
+            { url: "https://www.canonical.example/" },
+          ],
+        });
+      }
+      if (url === baseUrl) {
+        return htmlResponse("<html><body>Official store</body></html>");
+      }
+      if (url === "https://api.firecrawl.dev/v2/map") {
+        return jsonResponse({
+          links: [
+            { url: baseUrl, title: "Product Collection Store" },
+            { url: productUrl, title: "Daily Gut Product" },
+            {
+              url: "https://www.canonical.example/products/daily-gut/",
+              title: "Daily Gut Product duplicate",
+            },
+          ],
+        });
+      }
+      return notFound();
+    };
+
+    const result = await discoverPublicSources(
+      "project-canonical-test",
+      { ...input, urls: [] },
+      emptyCrawlPlan,
+      {
+        fetcher,
+        maxSearchQueries: 1,
+        maxSearchResultsPerQuery: 2,
+        maxProbeUrls: 2,
+        maxDiscoveredTargets: 6,
+        maxFirecrawlMapSites: 1,
+        searchProvider: {
+          provider: "tavily",
+          endpoint: "https://api.tavily.com/search",
+          apiKey: "tavily-test-key",
+        },
+        env: {
+          AGENT_FACTORY_SOURCE_REGISTRY_DISABLED: "true",
+          AGENT_FACTORY_FIRECRAWL_ENABLED: "true",
+          AGENT_FACTORY_FIRECRAWL_MAP_ENABLED: "true",
+          AGENT_FACTORY_FIRECRAWL_API_KEY: "fc-test-key",
+        },
+      },
+    );
+
+    expect(
+      result.targets.find((target) => target.target === baseUrl)?.kind,
+    ).toBe("homepage");
+    expect(
+      result.targets.filter((target) =>
+        target.target.includes("/products/daily-gut"),
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("caps Map requests and keeps native results when one Map call fails", async () => {
+    const baseUrls = [
+      "https://map-a.example/",
+      "https://map-b.example/",
+      "https://map-c.example/",
+    ];
+    const mapOrigins: string[] = [];
+    const fetcher: PublicCrawlerFetch = async (url, init) => {
+      if (url === "https://api.tavily.com/search") {
+        return jsonResponse({
+          results: baseUrls.map((value) => ({ url: value })),
+        });
+      }
+      if (baseUrls.includes(url)) {
+        return htmlResponse("<html><body>Official brand</body></html>");
+      }
+      if (url === "https://api.firecrawl.dev/v2/map") {
+        const body = JSON.parse(String(init?.body)) as { url: string };
+        mapOrigins.push(body.url);
+
+        if (body.url === baseUrls[1]) {
+          return {
+            ok: false,
+            status: 500,
+            text: async () => "",
+            headers: { get: () => "application/json" },
+          };
+        }
+
+        return jsonResponse({
+          success: true,
+          links: [
+            {
+              url: new URL("/products/deep-item", body.url).toString(),
+              title: "Product",
+            },
+          ],
+        });
+      }
+
+      return notFound();
+    };
+
+    const result = await discoverPublicSources(
+      "project-map-cap-test",
+      { ...input, urls: [] },
+      emptyCrawlPlan,
+      {
+        fetcher,
+        maxSearchQueries: 1,
+        maxSearchResultsPerQuery: 3,
+        maxProbeUrls: 3,
+        maxDiscoveredTargets: 10,
+        maxFirecrawlMapSites: 2,
+        searchProvider: {
+          provider: "tavily",
+          endpoint: "https://api.tavily.com/search",
+          apiKey: "tavily-test-key",
+        },
+        env: {
+          AGENT_FACTORY_SOURCE_REGISTRY_DISABLED: "true",
+          AGENT_FACTORY_FIRECRAWL_ENABLED: "true",
+          AGENT_FACTORY_FIRECRAWL_MAP_ENABLED: "true",
+          AGENT_FACTORY_FIRECRAWL_API_KEY: "fc-test-key",
+        },
+      },
+    );
+
+    expect(mapOrigins).toEqual(baseUrls.slice(0, 2));
+    expect(result.targets.some((target) => target.kind === "product")).toBe(
+      true,
+    );
+    expect(
+      result.notes.some(
+        (note) =>
+          note.includes("请求 2 个站点") &&
+          note.includes("成功 1") &&
+          note.includes("失败 1"),
+      ),
+    ).toBe(true);
+  });
+
+  it("crawls a Map-discovered product page through the full public workflow", async () => {
+    const baseUrl = "https://workflow-map.example/";
+    const productUrl = "https://workflow-map.example/products/daily-probiotic";
+    const fetcher: PublicCrawlerFetch = async (url) => {
+      if (url === "https://api.tavily.com/search") {
+        return jsonResponse({ results: [{ url: baseUrl }] });
+      }
+      if (url === "https://api.firecrawl.dev/v2/map") {
+        return jsonResponse({
+          success: true,
+          links: [
+            {
+              url: productUrl,
+              title: "Daily Probiotic Product for Dogs",
+            },
+          ],
+        });
+      }
+      if (url === baseUrl) {
+        return htmlResponse(
+          "<html><body><main>Pet supplement official brand homepage</main></body></html>",
+        );
+      }
+      if (url === productUrl) {
+        return htmlResponse(
+          [
+            "<html><body><main><h1>Daily Dog Probiotic Product</h1>",
+            "<p>This dog probiotic formula combines multiple probiotic strains with prebiotic fiber for daily digestion and gut health support.</p>",
+            "<p>The product page explains serving guidance for small, medium, and large dogs and lists the full active ingredient panel.</p>",
+            "<p>Customers can compare the one-time purchase with the subscription option and review package size, storage instructions, and feeding notes.</p>",
+            "<p>The brand also documents quality testing, manufacturing standards, expected use cases, and answers common product questions.</p>",
+            "</main></body></html>",
+          ].join(""),
+        );
+      }
+
+      return notFound();
+    };
+    const result = await runPublicIndustryResearchWorkflow(
+      {
+        ...input,
+        projectName: "Map public workflow integration",
+        urls: [],
+      },
+      {
+        fetcher,
+        maxSearchQueries: 1,
+        maxSearchResultsPerQuery: 1,
+        maxProbeUrls: 4,
+        maxSitemapUrls: 4,
+        maxDiscoveredTargets: 5,
+        maxCrawlTargets: 3,
+        crawlPerHostDelayMs: 0,
+        firecrawlMapEnabled: true,
+        maxFirecrawlMapSites: 1,
+        maxFirecrawlMapLinksPerSite: 10,
+        env: {
+          AGENT_FACTORY_SOURCE_REGISTRY_DISABLED: "true",
+          AGENT_FACTORY_SEARCH_PROVIDER: "tavily",
+          AGENT_FACTORY_SEARCH_API_KEY: "tavily-test-key",
+          AGENT_FACTORY_FIRECRAWL_ENABLED: "true",
+          AGENT_FACTORY_FIRECRAWL_MAP_ENABLED: "true",
+          AGENT_FACTORY_FIRECRAWL_API_KEY: "fc-test-key",
+          AGENT_FACTORY_FIRECRAWL_TARGET_KINDS: "rss",
+        },
+      },
+    );
+
+    expect(
+      result.crawl_plans[0]?.targets.some(
+        (target) => target.target === productUrl && target.kind === "product",
+      ),
+    ).toBe(true);
+    expect(
+      result.raw_documents.some(
+        (document) =>
+          document.url === productUrl &&
+          document.sourceQuality.acceptedForReport,
+      ),
+      JSON.stringify(
+        result.raw_documents.map((document) => ({
+          url: document.url,
+          quality: document.sourceQuality,
+          length: document.extractedText.length,
+        })),
+      ),
+    ).toBe(true);
+    expect(
+      result.source_discovery_plans[0]?.candidates.some(
+        (candidate) =>
+          candidate.seed === productUrl && candidate.method === "firecrawl_map",
+      ),
+    ).toBe(true);
+    expect(
+      result.source_discovery_plans[0]?.notes.some((note) =>
+        note.includes("firecrawl_map 受限补充完成"),
+      ),
+    ).toBe(true);
+  });
+
+  it("uses one bounded Crawl fallback and reuses its product body without a second scrape", async () => {
+    const baseUrl = "https://crawl-fallback.example/";
+    const productUrl =
+      "https://crawl-fallback.example/products/daily-probiotic";
+    const requestedUrls: string[] = [];
+    const fetcher: PublicCrawlerFetch = async (url) => {
+      requestedUrls.push(url);
+      if (url === "https://api.tavily.com/search") {
+        return jsonResponse({ results: [{ url: baseUrl }] });
+      }
+      if (url === baseUrl) {
+        return htmlResponse(
+          "<html><body><main>Official pet supplement store</main></body></html>",
+        );
+      }
+      if (url === "https://api.firecrawl.dev/v2/map") {
+        return jsonResponse({
+          success: true,
+          links: [{ url: baseUrl, title: "Official Product Store" }],
+        });
+      }
+      if (url === "https://api.firecrawl.dev/v2/crawl") {
+        return jsonResponse({ id: "crawl-fallback-job" });
+      }
+      if (url === "https://api.firecrawl.dev/v2/crawl/crawl-fallback-job") {
+        return jsonResponse({
+          status: "completed",
+          creditsUsed: 1,
+          data: [
+            {
+              markdown: [
+                "# Daily Dog Probiotic Product",
+                "This dog probiotic formula includes prebiotic fiber for daily digestion and gut health support.",
+                "The product page lists serving guidance, ingredients, package size, storage instructions, and subscription purchase options.",
+                "Customer review questions cover sensitive stomach use, feeding routines, and how long owners continued the daily product.",
+              ].join("\n"),
+              metadata: { sourceURL: productUrl, title: "Daily Probiotic" },
+            },
+          ],
+        });
+      }
+      return notFound();
+    };
+
+    const result = await runPublicIndustryResearchWorkflow(
+      { ...input, projectName: "Crawl fallback integration", urls: [] },
+      {
+        fetcher,
+        maxSearchQueries: 1,
+        maxSearchResultsPerQuery: 1,
+        maxProbeUrls: 3,
+        maxSitemapUrls: 3,
+        maxDiscoveredTargets: 5,
+        maxCrawlTargets: 3,
+        crawlPerHostDelayMs: 0,
+        firecrawlMapEnabled: true,
+        firecrawlCrawlFallbackEnabled: true,
+        maxFirecrawlMapSites: 1,
+        maxFirecrawlCrawlSites: 1,
+        maxFirecrawlCrawlPagesPerSite: 4,
+        env: {
+          AGENT_FACTORY_SOURCE_REGISTRY_DISABLED: "true",
+          AGENT_FACTORY_SEARCH_PROVIDER: "tavily",
+          AGENT_FACTORY_SEARCH_API_KEY: "tavily-test-key",
+          AGENT_FACTORY_FIRECRAWL_ENABLED: "true",
+          AGENT_FACTORY_FIRECRAWL_MAP_ENABLED: "true",
+          AGENT_FACTORY_FIRECRAWL_CRAWL_FALLBACK_ENABLED: "true",
+          AGENT_FACTORY_FIRECRAWL_API_KEY: "fc-test-key",
+          AGENT_FACTORY_FIRECRAWL_TARGET_KINDS: "rss",
+        },
+      },
+    );
+
+    expect(
+      requestedUrls.filter(
+        (url) => url === "https://api.firecrawl.dev/v2/crawl",
+      ),
+    ).toHaveLength(1);
+    expect(requestedUrls).not.toContain("https://api.firecrawl.dev/v2/scrape");
+    expect(requestedUrls).not.toContain(productUrl);
+    expect(
+      result.raw_documents.some(
+        (document) =>
+          document.url === productUrl &&
+          document.extractedText.includes("Customer review questions"),
+      ),
+    ).toBe(true);
+    expect(
+      result.crawl_runs.some((run) =>
+        run.summary.includes("firecrawl_crawl_prefetch"),
+      ),
+    ).toBe(true);
+    expect(
+      result.source_discovery_plans[0]?.notes.some(
+        (note) =>
+          note.includes("firecrawl_crawl 受限 fallback") &&
+          note.includes("creditsUsed=1"),
+      ),
+    ).toBe(true);
+  });
+});
+
 describe("discoverPublicSources robots and quota boundaries", () => {
   async function runDiscovery() {
     const { fetcher } = createDiscoveryFetcher({ onSearch: () => null });
@@ -447,6 +1029,119 @@ describe("discoverPublicSources robots and quota boundaries", () => {
     expect(productSeeds.length).toBeLessThanOrEqual(8);
     expect(seeds.some((seed) => seed.includes("/collections/"))).toBe(true);
     expect(seeds.some((seed) => seed.includes("news.atom"))).toBe(true);
+  });
+
+  it("reserves evidence-bearing deep targets when the discovery cap is tight", async () => {
+    const { fetcher } = createDiscoveryFetcher({ onSearch: () => null });
+
+    const result = await discoverPublicSources(
+      "project-test",
+      input,
+      emptyCrawlPlan,
+      {
+        fetcher,
+        env: { AGENT_FACTORY_SOURCE_REGISTRY_DISABLED: "true" },
+        maxSearchQueries: 0,
+        maxProbeUrls: 4,
+        maxSitemapUrls: 20,
+        maxDiscoveredTargets: 7,
+      },
+    );
+    const kinds = result.targets.map((target) => target.kind);
+
+    expect(result.targets).toHaveLength(7);
+    expect(kinds).toContain("product");
+    expect(kinds).toContain("collection");
+    expect(kinds).toContain("blog");
+    expect(kinds).toContain("rss");
+    expect(kinds.indexOf("product")).toBeLessThan(kinds.indexOf("robots"));
+  });
+
+  it("follows a robots-declared nested sitemap within the existing probe cap", async () => {
+    const requestedUrls: string[] = [];
+    const fetcher: PublicCrawlerFetch = async (url) => {
+      requestedUrls.push(url);
+
+      if (url === "https://nested.example/") {
+        return htmlResponse(
+          [
+            "<html><body>",
+            '<a href="/category/gut-health">Gut health</a>',
+            '<a href="/article/how-probiotics-work">Guide</a>',
+            "</body></html>",
+          ].join(""),
+        );
+      }
+      if (url === "https://nested.example/robots.txt") {
+        return textResponse(
+          "User-agent: *\nSitemap: https://nested.example/sitemap-index.xml",
+        );
+      }
+      if (url === "https://nested.example/sitemap-index.xml") {
+        return textResponse(
+          [
+            "<sitemapindex>",
+            "<sitemap><loc>https://nested.example/product-sitemap.xml</loc></sitemap>",
+            "</sitemapindex>",
+          ].join(""),
+          "application/xml",
+        );
+      }
+      if (url === "https://nested.example/product-sitemap.xml") {
+        return textResponse(
+          [
+            "<urlset>",
+            "<url><loc>https://nested.example/product/probiotic-starter</loc></url>",
+            "</urlset>",
+          ].join(""),
+          "application/xml",
+        );
+      }
+
+      return notFound();
+    };
+
+    const result = await discoverPublicSources(
+      "project-test",
+      { ...input, urls: ["https://nested.example/"] },
+      emptyCrawlPlan,
+      {
+        fetcher,
+        env: { AGENT_FACTORY_SOURCE_REGISTRY_DISABLED: "true" },
+        maxSearchQueries: 0,
+        maxProbeUrls: 4,
+        maxSitemapUrls: 4,
+        maxDiscoveredTargets: 7,
+      },
+    );
+
+    expect(requestedUrls).toContain(
+      "https://nested.example/product-sitemap.xml",
+    );
+    expect(
+      result.targets.some(
+        (target) =>
+          target.kind === "product" &&
+          target.target === "https://nested.example/product/probiotic-starter",
+      ),
+    ).toBe(true);
+    expect(result.targets.some((target) => target.kind === "collection")).toBe(
+      true,
+    );
+    expect(result.targets.some((target) => target.kind === "blog")).toBe(true);
+    expect(requestedUrls).toHaveLength(4);
+  });
+});
+
+describe("three-category evidence-bearing deep-page fixtures", () => {
+  it.each(
+    deepPageDiscoveryFixtures,
+  )("$category follows the nested sitemap and retains the expected $expectedKind page", async (fixture) => {
+    const verification = await verifyDeepPageDiscoveryFixture(fixture);
+
+    expect(verification.nestedSitemapFetched).toBe(true);
+    expect(verification.actualKind).toBe(fixture.expectedKind);
+    expect(verification.passed).toBe(true);
   });
 });
 
@@ -531,8 +1226,13 @@ describe("runPublicCrawler politeness and caps", () => {
         return jsonResponse({
           success: true,
           data: {
-            markdown:
-              "# Zesty Brand\nBest sellers probiotic bundle with product reviews.",
+            markdown: [
+              "[Skip to content](https://brand.example/#main)",
+              "# Zesty Brand",
+              "Best sellers probiotic bundle with product reviews.",
+              "![Product](https://cdn.example/product.png)",
+              "Privacy Policy | Cookie Settings | Terms of Service",
+            ].join("\n"),
             metadata: { title: "Firecrawl title" },
           },
         });
@@ -576,6 +1276,16 @@ describe("runPublicCrawler politeness and caps", () => {
     expect(result.raw_documents[0]?.extractedText).toContain(
       "Best sellers probiotic bundle",
     );
+    expect(result.raw_documents[0]?.originalText).toContain("Skip to content");
+    expect(result.raw_documents[0]?.extractedText).not.toContain(
+      "Skip to content",
+    );
+    expect(result.raw_documents[0]?.extractedText).not.toContain(
+      "Privacy Policy",
+    );
+    expect(
+      result.raw_documents[0]?.cleaningAudit?.removedCharacterCount,
+    ).toBeGreaterThan(0);
     expect(result.raw_documents[1]?.title).toBe("robots.txt");
     expect(result.crawl_runs[0]?.summary).toContain("firecrawl_scrape");
   });
@@ -612,7 +1322,13 @@ describe("runPublicCrawler politeness and caps", () => {
 
       if (url === "https://brand.example/") {
         return htmlResponse(
-          "<html><title>Native title</title><body>Native product bundle reviews</body></html>",
+          [
+            "<html><title>Native title</title><body>",
+            "<nav>Home Products Contact</nav>",
+            "<main>Native product bundle reviews</main>",
+            "<footer>Privacy Policy All rights reserved</footer>",
+            "</body></html>",
+          ].join(""),
         );
       }
 
@@ -635,6 +1351,12 @@ describe("runPublicCrawler politeness and caps", () => {
       "https://brand.example/",
     ]);
     expect(result.raw_documents[0]?.title).toBe("Native title");
+    expect(result.raw_documents[0]?.extractedText).toContain(
+      "Native product bundle reviews",
+    );
+    expect(result.raw_documents[0]?.extractedText).not.toContain(
+      "All rights reserved",
+    );
     expect(result.crawl_runs[0]?.summary).toContain("回退 native fetch");
   });
 });

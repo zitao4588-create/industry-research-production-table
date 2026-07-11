@@ -1,4 +1,8 @@
 import {
+  type AmazonPublicEvidenceResult,
+  collectAmazonPublicEvidence,
+} from "./amazon-public-evidence";
+import {
   generateCrawlPlan,
   generateSourceDiscoveryPlan,
   requiredIndustryResearchDatabases,
@@ -60,7 +64,7 @@ export type WorkflowProgressEvent =
 
 export type WorkflowProgressHandler = (event: WorkflowProgressEvent) => void;
 
-type PublicWorkflowOptions = {
+export type PublicWorkflowOptions = {
   fetcher?: PublicCrawlerFetch;
   now?: string;
   maxSearchQueries?: number;
@@ -68,12 +72,20 @@ type PublicWorkflowOptions = {
   maxDiscoveredTargets?: number;
   maxProbeUrls?: number;
   maxSitemapUrls?: number;
+  firecrawlMapEnabled?: boolean;
+  maxFirecrawlMapSites?: number;
+  maxFirecrawlMapLinksPerSite?: number;
+  firecrawlCrawlFallbackEnabled?: boolean;
+  maxFirecrawlCrawlSites?: number;
+  maxFirecrawlCrawlPagesPerSite?: number;
   requestTimeoutMs?: number;
   maxCrawlTargets?: number;
   crawlPerHostDelayMs?: number;
   onProgress?: WorkflowProgressHandler;
   /** 搜索 provider / 内容 API 凭据解析用 env；核心包不读 process.env，由调用方显式传入。 */
   env?: Record<string, string | undefined>;
+  /** benchmark 预检通过后可复用，避免 Amazon 公开页面被重复请求。 */
+  amazonPublicEvidenceResult?: AmazonPublicEvidenceResult;
 };
 
 const PUBLIC_WORKFLOW_BUDGET_ENV = {
@@ -83,6 +95,11 @@ const PUBLIC_WORKFLOW_BUDGET_ENV = {
   maxDiscoveredTargets: "AGENT_FACTORY_PUBLIC_WEB_MAX_DISCOVERED_TARGETS",
   maxProbeUrls: "AGENT_FACTORY_PUBLIC_WEB_MAX_PROBE_URLS",
   maxSitemapUrls: "AGENT_FACTORY_PUBLIC_WEB_MAX_SITEMAP_URLS",
+  maxFirecrawlMapSites: "AGENT_FACTORY_FIRECRAWL_MAP_MAX_SITES",
+  maxFirecrawlMapLinksPerSite: "AGENT_FACTORY_FIRECRAWL_MAP_MAX_LINKS_PER_SITE",
+  maxFirecrawlCrawlSites: "AGENT_FACTORY_FIRECRAWL_CRAWL_MAX_SITES",
+  maxFirecrawlCrawlPagesPerSite:
+    "AGENT_FACTORY_FIRECRAWL_CRAWL_MAX_PAGES_PER_SITE",
   requestTimeoutMs: "AGENT_FACTORY_PUBLIC_WEB_REQUEST_TIMEOUT_MS",
   maxCrawlTargets: "AGENT_FACTORY_PUBLIC_WEB_MAX_CRAWL_TARGETS",
   crawlPerHostDelayMs: "AGENT_FACTORY_PUBLIC_WEB_CRAWL_PER_HOST_DELAY_MS",
@@ -94,6 +111,10 @@ const DEFAULT_PUBLIC_WORKFLOW_BUDGET = {
   maxDiscoveredTargets: 10,
   maxProbeUrls: 8,
   maxSitemapUrls: 4,
+  maxFirecrawlMapSites: 2,
+  maxFirecrawlMapLinksPerSite: 30,
+  maxFirecrawlCrawlSites: 1,
+  maxFirecrawlCrawlPagesPerSite: 4,
   requestTimeoutMs: 8_000,
   maxCrawlTargets: 8,
 } as const;
@@ -176,6 +197,30 @@ function resolvePublicWorkflowBudget(options: PublicWorkflowOptions) {
       env,
       envKey: PUBLIC_WORKFLOW_BUDGET_ENV.maxSitemapUrls,
       fallback: DEFAULT_PUBLIC_WORKFLOW_BUDGET.maxSitemapUrls,
+    }),
+    maxFirecrawlMapSites: resolveBudgetValue({
+      explicitValue: options.maxFirecrawlMapSites,
+      env,
+      envKey: PUBLIC_WORKFLOW_BUDGET_ENV.maxFirecrawlMapSites,
+      fallback: DEFAULT_PUBLIC_WORKFLOW_BUDGET.maxFirecrawlMapSites,
+    }),
+    maxFirecrawlMapLinksPerSite: resolveBudgetValue({
+      explicitValue: options.maxFirecrawlMapLinksPerSite,
+      env,
+      envKey: PUBLIC_WORKFLOW_BUDGET_ENV.maxFirecrawlMapLinksPerSite,
+      fallback: DEFAULT_PUBLIC_WORKFLOW_BUDGET.maxFirecrawlMapLinksPerSite,
+    }),
+    maxFirecrawlCrawlSites: resolveBudgetValue({
+      explicitValue: options.maxFirecrawlCrawlSites,
+      env,
+      envKey: PUBLIC_WORKFLOW_BUDGET_ENV.maxFirecrawlCrawlSites,
+      fallback: DEFAULT_PUBLIC_WORKFLOW_BUDGET.maxFirecrawlCrawlSites,
+    }),
+    maxFirecrawlCrawlPagesPerSite: resolveBudgetValue({
+      explicitValue: options.maxFirecrawlCrawlPagesPerSite,
+      env,
+      envKey: PUBLIC_WORKFLOW_BUDGET_ENV.maxFirecrawlCrawlPagesPerSite,
+      fallback: DEFAULT_PUBLIC_WORKFLOW_BUDGET.maxFirecrawlCrawlPagesPerSite,
     }),
     requestTimeoutMs: resolveBudgetValue({
       explicitValue: options.requestTimeoutMs,
@@ -329,8 +374,8 @@ function createPublicCrawlPlan(
       "不绕过登录、验证码、付费墙，不采集私人数据、支付信息或联系方式。",
       "非公开补充输入会保留为补充链路，不进入真实 public_web crawl plan。",
       "未验证的 Shopify、RSS 和产品 JSON 猜测路径不会直接进入真实抓取；只有用户明确输入或从首页、robots、sitemap 发现的公开 URL 才会抓取。",
-      "优先采集品牌/商家官网首页、collection、product、blog、FAQ、reviews/testimonials；社媒和 marketplace 页面默认排除，内容生态只走官方 API。",
-      "Tavily/Serper 只负责候选 URL 搜索发现；Firecrawl 只负责公开页面正文抽取，不执行站点级 crawl、交互动作、登录或绕过访问限制。",
+      "优先采集品牌/商家官网首页、collection、product、blog、FAQ、reviews/testimonials；社媒和 marketplace 页面默认排除。Amazon 只有在专用证据轨显式启用且品类通过 canary 时例外，内容生态只走官方 API。",
+      "Tavily/Serper 负责候选官网搜索；Firecrawl Map 受限补充站内公开深页；仅在显式启用且 Map 不足时允许最多 1 站点、深度 1、最多 4 页的 Crawl fallback；Scrape 负责所选页面正文抽取，不执行全站 Crawl、交互动作、登录或绕过访问限制。",
       "公开网页抽取出的结构化结论必须人工复核。",
     ],
     targets: userProvidedPublicTargets,
@@ -369,6 +414,12 @@ export async function runPublicIndustryResearchWorkflow(
       maxDiscoveredTargets: budget.maxDiscoveredTargets,
       maxProbeUrls: budget.maxProbeUrls,
       maxSitemapUrls: budget.maxSitemapUrls,
+      firecrawlMapEnabled: options.firecrawlMapEnabled,
+      maxFirecrawlMapSites: budget.maxFirecrawlMapSites,
+      maxFirecrawlMapLinksPerSite: budget.maxFirecrawlMapLinksPerSite,
+      firecrawlCrawlFallbackEnabled: options.firecrawlCrawlFallbackEnabled,
+      maxFirecrawlCrawlSites: budget.maxFirecrawlCrawlSites,
+      maxFirecrawlCrawlPagesPerSite: budget.maxFirecrawlCrawlPagesPerSite,
       requestTimeoutMs: budget.requestTimeoutMs,
       env: options.env,
     },
@@ -388,7 +439,7 @@ export async function runPublicIndustryResearchWorkflow(
     targets: [...publicCrawlPlan.targets, ...publicSourceDiscovery.targets],
     guardrails: [
       ...publicCrawlPlan.guardrails,
-      "public_source_discovery 会保守探测公开品牌/商家官网首页、robots 和 sitemap；RSS/Atom、collection、product、blog/FAQ/reviews 只从真实页面链接或 sitemap 进入采集。",
+      "public_source_discovery 会优先探测公开官网首页、robots 和 sitemap；Firecrawl Map 补充深页，显式启用的 Crawl 仅作 Map 不足时的严格限额 fallback。",
     ],
   };
   for (const candidate of enhancedSourceDiscoveryPlan.candidates.slice(0, 12)) {
@@ -421,27 +472,43 @@ export async function runPublicIndustryResearchWorkflow(
       maxTargets: budget.maxCrawlTargets,
       perHostDelayMs: budget.crawlPerHostDelayMs,
       env: options.env,
+      prefetchedDocuments: publicSourceDiscovery.prefetchedDocuments,
     },
   );
   const contentApiResult = await collectContentApiSignals(project.id, input, {
     env: options.env,
     fetcher: options.fetcher,
   });
+  const amazonPublicEvidenceResult =
+    options.amazonPublicEvidenceResult ??
+    (await collectAmazonPublicEvidence(project.id, input, {
+      env: options.env,
+      fetcher: options.fetcher,
+    }));
 
-  for (const note of contentApiResult.notes) {
+  for (const note of [
+    ...contentApiResult.notes,
+    ...amazonPublicEvidenceResult.notes,
+  ]) {
     emit({ type: "log", at: ts(), message: note });
   }
 
-  const sources = [...plannedSources, ...contentApiResult.sources];
+  const sources = [
+    ...plannedSources,
+    ...contentApiResult.sources,
+    ...amazonPublicEvidenceResult.sources,
+  ];
   const crawlerResult = {
     ...publicCrawlerResult,
     raw_documents: [
       ...publicCrawlerResult.raw_documents,
       ...contentApiResult.raw_documents,
+      ...amazonPublicEvidenceResult.raw_documents,
     ],
     extraction_jobs: [
       ...publicCrawlerResult.extraction_jobs,
       ...contentApiResult.extraction_jobs,
+      ...amazonPublicEvidenceResult.extraction_jobs,
     ],
   };
   emit({
@@ -485,6 +552,7 @@ export async function runPublicIndustryResearchWorkflow(
         notes: [
           ...enhancedSourceDiscoveryPlan.notes,
           ...contentApiResult.notes,
+          ...amazonPublicEvidenceResult.notes,
         ],
       },
     ],

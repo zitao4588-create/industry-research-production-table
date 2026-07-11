@@ -1,9 +1,40 @@
 # TODO
 
-更新时间：2026-07-07
+更新时间：2026-07-11
 
 ## 已完成
 
+- [x] 2026-07-11 阿里云免费模型池接入生产并完成真实品类 canary：
+  - GLM/Kimi 免费模型按任务分工接入，权威抽取固定 `glm-4.7`，最终成稿固定 `kimi-k2.6`，两路辅助模型稳定轮换；Kimi Code 不进入生产。
+  - 生产 env 已安全备份并切换到阿里云 MaaS；默认兜底模型改为 `kimi-k2.6`，本次无 DeepSeek/Qwen 调用。
+  - 当前未提交 worktree 已通过显式 `--worktree` 模式部署；远端 build、server doctor、Supabase doctor、service restart、health 全部通过。
+  - canary `production-free-pool-canary-20260711-2026-07-11T11-59-14-626Z`：5/7 confirmed（71.4%）、7/8 accepted source、3 个 ASIN 评论覆盖、无 LLM fallback、8/8 artifacts 完整。
+  - 最终 `pnpm check` 通过：15 files / 155 tests。
+
+## 下一步
+
+- [ ] 用相同评分口径再跑剩余核心品类，形成统一 3–5 品类 benchmark；任何非免费调用仍需单独确认费用。
+- [ ] 将目标生成数与单轮 crawl cap 对齐，避免 11 个目标中最后 3 个被记为 `TARGET_CAP_EXCEEDED`。
+- [ ] 修正 health 中仍偏历史的 provider 展示文案，使其明确显示阿里云 MaaS 免费模型池，而不是泛化的 `9router_or_openai_compatible`。
+- [ ] 当前仅 C3；在真实用户能自行完成核心流程前，不标记 C4，在出现实际使用/收益证据前不标记 C5。
+
+- [x] 2026-07-10 核心 3 品类证据质量内部修复完成本地 C2：
+  - A 正文清洗：新增确定性 HTML/Markdown/text 清洗器，保留 `originalText`，输出 removed/residual audit；去除图片 target、导航、隐私/法律声明、浏览器扩展错误、重复 CTA/模板和已知页脚。
+  - B 来源质量：补齐宠物益生菌中英跨语种、洗碗机和日本护肤的确定性相关性；Cosmopolitan/Trustpilot 等生活方式或评论聚合页不再伪装成 official source。
+  - C 实体绑定：quote 支持显式 rawDocumentId/sourceId/URL/domain 约束；重复 quote 无唯一绑定时拒绝；竞品、website、pain point 和 keyword 只继承自己的 evidence source，不再使用第一个 URL 或全部 sourceIds。
+  - D 结论门禁：只有全部 quotes、完整声明、高风险数字和唯一 trace 都通过的人工 approved 结论进入确认区；validation 缺失、partial/unsupported 即使误标 approved 也留在候选区。
+  - E 报告隔离：provider 原始自由文本始终与正式 `report.md` 隔离，不再只在 `acceptedForReport=0` 时阻断。
+  - F/G 离线回归：三品类保存样例 replay 完成；三个品类 accepted 残余已知噪音中位数均为 `0%`、实体串线 0、确认区无无效结论；宠物/洗碗机 product 与护肤 collection 深页 fixtures 3/3 通过。
+  - 输出：`outputs/industry-research-benchmarks/evidence-repair-replay-v1/evidence-repair-replay-v1-2026-07-10T13-47-38-314Z/`；36ms、0 provider、0 公网请求、增量成本 ¥0，未改写原样例。
+  - 商业 benchmark 仍为 0/3 PASS：旧样例实际深页为 0、声明完整性元数据不可追溯，所以继续冻结商业化扩建。
+- [x] 2026-07-10 已按用户决定取消真实卖家反馈和付费试单板块；不再外联、不再作为当前 Goal 验收或解冻依据。
+- [x] 2026-07-07 洗碗机固定官网来源和零可信来源报告阻断已完成本地代码侧收口：
+  - 默认 `source_registry` 新增 FOTILE、美的、海尔、西门子家电中国、老板电器、Panasonic China 6 个洗碗机官网入口。
+  - `createIndustryResearchDeliveryReport` 新增保护：当 `acceptedForReport=0` 时，不再附上 provider 原始报告内容，避免 LLM 常识 / mock 内容被误读为研究结论。
+  - 新增单测覆盖洗碗机 registry 命中，以及零可信来源时阻断 provider 报告。
+  - 验证：针对性 Vitest 3 文件 51 tests 通过；`pnpm check` 通过（9 文件 99 tests，Biome 87 文件）。
+  - 本地重跑「洗碗机」：首轮 `dishwasher-dtc-2026-07-07T02-16-29-685Z` 为 `acceptedForReport=0` 空跑；修复后 `dishwasher-dtc-2026-07-07T02-25-01-084Z` 产出 2 个 accepted source、20 evidence、5 review items、2 个竞品、3 个机会。
+  - 本轮尚未提交、推送或部署到轻量服务器。
 - [x] 2026-07-07 固定可信来源注册表已接入 public_web / public_web_llm：
   - 新增 `source_registry` discovery method 和 `source-registry.ts`，固定官网来源会优先进入 crawl plan，再由 Tavily/Serper/DDG 搜索补漏。
   - 默认注册表已覆盖「男士电动剃须刀」等常用品类；剃须刀类默认加入 Philips、Braun、Panasonic、Flyco 官网。
@@ -207,20 +238,14 @@
 - [x] 2026-07-05 GitHub 推送完成：`origin/main` 已包含研究价值阶段提交（`7c07af5`）。
 - [x] 2026-07-05 生产部署与 n8n 导入完成：已按 **`docs/CODEX_PRODUCTION_ROLLOUT_HANDOFF.md`** 执行 R1-R6，写入生产 LLM env、部署 `7478af7`、验证生产 DeepSeek、导入并激活 `industryResearchWeeklyRerun`、生成生产基线 run `dtc-2026-07-04T17-32-52-910Z`、完成 zvec 增量索引。R7 文档回写和提交由本轮收尾完成。
 - [x] 2026-07-06 UI 统一版 D1/D2 完成：部署 `main` 到轻量服务器并完成线上端到端验证；本轮又把根路由 `/` 改成 redirect 到 `/industry-research`。
-- 继续提升 `public_web_llm` 的真实报告覆盖面：
-  - 固定可信来源注册表已解决「剃须刀只召回 1 个品牌」的第一层问题；下一步需要用线上真实 run 观察多品牌官网进入后的结构化抽取质量、机会质量和 Firecrawl 成本。
-  - 继续接入更多官方内容 API 或引导用户输入竞品 URL，用于补充官网以外的评论、痛点、内容和价格信号。
-- 需要用户注册的外部凭据（代码侧已就绪，配好即生效；涉及账号/支付信息，无法代注册）：
-  - Serper API key（备选，注册送 2,500 free queries）→ `AGENT_FACTORY_SEARCH_PROVIDER=serper` + `AGENT_FACTORY_SEARCH_API_KEY`。
-  - YouTube Data API v3 key（console.cloud.google.com → 建项目 → 启用 YouTube Data API v3 → 凭据 → API key）→ `AGENT_FACTORY_YOUTUBE_API_KEY`。
-  - Reddit token（需先确认商业使用权限和 token 续期方式）→ `AGENT_FACTORY_REDDIT_ACCESS_TOKEN`。
-- P4 用户验证：找 1–3 个电商卖家用真实品类各跑一轮，以「愿不愿意为这份报告付费」为验收。
+- [ ] 保持商业化冻结，不扩品类、provider、数据库、n8n 或新基础设施；Serper/YouTube/Reddit 等凭据扩充不再是当前待办。
+- [ ] 不自动重跑 live benchmark。若未来要申请解冻，先重新预注册同一核心 3 品类、同一硬门槛和费用/时间上限，再取得新的付费调用确认。
+- [ ] 未来受控复跑只验证三件尚未由旧样例证明的事：真实 run 是否实际抓到每品类至少 1 个深页；新 extraction 是否写入声明级完整性元数据；至少 2/3 品类是否达到 ≥70% full 和 ≥70 分。
+- [ ] 当前未 commit、push 或部署；如需进入 L3/L4，必须由用户明确指定具体 commit、push 或部署动作。
 
 ## 下一步建议
 
-> 2026-07-04 起，下一阶段任务底稿移至 `docs/CODEX_RESEARCH_VALUE_HANDOFF.md`（全面审查后的 P0–P2 执行清单：LLM provider 接入、采集面扩展、订阅循环、工程收尾）。以下 4 条为历史建议，与该文档一致的部分以该文档为准。
-
-1. 继续把 n8n 周报业务流稳定在 `public_web`，保证无 LLM 也能产出 8 文件交付包和周报基线。
-2. 需要 LLM 交付时使用已接入的自付费 DeepSeek 官方 API；不要回退到 9router free/MiMo 作为生产承诺。
-3. 接入 Serper/YouTube/Reddit key 前继续复核公开数据边界、robots 约束、provider 成本和平台商业使用权限。
-4. Supabase、zvec、轻量服务器 API、简化 UI、P0/P1/P2 准生产基线、生产 LLM 和 n8n 周报 workflow 都已完成部署闭环；后续重点是真实业务样本质量和付费验证。
+1. 保留当前离线 replay、scorecard 和 fixtures 作为恢复入口；不再用报告篇幅、数据库行数或单条 quote 命中替代证据质量。
+2. 在没有新的预算授权前暂停真实 API benchmark；不得用旧的 L2-L4 授权推断付费调用许可。
+3. 商业化结论维持“冻结 / 不可对外付费交付”；内部修复 C2 不等于产品已达到 C4/C5。
+4. 用户已取消真实卖家反馈和付费试单板块；下一轮若没有新的方向变化，只需从本 TODO 的受控复跑条件恢复，不重做扩建路线图。

@@ -95,14 +95,35 @@ export function createMockIndustryResearchDataset(
 export function createResearchReviewItems(
   dataset: ResearchWorkflowDataset,
 ): ResearchReviewItem[] {
+  const evidenceById = new Map(
+    dataset.evidence.map((evidence) => [evidence.id, evidence]),
+  );
+  const hasCompleteEvidence = (evidenceIds: string[]) =>
+    evidenceIds.length > 0 &&
+    evidenceIds.every((evidenceId) => {
+      const validation = evidenceById.get(evidenceId)?.validation;
+      return Boolean(
+        validation?.quoteMatched &&
+          validation.sourceAccepted &&
+          validation.claimSupportComplete,
+      );
+    });
+
   return [
-    ...dataset.competitors.map((competitor) => ({
-      id: `review-${competitor.id}`,
-      targetType: "competitor" as const,
-      targetId: competitor.id,
-      status: "needs_review" as const,
-      note: "确认竞品是否真实属于目标市场。",
-    })),
+    ...dataset.competitors.map((competitor) => {
+      const evidenceComplete = hasCompleteEvidence(competitor.evidenceIds);
+      return {
+        id: `review-${competitor.id}`,
+        targetType: "competitor" as const,
+        targetId: competitor.id,
+        status: evidenceComplete
+          ? ("approved" as const)
+          : ("needs_review" as const),
+        note: evidenceComplete
+          ? "竞品名称、渠道与定位的引用均已唯一绑定 acceptedForReport 原文。"
+          : "确认竞品是否真实属于目标市场，并补齐完整证据引用。",
+      };
+    }),
     ...dataset.opportunities.map((opportunity) => ({
       id: `review-${opportunity.id}`,
       targetType: "opportunity" as const,

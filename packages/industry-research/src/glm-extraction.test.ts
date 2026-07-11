@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GlmFetch } from "./glm-client";
 import {
+  applyGlmStructuredExtraction,
   createGlmStructuredExtractionMessages,
   type GlmStructuredExtraction,
   generateGlmStructuredExtractionBatched,
@@ -269,6 +270,8 @@ describe("generateGlmStructuredExtractionBatched", () => {
     expect(prompt).toContain("acceptedForReport=true");
     expect(prompt).toContain("请尽量抽取 1-3 个机会");
     expect(prompt).toContain("可进一步验证的候选切入点");
+    expect(prompt).toContain("不表示市场规模、商业价值或机会已验证");
+    expect(prompt).toContain("不得加入 quote 中没有的产品形态");
   });
 
   it("sends one request per batch with only that batch's documents", async () => {
@@ -400,5 +403,187 @@ describe("generateGlmStructuredExtractionBatched", () => {
         batchOptions: { maxDocsPerBatch: 1 },
       }),
     ).rejects.toThrow("全部批次失败");
+  });
+});
+
+describe("applyGlmStructuredExtraction evidence binding", () => {
+  it("binds each entity database row to its own evidence source and URL", () => {
+    const documents: RawDocument[] = [
+      {
+        ...createRawDocument("robam"),
+        sourceId: "source-robam",
+        url: "https://www.robam.com/",
+        excerpt: "老板电器官网",
+        extractedText: "老板电器官网",
+      },
+      {
+        ...createRawDocument("fotile"),
+        sourceId: "source-fotile",
+        url: "https://www.fotile.com/",
+        excerpt: "方太官网 智慧厨房专家 产品资讯方太影像 水槽洗碗机",
+        extractedText: "方太官网 智慧厨房专家 产品资讯方太影像 水槽洗碗机",
+      },
+      {
+        ...createRawDocument("haier"),
+        sourceId: "source-haier",
+        url: "https://www.haier.com/",
+        excerpt: "海尔官网 定制美好生活 品牌资讯 嵌入式洗碗机",
+        extractedText: "海尔官网 定制美好生活 品牌资讯 嵌入式洗碗机",
+      },
+      {
+        ...createRawDocument("cosmopolitan"),
+        sourceId: "source-cosmopolitan",
+        url: "https://www.cosmopolitan.com.hk/",
+        excerpt: "生活方式媒体护肤文章",
+        extractedText: "生活方式媒体护肤文章",
+      },
+      {
+        ...createRawDocument("shiseido"),
+        sourceId: "source-shiseido",
+        url: "https://www.shiseido.co.jp/",
+        excerpt: "资生堂日本官网 官方产品介绍网站",
+        extractedText: "资生堂日本官网 官方产品介绍网站",
+      },
+    ];
+    const dataset = createDataset(documents);
+    const extraction: GlmStructuredExtraction = {
+      competitors: [
+        {
+          name: "方太",
+          channel: "官网",
+          positioning: "智慧厨房专家",
+          websiteStructure: ["水槽洗碗机"],
+          collectionSignals: ["精选产品"],
+          evidenceReferences: [
+            {
+              rawDocumentId: "fotile",
+              sourceId: "source-fotile",
+              quote: "方太官网 智慧厨房专家",
+            },
+          ],
+        },
+        {
+          name: "海尔",
+          channel: "官网",
+          positioning: "定制美好生活",
+          websiteStructure: ["嵌入式洗碗机"],
+          collectionSignals: ["品牌资讯"],
+          evidenceReferences: [
+            {
+              rawDocumentId: "haier",
+              sourceId: "source-haier",
+              quote: "海尔官网 定制美好生活",
+            },
+          ],
+        },
+        {
+          name: "资生堂",
+          channel: "官网",
+          positioning: "日本护肤品牌",
+          websiteStructure: ["官方产品介绍网站"],
+          collectionSignals: [],
+          evidenceReferences: [
+            {
+              rawDocumentId: "shiseido",
+              sourceId: "source-shiseido",
+              quote: "资生堂日本官网 官方产品介绍网站",
+            },
+          ],
+        },
+      ],
+      productSignals: [
+        {
+          competitorName: "方太",
+          category: "洗碗机",
+          signal: "水槽洗碗机",
+          tags: ["水槽洗碗机"],
+          evidenceReferences: [
+            { rawDocumentId: "fotile", quote: "水槽洗碗机" },
+          ],
+        },
+        {
+          competitorName: "不存在的品牌",
+          category: "洗碗机",
+          signal: "不应绑定到第一个竞品",
+          evidenceReferences: [
+            { rawDocumentId: "haier", quote: "嵌入式洗碗机" },
+          ],
+        },
+      ],
+      painPoints: [],
+      contentSignals: [
+        {
+          platform: "官网",
+          topic: "方太影像",
+          contentType: "exposure",
+          whyItWorks: "官网内容栏目",
+          evidenceReferences: [
+            { rawDocumentId: "fotile", quote: "产品资讯方太影像" },
+          ],
+        },
+        {
+          platform: "官网",
+          topic: "海尔品牌资讯",
+          contentType: "exposure",
+          whyItWorks: "官网内容栏目",
+          evidenceReferences: [{ rawDocumentId: "haier", quote: "品牌资讯" }],
+        },
+      ],
+      opportunities: [],
+    };
+
+    const result = applyGlmStructuredExtraction(dataset, extraction);
+    const databaseByName = new Map(
+      result.competitor_database.map((item) => [item.name, item]),
+    );
+    const websiteByCompetitorId = new Map(
+      result.website_structure_database.map((item) => [
+        item.competitorId,
+        item,
+      ]),
+    );
+
+    expect(databaseByName.get("方太")?.sourceIds).toEqual(["source-fotile"]);
+    expect(databaseByName.get("海尔")?.sourceIds).toEqual(["source-haier"]);
+    expect(databaseByName.get("资生堂")?.sourceIds).toEqual([
+      "source-shiseido",
+    ]);
+    expect(
+      websiteByCompetitorId.get(databaseByName.get("方太")?.competitorId ?? "")
+        ?.url,
+    ).toBe("https://www.fotile.com/");
+    expect(
+      websiteByCompetitorId.get(databaseByName.get("海尔")?.competitorId ?? "")
+        ?.url,
+    ).toBe("https://www.haier.com/");
+    expect(
+      websiteByCompetitorId.get(
+        databaseByName.get("资生堂")?.competitorId ?? "",
+      )?.url,
+    ).toBe("https://www.shiseido.co.jp/");
+    expect(
+      websiteByCompetitorId.get(databaseByName.get("方太")?.competitorId ?? "")
+        ?.contentSignals,
+    ).toEqual(["方太影像"]);
+    expect(result.product_signals).toHaveLength(1);
+    expect(result.product_signals[0]?.signal).toBe("水槽洗碗机");
+    expect(
+      result.website_structure_database.some((item) =>
+        item.url.includes("robam.com"),
+      ),
+    ).toBe(false);
+    expect(
+      result.website_structure_database.some((item) =>
+        item.url.includes("cosmopolitan.com.hk"),
+      ),
+    ).toBe(false);
+
+    const keywordEvidenceIds = result.keyword_database.find(
+      (item) => item.keyword === "水槽洗碗机",
+    )?.evidenceIds;
+    const keywordRawDocumentIds = result.evidence
+      .filter((item) => keywordEvidenceIds?.includes(item.id))
+      .map((item) => item.rawDocumentId);
+    expect(keywordRawDocumentIds).toEqual(["fotile"]);
   });
 });

@@ -1,3 +1,31 @@
+export type {
+  AliyunFreeModelAuthority,
+  AliyunFreeModelCadence,
+  AliyunFreeModelCode,
+  AliyunFreeModelRoute,
+} from "./aliyun-free-model-routing";
+export {
+  aliyunFreeModelCodes,
+  aliyunFreeModelRoutes,
+  canRouteWriteConfirmedFindings,
+  routesForCadence,
+} from "./aliyun-free-model-routing";
+export type {
+  AmazonCategoryFit,
+  AmazonPublicEvidenceOptions,
+  AmazonPublicEvidenceResult,
+  AmazonPublicPage,
+} from "./amazon-public-evidence";
+export {
+  AMAZON_PUBLIC_EVIDENCE_ENABLED_ENV,
+  amazonAsinFromUrl,
+  amazonSearchTerm,
+  canonicalAmazonUrl,
+  collectAmazonPublicEvidence,
+  discoverAmazonAsinsFromMarkdown,
+  parseAmazonPublicPage,
+  supportsAmazonPublicEvidence,
+} from "./amazon-public-evidence";
 export { researchAutomationCapabilityAssessments } from "./capabilities";
 export {
   generateCrawlPlan,
@@ -29,11 +57,19 @@ export {
   industryResearchDeliveryPackageFiles,
 } from "./delivery-run";
 export type {
+  CleanDocumentTextInput,
+  CleanDocumentTextResult,
+} from "./document-cleaner";
+export { cleanDocumentText } from "./document-cleaner";
+export type {
+  EvidenceQuoteInput,
+  EvidenceQuoteReference,
   EvidenceQuoteValidation,
   StructuredExtractionValidationResult,
 } from "./extraction-validator";
 export {
   hasUnsupportedQuantifiedClaim,
+  highRiskClaimHasDirectQuote,
   mergeReviewStatus,
   validateEvidenceQuotes,
   validationNote,
@@ -86,8 +122,12 @@ export {
 export {
   run9RouterIndustryResearchWorkflow,
   runDeepSeekIndustryResearchWorkflow,
+  runOpenAICompatibleIndustryResearchWorkflow,
   runPublic9RouterIndustryResearchWorkflow,
   runPublicDeepSeekIndustryResearchWorkflow,
+  runPublicOpenAICompatibleIndustryResearchWorkflow,
+  selectRotatedFreeModelRoutes,
+  shouldUseAliyunFreeModelRouting,
 } from "./glm-workflow";
 export {
   createResearchDocumentsFromRawDocuments,
@@ -124,6 +164,7 @@ export type {
 } from "./public-source-discovery";
 export { discoverPublicSources } from "./public-source-discovery";
 export type {
+  PublicWorkflowOptions,
   WorkflowProgressEvent,
   WorkflowProgressHandler,
 } from "./public-workflow";

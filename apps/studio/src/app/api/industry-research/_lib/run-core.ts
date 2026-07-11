@@ -3,9 +3,9 @@ import {
   type ResearchRunMetadata,
   type ResearchWorkflowInput,
   type ResearchWorkflowResult,
-  runDeepSeekIndustryResearchWorkflow,
-  runPublicDeepSeekIndustryResearchWorkflow,
+  runOpenAICompatibleIndustryResearchWorkflow,
   runPublicIndustryResearchWorkflow,
+  runPublicOpenAICompatibleIndustryResearchWorkflow,
   type WorkflowProgressHandler,
 } from "@industry-research/core";
 import { persistIndustryResearchDeliveryPackage } from "./delivery-package-writer";
@@ -302,12 +302,15 @@ export async function executeIndustryResearchRun({
     canonicalMode === "public_web"
       ? await runPublicIndustryResearchWorkflow(input, { onProgress, env })
       : canonicalMode === "public_web_llm"
-        ? await runPublicDeepSeekIndustryResearchWorkflow(input, {
+        ? await runPublicOpenAICompatibleIndustryResearchWorkflow(input, {
             env,
             onProgress,
             historicalContext,
           })
-        : await runDeepSeekIndustryResearchWorkflow(input, { env, onProgress });
+        : await runOpenAICompatibleIndustryResearchWorkflow(input, {
+            env,
+            onProgress,
+          });
   const resultWithMetadata = withRunMetadata(result, metadata);
 
   const finishedAt = new Date().toISOString();
