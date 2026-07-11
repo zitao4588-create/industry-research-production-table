@@ -23,8 +23,6 @@ import { runIndustryResearchAction } from "./actions";
 import {
   adaptRun,
   createModelFromInput,
-  type UICompetitor,
-  type UIOpportunity,
   type UIResearchModel,
 } from "./adapters/research";
 import {
@@ -38,6 +36,7 @@ import {
   type GraphDatabase,
   KnowledgeGraph,
 } from "./components/KnowledgeGraph";
+import { splitMarkdownSections } from "./report-sections";
 import { fetchRunStreamToken } from "./run-stream-token";
 
 const ACCENT = "#34dcc0";
@@ -59,11 +58,41 @@ const GRAPH_PLACEHOLDER: GraphDatabase[] = [
 
 type Phase = "input" | "running" | "error" | "done" | "replay";
 
-/** 从 ?run= 回放时可用的最小数据：输入 + 报告 Markdown。 */
+type ReportSummary = {
+  counts: { evidence: number; competitors: number; opportunities: number };
+  competitors: Array<{
+    name: string;
+    channel: string;
+    positioning: string;
+    market: string;
+  }>;
+  opportunities: Array<{
+    title: string;
+    summary: string;
+    total: number;
+    status: string;
+  }>;
+};
+
+type ReportPayload = {
+  schemaVersion?:
+    | "industry_research_run_report.v1"
+    | "industry_research_run_report.v2";
+  input?: {
+    projectName?: string;
+    category?: string;
+    market?: string;
+  } | null;
+  reportMarkdown?: string | null;
+  summary?: ReportSummary;
+};
+
+/** 从 ?run= 回放时可用的公开数据。 */
 type ReplayData = {
   title: string;
   sub: string;
   markdown: string;
+  summary?: ReportSummary;
 };
 
 /* ----------------------------- 小工具 ----------------------------- */
@@ -85,6 +114,14 @@ function downloadBlob(filename: string, content: string, mime: string) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function fetchReportPayload(runId: string): Promise<ReportPayload> {
+  const response = await fetch(
+    `/api/industry-research/runs/${encodeURIComponent(runId)}/report`,
+  );
+  if (!response.ok) throw new Error(String(response.status));
+  return (await response.json()) as ReportPayload;
 }
 
 /** 单输入 → 完整 ResearchWorkflowInput：行业/市场/目标用合理默认值。 */
@@ -174,6 +211,7 @@ export default function SimpleResearch() {
   const [showErrorDetail, setShowErrorDetail] = useState(false);
   const [runId, setRunId] = useState<string | null>(null);
   const [replay, setReplay] = useState<ReplayData | null>(null);
+  const [remoteReport, setRemoteReport] = useState<ReportPayload | null>(null);
 
   const runSeq = useRef(0);
 
@@ -193,18 +231,7 @@ export default function SimpleResearch() {
     let cancelled = false;
     (async () => {
       try {
-        const response = await fetch(
-          `/api/industry-research/runs/${encodeURIComponent(sharedRunId)}/report`,
-        );
-        if (!response.ok) throw new Error(String(response.status));
-        const payload = (await response.json()) as {
-          input?: {
-            projectName?: string;
-            category?: string;
-            market?: string;
-          } | null;
-          reportMarkdown?: string | null;
-        };
+        const payload = await fetchReportPayload(sharedRunId);
         const markdown = payload.reportMarkdown || "";
         if (cancelled || !markdown) throw new Error("empty");
         const input = payload.input;
@@ -216,6 +243,7 @@ export default function SimpleResearch() {
               ? `${input.category} · ${input.market}`
               : `运行记录 ${sharedRunId}`,
           markdown,
+          summary: payload.summary,
         });
         setPhase("replay");
       } catch {
@@ -229,6 +257,22 @@ export default function SimpleResearch() {
       cancelled = true;
     };
   }, []);
+
+  // 完成后读取持久化报告，让当前结果与分享回放使用同一内容；失败时保留本地模型。
+  useEffect(() => {
+    if (phase !== "done" || !runId) return;
+    let cancelled = false;
+    void fetchReportPayload(runId)
+      .then((payload) => {
+        if (!cancelled) setRemoteReport(payload);
+      })
+      .catch(() => {
+        // 本地适配结果已可展示，持久化报告读取失败不阻断完成页。
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [phase, runId]);
 
   const startRun = useCallback(async () => {
     const q = query.trim();
@@ -250,6 +294,7 @@ export default function SimpleResearch() {
     setErrorMsg(null);
     setShowErrorDetail(false);
     setModel(null);
+    setRemoteReport(null);
     setIndeterminate(false);
     setSkeleton(skel);
     setEvents(createRunStartedEvents(skel));
@@ -360,29 +405,17 @@ export default function SimpleResearch() {
     setIndeterminate(false);
     setRunId(null);
     setReplay(null);
+    setRemoteReport(null);
     window.history.replaceState(null, "", window.location.pathname);
   }, []);
 
   return (
-    <div style={{ minHeight: "100vh" }}>
-      <header
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          maxWidth: 880,
-          margin: "0 auto",
-          padding: "22px 24px 8px",
-          position: "relative",
-          zIndex: 1,
-        }}
-      >
-        <div style={{ fontWeight: 700, letterSpacing: ".3px" }}>行研生产台</div>
+    <div className="sr-app">
+      <header className="sr-header">
+        <div className="sr-brand">行研生产台</div>
       </header>
 
-      <main
-        style={{ maxWidth: 880, margin: "0 auto", padding: "8px 24px 64px" }}
-      >
+      <main className="sr-main">
         {phase === "input" && (
           <InputScreen
             query={query}
@@ -411,7 +444,12 @@ export default function SimpleResearch() {
           />
         )}
         {phase === "done" && model && (
-          <DoneScreen model={model} runId={runId} onRestart={resetToInput} />
+          <DoneScreen
+            model={model}
+            runId={runId}
+            remoteReport={remoteReport}
+            onRestart={resetToInput}
+          />
         )}
         {phase === "replay" && replay && (
           <ReplayScreen data={replay} onRestart={resetToInput} />
@@ -442,9 +480,9 @@ function InputScreen({
   onStart: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  // 进入输入屏时自动聚焦主输入框（替代被 a11y 规则禁用的 autoFocus）。
+  // 桌面自动聚焦；触屏不主动拉起软键盘。
   useEffect(() => {
-    inputRef.current?.focus();
+    if (window.matchMedia("(pointer: fine)").matches) inputRef.current?.focus();
   }, []);
   return (
     <div className="sr-hero">
@@ -459,7 +497,7 @@ function InputScreen({
         />
       </div>
       <div className="sr-hero-content">
-        <div style={{ textAlign: "center", margin: "44px 0 28px" }}>
+        <div className="sr-title-wrap">
           <h1 className="sr-title">
             输入一个品类，
             <br />
@@ -505,25 +543,13 @@ function InputScreen({
               className={`supplement-toggle${showUrls ? " open" : ""}`}
               onClick={() => setShowUrls(!showUrls)}
               aria-expanded={showUrls}
-              style={{
-                width: "100%",
-                textAlign: "left",
-                background: "none",
-                borderRight: 0,
-                borderBottom: 0,
-                borderLeft: 0,
-                paddingRight: 0,
-                paddingLeft: 0,
-                paddingBottom: 0,
-                fontFamily: "inherit",
-                cursor: "pointer",
-              }}
+              data-mobile-control="true"
             >
               <Icon name="chevron" size={15} />
               竞品网址（可选）— 留空将自动公开搜索
             </button>
             {showUrls && (
-              <div className="field fade-in" style={{ marginTop: 12 }}>
+              <div className="field fade-in sr-url-field">
                 <textarea
                   value={urlText}
                   onChange={(e) => setUrlText(e.target.value)}
@@ -542,11 +568,6 @@ function InputScreen({
               className="btn btn-primary"
               onClick={onStart}
               disabled={!query.trim()}
-              style={
-                !query.trim()
-                  ? { opacity: 0.5, cursor: "not-allowed" }
-                  : undefined
-              }
             >
               <Icon name="play" size={15} />
               开始研究
@@ -584,7 +605,7 @@ function RunningScreen({
   );
 
   return (
-    <div className="run-stage" style={{ marginTop: 40 }}>
+    <div className="run-stage sr-running-stage">
       <KnowledgeGraph
         databases={graphDatabases}
         progress={indeterminate ? 0.9 : Math.max(0.12, d.progress)}
@@ -618,13 +639,7 @@ function RunningScreen({
             </div>
           )}
           <div
-            style={{
-              height: 6,
-              borderRadius: 99,
-              background: "var(--line)",
-              overflow: "hidden",
-              maxWidth: 520,
-            }}
+            className="sr-progress-track"
             role="progressbar"
             aria-valuenow={indeterminate ? undefined : pct}
             aria-valuemin={0}
@@ -632,23 +647,11 @@ function RunningScreen({
             aria-label="研究进度"
           >
             <div
-              style={{
-                height: "100%",
-                width: indeterminate ? "100%" : `${Math.max(4, pct)}%`,
-                background: "var(--accent)",
-                opacity: indeterminate ? 0.55 : 1,
-                transition: "width .45s ease",
-              }}
+              className={`sr-progress-value${indeterminate ? " indeterminate" : ""}`}
+              style={{ width: indeterminate ? "100%" : `${Math.max(4, pct)}%` }}
             />
           </div>
-          <div
-            style={{
-              display: "flex",
-              gap: 24,
-              marginTop: 14,
-              flexWrap: "wrap",
-            }}
-          >
+          <div className="sr-milestones">
             {MILESTONES.map((label, i) => {
               const done = i < stage;
               const active = i === stage;
@@ -658,15 +661,7 @@ function RunningScreen({
                   ? "var(--ink)"
                   : "var(--faint)";
               return (
-                <div
-                  key={label}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    color,
-                  }}
-                >
+                <div key={label} className="sr-milestone" style={{ color }}>
                   <span
                     style={{
                       width: 20,
@@ -683,11 +678,7 @@ function RunningScreen({
                   >
                     {done ? <Icon name="check" size={11} /> : i + 1}
                   </span>
-                  <span
-                    style={{ fontSize: 13.5, fontWeight: active ? 600 : 400 }}
-                  >
-                    {label}
-                  </span>
+                  <span className={active ? "active" : undefined}>{label}</span>
                 </div>
               );
             })}
@@ -780,7 +771,15 @@ function ErrorScreen({
 }
 
 /* ============================== 报告 =============================== */
-async function copyShareLink() {
+async function shareReport(title: string) {
+  if (typeof navigator.share === "function") {
+    try {
+      await navigator.share({ title, url: window.location.href });
+      return;
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+    }
+  }
   try {
     await navigator.clipboard.writeText(window.location.href);
     showToast("报告链接已复制", "copy");
@@ -789,120 +788,77 @@ async function copyShareLink() {
   }
 }
 
+function reportSummaryFromModel(model: UIResearchModel): ReportSummary {
+  return {
+    counts: {
+      evidence: model.stats.evidence,
+      competitors: model.competitors.length,
+      opportunities: model.opportunities.length,
+    },
+    competitors: model.competitors.slice(0, 5).map((item) => ({
+      name: item.name,
+      channel: item.channel,
+      positioning: item.positioning,
+      market: item.market,
+    })),
+    opportunities: [...model.opportunities]
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 3)
+      .map((item) => ({
+        title: item.title,
+        summary: item.summary,
+        total: item.total,
+        status: item.status,
+      })),
+  };
+}
+
+function graphFromSummary(summary?: ReportSummary): GraphDatabase[] {
+  return GRAPH_PLACEHOLDER.map((item) => {
+    if (!summary) return item;
+    if (item.label === "信息源库") {
+      return { ...item, count: summary.counts.evidence };
+    }
+    if (item.label === "竞品库") {
+      return { ...item, count: summary.counts.competitors };
+    }
+    if (item.label === "机会库") {
+      return { ...item, count: summary.counts.opportunities };
+    }
+    return item;
+  });
+}
+
 function DoneScreen({
   model,
   runId,
+  remoteReport,
   onRestart,
 }: {
   model: UIResearchModel;
   runId: string | null;
+  remoteReport: ReportPayload | null;
   onRestart: () => void;
 }) {
-  const markdown = useMemo(() => buildReportMarkdown(model), [model]);
+  const localMarkdown = useMemo(() => buildReportMarkdown(model), [model]);
+  const localSummary = useMemo(() => reportSummaryFromModel(model), [model]);
   const graphDatabases = useMemo(
     () => toGraphDatabases(model.databases),
     [model.databases],
   );
-
-  const download = () => {
-    downloadBlob(
-      `${model.project.name || "research"}-报告.md`,
-      markdown,
-      "text/markdown;charset=utf-8",
-    );
-    showToast("报告已下载", "copy");
-  };
+  const markdown = remoteReport?.reportMarkdown || localMarkdown;
+  const summary = remoteReport?.summary || localSummary;
 
   return (
-    <div className="view" style={{ paddingTop: 28 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          flexWrap: "wrap",
-          marginBottom: 8,
-        }}
-      >
-        <div>
-          <h2 style={{ fontSize: 22, margin: 0 }}>{model.project.name}</h2>
-          <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>
-            {model.project.industry} · {model.project.category} ·{" "}
-            {model.project.market}
-          </div>
-        </div>
-        <div className="spacer" style={{ flex: 1 }} />
-        <button type="button" className="btn btn-primary" onClick={download}>
-          <Icon name="download" size={14} />
-          下载报告
-        </button>
-        {runId ? (
-          <button
-            type="button"
-            className="btn btn-ghost"
-            onClick={() => void copyShareLink()}
-          >
-            <Icon name="source" size={14} />
-            复制链接
-          </button>
-        ) : null}
-        <button type="button" className="btn btn-ghost" onClick={onRestart}>
-          <Icon name="spark" size={14} />
-          再研究一次
-        </button>
-      </div>
-
-      <div className="run-stage" style={{ marginTop: 14 }}>
-        <KnowledgeGraph
-          databases={graphDatabases}
-          progress={1}
-          building={false}
-          accent={ACCENT}
-          height={300}
-        />
-        <div
-          className="run-stage-overlay"
-          style={{ justifyContent: "flex-end" }}
-        >
-          <div className="run-stage-bottom">
-            <div className="c">
-              <b>{model.stats.evidence}</b>
-              <span>可溯源证据</span>
-            </div>
-            <div className="c">
-              <b>{model.competitors.length}</b>
-              <span>竞品</span>
-            </div>
-            <div className="c">
-              <b>{model.opportunities.length}</b>
-              <span>机会</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="section-title">
-        <h2 style={{ fontSize: 18 }}>研究报告</h2>
-        <span className="line" />
-      </div>
-      <div className="report report-md" style={{ maxHeight: "none" }}>
-        {renderMarkdown(markdown)}
-      </div>
-
-      <div className="section-title">
-        <h2 style={{ fontSize: 18 }}>竞品</h2>
-        <span className="line" />
-        <span className="meta">{model.competitors.length} 个</span>
-      </div>
-      <CompetitorList rows={model.competitors} />
-
-      <div className="section-title">
-        <h2 style={{ fontSize: 18 }}>机会清单</h2>
-        <span className="line" />
-        <span className="meta">{model.opportunities.length} 条</span>
-      </div>
-      <OpportunityList rows={model.opportunities} />
-    </div>
+    <ReportView
+      title={model.project.name}
+      sub={`${model.project.industry} · ${model.project.category} · ${model.project.market}`}
+      markdown={markdown}
+      summary={summary}
+      graphDatabases={graphDatabases}
+      runId={runId}
+      onRestart={onRestart}
+    />
   );
 }
 
@@ -914,142 +870,257 @@ function ReplayScreen({
   data: ReplayData;
   onRestart: () => void;
 }) {
+  const sharedRunId =
+    typeof window === "undefined"
+      ? null
+      : new URLSearchParams(window.location.search).get("run");
+
   return (
-    <div className="view" style={{ paddingTop: 28 }}>
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: 12,
-          flexWrap: "wrap",
-          marginBottom: 8,
-        }}
-      >
+    <ReportView
+      title={data.title}
+      sub={`${data.sub} · 来自运行记录`}
+      markdown={data.markdown}
+      summary={data.summary}
+      graphDatabases={graphFromSummary(data.summary)}
+      runId={sharedRunId}
+      onRestart={onRestart}
+    />
+  );
+}
+
+function ReportView({
+  title,
+  sub,
+  markdown,
+  summary,
+  graphDatabases,
+  runId,
+  onRestart,
+}: {
+  title: string;
+  sub: string;
+  markdown: string;
+  summary?: ReportSummary;
+  graphDatabases: GraphDatabase[];
+  runId: string | null;
+  onRestart: () => void;
+}) {
+  const sections = useMemo(() => splitMarkdownSections(markdown), [markdown]);
+  const counts = summary?.counts ?? {
+    evidence: 0,
+    competitors: 0,
+    opportunities: 0,
+  };
+  const download = () => {
+    downloadBlob(
+      `${title || "research"}-报告.md`,
+      markdown,
+      "text/markdown;charset=utf-8",
+    );
+    showToast("报告已下载", "copy");
+  };
+
+  return (
+    <article className="view sr-report-view">
+      <div className="sr-report-head">
         <div>
-          <h2 style={{ fontSize: 22, margin: 0 }}>{data.title}</h2>
-          <div style={{ fontSize: 13, color: "var(--muted)", marginTop: 4 }}>
-            {data.sub} · 来自运行记录
+          <div className="sr-report-eyebrow">研究结果</div>
+          <h1>{title}</h1>
+          <p>{sub}</p>
+        </div>
+        <ReportActions
+          className="sr-actions-desktop"
+          title={title}
+          canShare={Boolean(runId)}
+          onDownload={download}
+          onRestart={onRestart}
+        />
+      </div>
+
+      <div className="run-stage sr-report-graph">
+        <KnowledgeGraph
+          databases={graphDatabases}
+          progress={1}
+          building={false}
+          accent={ACCENT}
+          height={300}
+        />
+        <div className="run-stage-overlay sr-report-graph-overlay">
+          <div className="run-stage-bottom">
+            <div className="c">
+              <b>{counts.evidence}</b>
+              <span>可溯源证据</span>
+            </div>
+            <div className="c">
+              <b>{counts.competitors}</b>
+              <span>竞品</span>
+            </div>
+            <div className="c">
+              <b>{counts.opportunities}</b>
+              <span>机会</span>
+            </div>
           </div>
         </div>
-        <div className="spacer" style={{ flex: 1 }} />
-        <button
-          type="button"
-          className="btn btn-ghost"
-          onClick={() => void copyShareLink()}
-        >
-          <Icon name="source" size={14} />
-          复制链接
-        </button>
-        <button type="button" className="btn btn-primary" onClick={onRestart}>
-          <Icon name="spark" size={14} />
-          再研究一次
-        </button>
       </div>
 
       <div className="section-title">
-        <h2 style={{ fontSize: 18 }}>研究报告</h2>
+        <h2>高分机会</h2>
+        <span className="line" />
+        <span className="meta">{counts.opportunities} 条</span>
+      </div>
+      <OpportunityList rows={summary?.opportunities ?? []} />
+
+      <div className="section-title">
+        <h2>主要竞品</h2>
+        <span className="line" />
+        <span className="meta">{counts.competitors} 个</span>
+      </div>
+      <CompetitorList rows={summary?.competitors ?? []} />
+
+      <div className="section-title">
+        <h2>完整报告</h2>
         <span className="line" />
       </div>
-      <div className="report report-md" style={{ maxHeight: "none" }}>
-        {renderMarkdown(data.markdown)}
+      <div className="report report-md sr-report-desktop">
+        {renderMarkdown(markdown)}
       </div>
+      <div className="sr-report-mobile">
+        {sections.map((section, index) => (
+          <details key={`${section.title}-${index}`} open={index === 0}>
+            <summary>
+              <span>{section.title}</span>
+              <Icon name="chevron" size={15} />
+            </summary>
+            <div className="report report-md">
+              {renderMarkdown(section.markdown)}
+            </div>
+          </details>
+        ))}
+      </div>
+
+      <ReportActions
+        className="sr-actions-mobile"
+        title={title}
+        canShare={Boolean(runId)}
+        onDownload={download}
+        onRestart={onRestart}
+      />
+    </article>
+  );
+}
+
+function ReportActions({
+  className,
+  title,
+  canShare,
+  onDownload,
+  onRestart,
+}: {
+  className: string;
+  title: string;
+  canShare: boolean;
+  onDownload: () => void;
+  onRestart: () => void;
+}) {
+  return (
+    <div className={`sr-report-actions ${className}`}>
+      {canShare ? (
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={() => void shareReport(title)}
+        >
+          <Icon name="source" size={14} />
+          分享报告
+        </button>
+      ) : null}
+      <button type="button" className="btn btn-ghost" onClick={onDownload}>
+        <Icon name="download" size={14} />
+        下载
+      </button>
+      <button type="button" className="btn btn-ghost" onClick={onRestart}>
+        <Icon name="spark" size={14} />
+        再研究
+      </button>
     </div>
   );
 }
 
-function CompetitorList({ rows }: { rows: UICompetitor[] }) {
+function CompetitorList({ rows }: { rows: ReportSummary["competitors"] }) {
   if (!rows.length) {
     return (
-      <p style={{ color: "var(--muted)", fontSize: 13.5, padding: "8px 2px" }}>
+      <p className="sr-empty-copy">
         本轮没有抽取到竞品。换一个更具体的品类，或在输入时加上竞品网址，再试一次。
       </p>
     );
   }
   return (
-    <div className="table-wrap">
-      <table className="data">
-        <thead>
-          <tr>
-            <th>竞品</th>
-            <th>渠道</th>
-            <th>定位</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((c, i) => (
-            <tr key={i}>
-              <td>
-                <div className="name">{c.name}</div>
-                <div className="desc">{c.market}</div>
-              </td>
-              <td>{c.channel}</td>
-              <td>
-                <div
-                  className="desc"
-                  style={{ color: "var(--ink-2)", maxWidth: "40ch" }}
-                >
-                  {c.positioning}
-                </div>
-              </td>
+    <>
+      <div className="table-wrap sr-competitor-table">
+        <table className="data">
+          <thead>
+            <tr>
+              <th>竞品</th>
+              <th>渠道</th>
+              <th>定位</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {rows.map((competitor) => (
+              <tr key={`${competitor.name}-${competitor.channel}`}>
+                <td>
+                  <div className="name">{competitor.name}</div>
+                  <div className="desc">{competitor.market}</div>
+                </td>
+                <td>{competitor.channel}</td>
+                <td>
+                  <div className="desc sr-positioning">
+                    {competitor.positioning}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div className="sr-competitor-cards">
+        {rows.map((competitor) => (
+          <article
+            key={`${competitor.name}-${competitor.channel}`}
+            className="sr-competitor-card"
+          >
+            <div className="sr-competitor-card-head">
+              <h3>{competitor.name}</h3>
+              <span>{competitor.channel}</span>
+            </div>
+            <p>{competitor.positioning}</p>
+            <small>{competitor.market}</small>
+          </article>
+        ))}
+      </div>
+    </>
   );
 }
 
-function OpportunityList({ rows }: { rows: UIOpportunity[] }) {
+function OpportunityList({ rows }: { rows: ReportSummary["opportunities"] }) {
   if (!rows.length) {
-    return (
-      <p style={{ color: "var(--muted)", fontSize: 13.5, padding: "8px 2px" }}>
-        本轮没有产出机会清单。
-      </p>
-    );
+    return <p className="sr-empty-copy">本轮没有产出机会清单。</p>;
   }
   const sorted = [...rows].sort((a, b) => b.total - a.total);
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-      {sorted.map((o, i) => (
-        <div
-          key={i}
-          className="card"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 16,
-            padding: "14px 18px",
-          }}
-        >
-          <div
-            style={{
-              fontFamily: "var(--font-mono)",
-              fontSize: 18,
-              fontWeight: 700,
-              color: "var(--accent)",
-              width: 26,
-              textAlign: "center",
-            }}
-          >
-            {i + 1}
+    <div className="sr-opportunity-list">
+      {sorted.map((opportunity, index) => (
+        <article key={opportunity.title} className="card sr-opportunity-card">
+          <div className="sr-opportunity-rank">{index + 1}</div>
+          <div className="sr-opportunity-copy">
+            <h3>{opportunity.title}</h3>
+            <p>{opportunity.summary}</p>
           </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontWeight: 600, marginBottom: 3 }}>{o.title}</div>
-            <div
-              style={{
-                fontSize: 13,
-                color: "var(--ink-2)",
-                lineHeight: 1.55,
-              }}
-            >
-              {o.summary}
-            </div>
+          <div className="sr-opportunity-score">
+            <b>{opportunity.total}</b>
+            <span> /100</span>
           </div>
-          <div style={{ textAlign: "right", flexShrink: 0 }}>
-            <b style={{ fontSize: 20 }}>{o.total}</b>
-            <span style={{ fontSize: 12, color: "var(--muted)" }}> /100</span>
-          </div>
-        </div>
+        </article>
       ))}
     </div>
   );

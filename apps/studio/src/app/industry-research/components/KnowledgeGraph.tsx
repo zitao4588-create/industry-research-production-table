@@ -91,10 +91,18 @@ export function KnowledgeGraph({
     let raf = 0, t0 = performance.now();
     let W = 0, H = 0;
     let disposed = false;
+    let inViewport = true;
+    let pageVisible = document.visibilityState === "visible";
+    const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    let reduceMotion = motionQuery.matches;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const wrap = wrapRef.current;
     if (!wrap) return;
     const stableWrap: HTMLDivElement = wrap;
+
+    function scheduleDraw() {
+      if (!disposed && raf === 0) raf = requestAnimationFrame(draw);
+    }
 
     function resize() {
       if (disposed) return;
@@ -103,9 +111,26 @@ export function KnowledgeGraph({
       canvas.width = W * dpr; canvas.height = H * dpr;
       canvas.style.width = W + "px"; canvas.style.height = H + "px";
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      scheduleDraw();
     }
     resize();
     const ro = new ResizeObserver(resize); ro.observe(stableWrap);
+    const io = new IntersectionObserver(([entry]) => {
+      inViewport = entry?.isIntersecting ?? true;
+      if (inViewport) scheduleDraw();
+    }, { rootMargin: "80px" });
+    io.observe(stableWrap);
+
+    function onVisibilityChange() {
+      pageVisible = document.visibilityState === "visible";
+      if (pageVisible) scheduleDraw();
+    }
+    function onMotionChange(event: MediaQueryListEvent) {
+      reduceMotion = event.matches;
+      scheduleDraw();
+    }
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    motionQuery.addEventListener("change", onMotionChange);
 
     const drawn: Record<string, { x: number; y: number; r: number; type: string; label?: string; count?: number }> = {};
     const hover: { id: string | null } = { id: null };
@@ -114,8 +139,8 @@ export function KnowledgeGraph({
       for (const id in drawn) { const d = drawn[id]; if (d.type === "leaf") continue; const dx = mx - d.x, dy = my - d.y; const dd = dx * dx + dy * dy; if (dd < bd) { bd = dd; best = id; } }
       return best && bd < 22 * 22 ? best : null;
     }
-    function onMove(e: MouseEvent) { const rc = canvas.getBoundingClientRect(); hover.id = hit(e.clientX - rc.left, e.clientY - rc.top); canvas.style.cursor = hover.id ? "pointer" : "default"; }
-    function onLeave() { hover.id = null; canvas.style.cursor = "default"; }
+    function onMove(e: MouseEvent) { const rc = canvas.getBoundingClientRect(); hover.id = hit(e.clientX - rc.left, e.clientY - rc.top); canvas.style.cursor = hover.id ? "pointer" : "default"; scheduleDraw(); }
+    function onLeave() { hover.id = null; canvas.style.cursor = "default"; scheduleDraw(); }
     canvas.addEventListener("mousemove", onMove);
     canvas.addEventListener("mouseleave", onLeave);
 
@@ -129,6 +154,7 @@ export function KnowledgeGraph({
     }
 
     function draw(now: number) {
+      raf = 0;
       const t = now - t0;
       const [ar, ag, ab] = hexToRgb(accentRef.current);
       const A = (a: number) => `rgba(${ar},${ag},${ab},${a})`;
@@ -197,7 +223,7 @@ export function KnowledgeGraph({
           ctx.strokeStyle = A(0.85 * vis); ctx.lineWidth = 1.4; ctx.stroke();
         }
 
-        if (n.type === "db" && vis > 0.6 && labelsRef.current) {
+        if (n.type === "db" && vis > 0.6 && labelsRef.current && W >= 520) {
           const out = n.x > 0.5 ? 1 : -1;
           ctx.font = "500 10.5px 'IBM Plex Mono', monospace";
           ctx.textAlign = out > 0 ? "left" : "right";
@@ -226,10 +252,19 @@ export function KnowledgeGraph({
         ctx.fillText(label, bx + 9, by + bh / 2 + 0.5);
       }
 
-      raf = requestAnimationFrame(draw);
+      if (inViewport && pageVisible && !reduceMotion) scheduleDraw();
     }
-    raf = requestAnimationFrame(draw);
-    return () => { disposed = true; cancelAnimationFrame(raf); ro.disconnect(); canvas.removeEventListener("mousemove", onMove); canvas.removeEventListener("mouseleave", onLeave); };
+    scheduleDraw();
+    return () => {
+      disposed = true;
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      io.disconnect();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      motionQuery.removeEventListener("change", onMotionChange);
+      canvas.removeEventListener("mousemove", onMove);
+      canvas.removeEventListener("mouseleave", onLeave);
+    };
   }, []);
 
   const a11yLabel =

@@ -348,3 +348,20 @@ export async function getLocalIndustryResearchDownloadPackage(
     run_log: detail.run_log,
   };
 }
+
+export async function getLocalIndustryResearchPublicReportPackage(
+  runId: string,
+) {
+  const detail = await getLocalIndustryResearchRunDetail(runId);
+  const directory = runDir(runId);
+
+  return {
+    runId,
+    input: detail.input,
+    run_log: detail.run_log,
+    databases: await readJsonFile(join(directory, "databases.json")),
+    reportMarkdown: detail.reportMarkdown,
+    reviewedReportMarkdown: detail.reviewedReportMarkdown,
+    storage: "local",
+  };
+}

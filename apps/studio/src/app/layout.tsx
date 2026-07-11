@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import {
   IBM_Plex_Mono,
   Manrope,
@@ -31,7 +31,14 @@ const notoSansSc = Noto_Sans_SC({
 
 export const metadata: Metadata = {
   title: "行业研究生产台",
-  description: "Industry Research Product Line",
+  description: "输入一个品类，生成可溯源的电商竞品研究报告。",
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#10161d",
 };
 
 export default function RootLayout({

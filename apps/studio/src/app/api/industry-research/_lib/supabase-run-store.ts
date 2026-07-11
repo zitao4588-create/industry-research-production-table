@@ -293,15 +293,54 @@ export async function fetchIndustryResearchSupabaseRun({
   return data as SupabaseRunRecord | null;
 }
 
-async function fetchSupabaseArtifacts(runId: string, client: SupabaseClient) {
-  const { data, error } = await client
+async function fetchSupabaseArtifacts(
+  runId: string,
+  client: SupabaseClient,
+  kinds?: IndustryResearchDeliveryPackageFileKind[],
+) {
+  let query = client
     .from("industry_research_artifacts")
     .select("kind,json_content,text_content")
     .eq("run_id", runId);
+  if (kinds?.length) query = query.in("kind", kinds);
+  const { data, error } = await query;
 
   throwSupabaseError("artifact read", error);
 
   return (data ?? []) as SupabaseArtifactRecord[];
+}
+
+export async function getIndustryResearchSupabasePublicReportPackage({
+  runId,
+  env = loadServerEnv(),
+}: {
+  runId: string;
+  env?: Record<string, string | undefined>;
+}) {
+  const client = createIndustryResearchSupabaseAdminClient(env);
+  if (!client) return null;
+
+  const run = await fetchIndustryResearchSupabaseRun({ runId, env });
+  if (!run?.run_log) return null;
+
+  const artifacts = artifactMap(
+    await fetchSupabaseArtifacts(runId, client, [
+      "databases",
+      "report",
+      "reviewed_report",
+    ]),
+  );
+
+  return {
+    runId,
+    input: run.input,
+    run_log: run.run_log,
+    databases: artifacts.get("databases")?.json_content ?? null,
+    reportMarkdown: artifacts.get("report")?.text_content ?? null,
+    reviewedReportMarkdown:
+      artifacts.get("reviewed_report")?.text_content ?? null,
+    storage: "supabase",
+  };
 }
 
 function artifactMap(artifacts: SupabaseArtifactRecord[]) {
