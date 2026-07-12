@@ -1,8 +1,15 @@
 # TODO
 
-更新时间：2026-07-12
+更新时间：2026-07-13
 
 ## 已完成
+
+- [x] 2026-07-13 G10 完成 Industry OS 受控生产 contract canary：
+  - 提交/推送 `094c857`，HEAD 模式非删除式部署到轻量服务器；备份 `pre-094c857-20260712T171317Z.tar.gz`。
+  - 远端 build、server doctor、Supabase doctor、service active、health 通过；未改 production env、migration、n8n 或 zvec。
+  - 生产流程通过：6 阶段、11 coverage、9 contract samples、6 modules、13 ledger entries、0 eligible、13 contract-only、12 章、75/93 知识地图。
+  - 搜索/Firecrawl/provider/credits 均为 0，费用 ¥0；Supabase/zvec 无 canary 写入，contract fixture 未冒充真实行业事实。
+  - 四视口、报告下载、旧分享回放、内部 API 401、公开报告白名单和既有 run 下载通过；当前严格为 C3。
 
 - [x] 2026-07-12 G9 实现单一 Industry OS UI 流程：
   - 在唯一 `/industry-research` 流程增加行业研究坐标、六阶段、计划、覆盖、样本、六模块、知识地图与 12 章报告；未新增第二模式或产品路由。
@@ -93,7 +100,7 @@
 
 ## 下一步
 
-- [ ] `G10 awaiting_user_confirmation`：获得 L4 后才可执行受控生产 canary，包括 push/部署、生产配置或服务动作、一次受控调用、artifact/分享/下载/回放验收与回滚；可能涉及 provider credits，未确认前保持暂停。
+- [ ] `G11 awaiting_user_confirmation`：真实用户 C4 验证需要明确反转此前“取消真实卖家反馈/付费试单”的决定并授予 L5；确认 1–3 名对象、联系渠道、隐私/录屏边界前，不招募、不联系、不标记 C4。
 - [ ] 设计 Planner 与现有 `ResearchWorkflowInput` / public workflow 的阶段边界：应以模块化异步/分阶段执行为主，不把大行业重新塞进单次 300 秒同步 run。
 - [ ] 找 1 名真实目标用户用手机自行完成输入、等待、报告阅读和分享，记录是否能独立走完；完成前维持 C3，不标记 C4。
 - [ ] 根据真实手机阅读反馈决定是否继续压缩完整报告的证据索引章节；当前工程验收已通过，但报告内容本身仍很长。

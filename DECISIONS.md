@@ -1,6 +1,17 @@
 # 决策记录
 
-更新时间：2026-07-12
+更新时间：2026-07-13
+
+## 2026-07-13：G10 采用零 provider 的生产 contract canary，C3 不等于真实行业交付
+
+- 决策：G10 只验证 G2–G9 contract-only 新链路在轻量服务器生产可运行；不为了满足 canary 而调用 Tavily、Firecrawl、LLM/provider 或 credits。
+- 决策：请求上限固定为搜索 0、抓取 0、provider 0、credits 0，费用上限 ¥0；只允许同源 server action 组装已审计 fixture。
+- 决策：部署只使用已提交 HEAD，不能使用 `--worktree` 带入 benchmark runner 62/22 diff；生产先备份，rsync 不删除且排除 env、outputs、依赖和缓存。
+- 决策：contract canary 不写 Supabase run、不进 zvec、不改 n8n/migration；`Supabase/zvec 明确状态`在本轮体现为只读确认“未写入”。
+- 决策：生产结果必须显示 0 eligible facts、13 contract-only entries 和非行业事实标识；通过只能标记 Industry OS contract 技术 C3，不能写成护肤品真实报告、C4/C5 或商业解冻。
+- 决策：G11 不自动推进外联。项目此前取消了真实卖家反馈/付费试单；必须由用户明确反转该决定并授予 L5、联系对象/渠道和隐私边界。
+- 原因：G2–G9 证明的是确定性契约与 UI，而真实官方来源池仍不足；生产调用不能把 fixture 伪造成事实，也不应在没有必要时消耗额度或写生产数据。
+- 影响：`094c857` 已推送并部署，G10 完成；Loop 停在 G11 人工门。
 
 ## 2026-07-12：G9 复用唯一产品流，contract fixture 只用于本地验收
 

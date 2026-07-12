@@ -1,6 +1,13 @@
 # Bug Notes
 
-更新时间：2026-07-12
+更新时间：2026-07-13
+
+## 已处理：G10 服务重启窗口首次 health 返回 502
+
+- 现象：部署脚本完成远端 build/doctor 并重启服务后，第一次公网 health 请求返回 502。
+- 分类：服务重启就绪窗口，不是构建、应用或 Caddy 持续故障。
+- 处理：沿用部署脚本内置的最多 5 次、每次间隔 3 秒的有限重试；没有手动重复部署或改配置。
+- 验证：第二次 health 返回 `status=ok`，脚本 exit 0；最终服务 active，部署后日志无 error/exception/failed，也无 provider/crawl/credits 调用。
 
 ## 已处理：G9 本地浏览器验收受 dev 编译与 Host 白名单影响
 

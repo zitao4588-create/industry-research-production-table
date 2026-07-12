@@ -1,6 +1,6 @@
 # 项目上下文
 
-更新时间：2026-07-12
+更新时间：2026-07-13
 
 ## 当前项目目标
 
@@ -17,6 +17,15 @@
 - LLM 统一走 OpenAI-compatible 配置；UI 默认业务流为 `public_web_llm`，当前生产最近一次受控 canary 使用阿里云 MaaS 免费模型池，生产/付费交付仍必须确认自付费 provider；n8n 周报走低成本 `public_web`
 
 ## 当前真实状态
+
+- 2026-07-13 G10「受控生产 canary」已完成，Industry OS contract-only 新链路达到生产技术 C3，Loop 在 G11 的 L5/产品决定门暂停：
+  - 提交并推送 `094c857 feat: add industry research os contract flow`；部署使用 HEAD 模式，明确排除本地保留的 benchmark runner 62/22 diff。
+  - 轻量服务器部署前备份为 `.deploy-backups/pre-094c857-20260712T171317Z.tar.gz`；远端 install/build、server doctor、Supabase doctor、service active 和公网 health 通过。
+  - 生产 contract canary 成功展示 6 阶段、11 行覆盖、9 个 contract 样本、6 模块、13 ledger entries、0 eligible、13 contract-only、12 章和 75 nodes / 93 edges；页面与下载报告均标明非行业事实。
+  - 请求/费用实际为：搜索 0、Firecrawl 0、LLM/provider 0、credits 0、费用 ¥0；浏览器只有一个同源 server-action POST。Supabase 无新 run，zvec 未更新。
+  - 360/390/430/1440px 无横向溢出；控制台 0 error / 0 warning；普通入口、旧 run 分享回放、内部 API 401、公开报告白名单与已有 run 下载均通过。
+  - 详细证据见 `docs/INDUSTRY_OS_G10_PRODUCTION_CANARY.md`。这是 contract 技术 C3，不是护肤品真实报告、C4、C5 或商业化解冻。
+  - G11 需要真实用户外联，但项目已取消真实卖家反馈/付费试单；只有用户明确反转该决定并授予 L5、联系对象/渠道与隐私边界后才能启动。
 
 - 2026-07-12 G9「实现单一 Industry OS UI 流程」已完成本地 L2，Loop 在 G10 的 L4 权限门暂停：
   - 唯一 `/industry-research` 产品流新增行业、市场/地区、时间范围和研究目标输入；没有第二条产品路由或可见模式选择器，原 `public_web_llm` 和 `?run=` 回放分支保留。

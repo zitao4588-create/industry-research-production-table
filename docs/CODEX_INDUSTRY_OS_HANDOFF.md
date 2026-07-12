@@ -1,18 +1,18 @@
-# Codex 交接文档：Industry OS G9 完成与 G10 权限门
+# Codex 交接文档：Industry OS G10 完成与 G11 权限门
 
-更新时间：2026-07-12
+更新时间：2026-07-13
 
 目标项目：`/Users/qzt/Developer/industry-research-production-table`
 
-当前基线：Industry Planner 与 G2–G9 本地契约/UI 已完成 C2；未 commit、push 或部署
+当前基线：G2–G9 本地契约/UI 已完成，G10 生产 contract canary 已达到技术 C3
 
-建议权限：先停在 G10 权限门；只有用户明确授予 L4 后才能 push、部署或执行生产 canary
+建议权限：先停在 G11 权限门；只有用户明确反转外联取消决定并授予 L5 后才能招募或联系真实用户
 
 ## 1. 一句话交接
 
-Industry Planner 与 G2–G9 已完成：系统能离线生成校准 plan、来源候选、代表性抽样、六模块结果、claim ledger、12 章报告与知识地图，并在唯一 `/industry-research` 流程完成桌面/移动展示；当前真实官方池仍为 0 样本/blocked，完整模块与报告只由 contract-only fixture 证明契约，eligible 外部事实为 0。
+Industry Planner 与 G2–G10 已完成：系统能生成校准 plan、来源候选、代表性抽样、六模块结果、claim ledger、12 章报告与知识地图，并在唯一 `/industry-research` 流程完成本地与生产桌面/移动 contract 验收；当前完整模块与报告仍只由 contract-only fixture 证明契约，eligible 外部事实为 0。
 
-下一阶段是 G10“受控生产 canary”。Loop 已暂停等待 L4：涉及 push/部署、生产 env 或服务动作、一次可能消耗 provider credits 的生产调用、artifact/分享/下载/回放验收与回滚证据。未获确认前不得启动。
+下一阶段是 G11“真实用户 C4 验证”。项目此前已取消真实卖家反馈和付费试单，因此 Loop 暂停等待用户明确反转该决定并授予 L5；未确认联系对象/渠道、隐私与录屏边界前不得招募、联系或把 Playwright 写成真实用户。
 
 ## 2. 本轮最重要的产品方向修正
 
@@ -205,6 +205,6 @@ G6 已把 `allowedClaimRoles` 等价契约接入 source/raw/evidence/review/repo
 
 1. 阅读 `AGENTS.md`、`README.md`、`PROJECT_CONTEXT.md`、`TODO.md`、`DECISIONS.md`、`BUG_NOTES.md`。
 2. 阅读本文档和 `docs/prds/industry-research-os-prd.md`；`docs/CODEX_INDUSTRY_OS_GOAL_PROMPT.md` 只作已完成历史审计，不重复执行。
-3. 核对当前 Git、`docs/industry-os-loop-state.json`、G2–G9 记录与 fixture、`docs/INDUSTRY_OS_UI_G9.md`，以及 benchmark runner 62/22 diff。
-4. 当前 checkpoint 必须是 `G10_permission_gate`；不要重跑已完成 G2–G9，也不要创建第二个并行 Goal。
-5. 未获用户 L4 前只允许 G10 只读侦察；push、部署、生产 env/服务、生产调用、backfill/index 和费用必须继续暂停。
+3. 核对当前 Git、`docs/industry-os-loop-state.json`、G2–G10 记录、`docs/INDUSTRY_OS_G10_PRODUCTION_CANARY.md`，以及 benchmark runner 62/22 diff。
+4. 当前 checkpoint 必须是 `G11_permission_gate`；不要重跑已完成 G2–G10，也不要创建第二个并行 Goal。
+5. 未获用户 L5 和明确产品反转前，只允许准备本地测试脚本；不得选择、招募、联系或邀请真实用户，不得录屏或收集隐私信息。
