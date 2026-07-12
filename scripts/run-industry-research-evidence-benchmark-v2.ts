@@ -12,9 +12,16 @@ import {
 } from "../packages/industry-research/src/index.ts";
 
 const canaryV3Mode = process.argv.includes("--canary-v3");
-const benchmarkVersion = canaryV3Mode
-  ? "evidence-canary-v3"
-  : "evidence-benchmark-v2";
+const batch12Mode = process.argv.includes("--batch-12");
+const postKillMode = process.argv.includes("--post-kill");
+const exploratoryMode = batch12Mode || postKillMode;
+const benchmarkVersion = postKillMode
+  ? "evidence-benchmark-v3-post-kill-exploratory"
+  : batch12Mode
+    ? "evidence-benchmark-v3-12-category"
+    : canaryV3Mode
+      ? "evidence-canary-v3"
+      : "evidence-benchmark-v2";
 const expectedHead = "db1a97c212255cab73b924a995959cf5105af4be";
 const expectedTrackedDiffSha256 =
   "d86b28ad0e11a326738038f6ef2bd8da0129b3495c48b50d89676c2b24257d36";
@@ -38,7 +45,7 @@ const fixedBudget = {
   maxFirecrawlCrawlSites: 1,
   maxFirecrawlCrawlPagesPerSite: 4,
   maxPublicRequests: 32,
-  maxLlmRequests: 3,
+  maxLlmRequests: exploratoryMode ? 8 : 3,
   requestTimeoutMs: 8_000,
   firecrawlTimeoutMs: 12_000,
   crawlPerHostDelayMs: 1_000,
@@ -59,6 +66,15 @@ const categories: BenchmarkCategory[] = [
     label: "日本小众护肤品牌",
     order: 3,
   },
+  { id: "mens-electric-shaver", label: "男士电动剃须刀", order: 4 },
+  { id: "cat-water-fountain", label: "猫咪自动饮水机", order: 5 },
+  { id: "laptop-stand", label: "笔记本电脑支架", order: 6 },
+  { id: "robot-vacuum", label: "扫地机器人", order: 7 },
+  { id: "electric-toothbrush", label: "电动牙刷", order: 8 },
+  { id: "sleep-gummies", label: "睡眠软糖", order: 9 },
+  { id: "korean-scalp-serum", label: "韩国头皮精华", order: 10 },
+  { id: "portable-camping-shower", label: "露营便携淋浴器", order: 11 },
+  { id: "skincare-broad-negative", label: "护肤品", order: 12 },
 ];
 
 type RequestCounters = {
@@ -69,6 +85,7 @@ type RequestCounters = {
   firecrawlCrawl: number;
   nativePublic: number;
   llm: number;
+  llmModels: string[];
   firecrawlReportedCredits: number;
   firecrawlResponsesWithCredits: number;
   llmUsage: Array<{
@@ -136,9 +153,8 @@ function benchmarkEnv(): Record<string, string | undefined> {
     AGENT_FACTORY_FIRECRAWL_MAP_MAX_LINKS_PER_SITE: String(
       fixedBudget.maxFirecrawlMapLinksPerSite,
     ),
-    AGENT_FACTORY_FIRECRAWL_CRAWL_FALLBACK_ENABLED: canaryV3Mode
-      ? "true"
-      : "false",
+    AGENT_FACTORY_FIRECRAWL_CRAWL_FALLBACK_ENABLED:
+      canaryV3Mode || exploratoryMode ? "true" : "false",
     AGENT_FACTORY_FIRECRAWL_CRAWL_MAX_SITES: String(
       fixedBudget.maxFirecrawlCrawlSites,
     ),
@@ -176,7 +192,7 @@ function trackedBaseline() {
 
 function verifyBaseline() {
   const baseline = trackedBaseline();
-  if (canaryV3Mode) return baseline;
+  if (canaryV3Mode || exploratoryMode) return baseline;
   if (baseline.head !== expectedHead) {
     throw new Error(
       `benchmark_v2_head_changed: expected=${expectedHead} actual=${baseline.head}`,
@@ -353,6 +369,14 @@ function createCountedFetchers(
       throw new Error("benchmark_v2_llm_request_cap_exceeded");
     }
     counters.llm += 1;
+    if (typeof init?.body === "string") {
+      try {
+        const model = (JSON.parse(init.body) as { model?: unknown }).model;
+        if (typeof model === "string") counters.llmModels.push(model);
+      } catch {
+        // Invalid request JSON is handled by the provider call itself.
+      }
+    }
 
     const response = await fetch(input, {
       ...init,
@@ -479,7 +503,7 @@ async function main() {
     input: createInput(category),
     fixedBudget,
     approvedBudgets: {
-      paidApiCoreYuan: approvedPaidApiCoreCapYuan,
+      paidApiCoreYuan: exploratoryMode ? 0 : approvedPaidApiCoreCapYuan,
       firecrawlCreditsPerCategory: approvedFirecrawlCreditsPerCategory,
       firecrawlCoreCredits: approvedFirecrawlCoreCredits,
     },
@@ -520,14 +544,18 @@ async function main() {
     console.log(JSON.stringify(plan, null, 2));
     return;
   }
-  if (approvedPaidApiCapYuan !== approvedPaidApiCoreCapYuan) {
+  const expectedPaidApiCapYuan = exploratoryMode
+    ? 0
+    : approvedPaidApiCoreCapYuan;
+  if (approvedPaidApiCapYuan !== expectedPaidApiCapYuan) {
     throw new Error(
-      `benchmark_v2_paid_api_cap_mismatch: expected=${approvedPaidApiCoreCapYuan} actual=${approvedPaidApiCapYuan}`,
+      `benchmark_paid_api_cap_mismatch: expected=${expectedPaidApiCapYuan} actual=${approvedPaidApiCapYuan}`,
     );
   }
-  const expectedApprovedFirecrawlCredits = canaryV3Mode
-    ? approvedFirecrawlCreditsPerCategory
-    : approvedFirecrawlCoreCredits;
+  const expectedApprovedFirecrawlCredits =
+    canaryV3Mode || exploratoryMode
+      ? approvedFirecrawlCreditsPerCategory
+      : approvedFirecrawlCoreCredits;
   if (approvedFirecrawlCredits !== expectedApprovedFirecrawlCredits) {
     throw new Error(
       `benchmark_firecrawl_credit_cap_mismatch: expected=${expectedApprovedFirecrawlCredits} actual=${approvedFirecrawlCredits}`,
@@ -536,21 +564,32 @@ async function main() {
   if (!Number.isFinite(firecrawlBalanceBefore) || firecrawlBalanceBefore < 0) {
     throw new Error("benchmark_v2_firecrawl_balance_before_required");
   }
-  if (!Number.isFinite(deepseekBalanceBefore) || deepseekBalanceBefore < 0) {
+  if (
+    !exploratoryMode &&
+    (!Number.isFinite(deepseekBalanceBefore) || deepseekBalanceBefore < 0)
+  ) {
     throw new Error("benchmark_v2_deepseek_balance_before_required");
   }
   if (
-    !Number.isFinite(deepseekCumulativeSpendBefore) ||
-    deepseekCumulativeSpendBefore < 0
+    !exploratoryMode &&
+    (!Number.isFinite(deepseekCumulativeSpendBefore) ||
+      deepseekCumulativeSpendBefore < 0)
   ) {
     throw new Error("benchmark_v2_deepseek_cumulative_spend_before_required");
   }
+  const aliyunFreePoolReady =
+    env.AGENT_FACTORY_LLM_BASE_URL?.includes("aliyuncs.com") &&
+    env.AGENT_FACTORY_LLM_MODEL === "kimi-k2.6" &&
+    env.AGENT_FACTORY_ALIYUN_FREE_MODEL_ROUTING_ENABLED === "true" &&
+    env.AGENT_FACTORY_ALIYUN_FREE_TIER_ONLY_CONFIRMED === "true";
   if (
-    env.AGENT_FACTORY_LLM_MODEL !== "deepseek-v4-flash" ||
+    (exploratoryMode
+      ? !aliyunFreePoolReady
+      : env.AGENT_FACTORY_LLM_MODEL !== "deepseek-v4-flash") ||
     env.AGENT_FACTORY_SEARCH_PROVIDER !== "tavily" ||
     env.AGENT_FACTORY_FIRECRAWL_ENABLED !== "true" ||
     env.AGENT_FACTORY_FIRECRAWL_MAP_ENABLED !== "true" ||
-    (canaryV3Mode &&
+    ((canaryV3Mode || exploratoryMode) &&
       env.AGENT_FACTORY_FIRECRAWL_CRAWL_FALLBACK_ENABLED !== "true")
   ) {
     throw new Error("benchmark_v2_provider_configuration_drifted");
@@ -579,6 +618,7 @@ async function main() {
     firecrawlCrawl: 0,
     nativePublic: 0,
     llm: 0,
+    llmModels: [],
     firecrawlReportedCredits: 0,
     firecrawlResponsesWithCredits: 0,
     llmUsage: [],
@@ -609,7 +649,7 @@ async function main() {
       dashboardCreditDelta: null,
     },
     deepseekCostAudit: {
-      coreCapYuan: approvedPaidApiCoreCapYuan,
+      coreCapYuan: exploratoryMode ? 0 : approvedPaidApiCoreCapYuan,
       balanceBefore: deepseekBalanceBefore,
       balanceAfter: null,
       cumulativeSpendBefore: deepseekCumulativeSpendBefore,
@@ -682,7 +722,7 @@ async function main() {
         dashboardCreditDelta: null,
       },
       deepseekCostAudit: {
-        coreCapYuan: approvedPaidApiCoreCapYuan,
+        coreCapYuan: exploratoryMode ? 0 : approvedPaidApiCoreCapYuan,
         balanceBefore: deepseekBalanceBefore,
         balanceAfter: null,
         cumulativeSpendBefore: deepseekCumulativeSpendBefore,
@@ -728,7 +768,7 @@ async function main() {
         dashboardCreditDelta: null,
       },
       deepseekCostAudit: {
-        coreCapYuan: approvedPaidApiCoreCapYuan,
+        coreCapYuan: exploratoryMode ? 0 : approvedPaidApiCoreCapYuan,
         balanceBefore: deepseekBalanceBefore,
         balanceAfter: null,
         cumulativeSpendBefore: deepseekCumulativeSpendBefore,

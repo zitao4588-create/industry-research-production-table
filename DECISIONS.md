@@ -2,6 +2,16 @@
 
 更新时间：2026-07-13
 
+## 2026-07-13：三端可部署文件保持一致，G11 由用户明确批准跳过
+
+- 决策：本地 `main`、GitHub `main` 和轻量服务器生产目录的全部可部署受版本控制文件必须来自同一 HEAD；生产 env、运行数据、依赖、缓存和备份不纳入一致性覆盖。
+- 决策：此前保留的 benchmark runner 62/22 diff 纳入版本控制与生产目录同步，结束本地特例；同步不等于授权执行。
+- 决策：runner 中 `skincare-broad-negative` 继续作为历史实验标签存在，但 G12 新 benchmark 明确禁止使用该标签或“大行业必须缩小”的旧判定。
+- 决策：用户明确说“先跳过 G11”，因此按 Loop 规则把 G11 标记为 `skipped`；不恢复真实卖家反馈、付费试单、招募、联系、录屏或隐私收集，C4 继续保持未验证。
+- 决策：G12 不自动执行 live benchmark。下一确认只针对是否启动 L2 离线预注册/scorecard 准备，live provider/API/credits 与最终去留判断继续拆分确认。
+- 原因：用户要求消除本地/GitHub/生产的版本漂移，同时不希望当前进入真实用户外联阶段。
+- 影响：同步完成后唯一权威版本是三端共同 HEAD；Loop 停在 G12 启动门。
+
 ## 2026-07-13：G10 采用零 provider 的生产 contract canary，C3 不等于真实行业交付
 
 - 决策：G10 只验证 G2–G9 contract-only 新链路在轻量服务器生产可运行；不为了满足 canary 而调用 Tavily、Firecrawl、LLM/provider 或 credits。

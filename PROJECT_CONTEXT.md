@@ -18,6 +18,12 @@
 
 ## 当前真实状态
 
+- 2026-07-13 用户明确要求三端全部保持一致并先跳过 G11：
+  - 一致范围定义为本地 `main`、GitHub `main` 与轻量服务器生产目录中的全部可部署受版本控制文件；生产 env、运行数据、依赖、缓存和备份继续安全排除。
+  - 此前本地保留的 benchmark runner 62/22 历史 diff 纳入版本控制与部署同步，但不执行；其中 `skincare-broad-negative` 只保留历史实验语义，不得用于 G12 新 benchmark。
+  - G11 标记为用户明确批准的 `skipped`；本轮不招募、不联系真实用户、不录屏、不收集隐私，也不标记 C4。
+  - Loop 前进到 G12 启动确认门。建议第一步只做离线预注册、runner/scorecard 设计，live API/provider/credits=0、费用 ¥0；任何 3–5 品类 live benchmark、预算或最终商业去留判断仍需单独确认。
+
 - 2026-07-13 G10「受控生产 canary」已完成，Industry OS contract-only 新链路达到生产技术 C3，Loop 在 G11 的 L5/产品决定门暂停：
   - 提交并推送 `094c857 feat: add industry research os contract flow`；部署使用 HEAD 模式，明确排除本地保留的 benchmark runner 62/22 diff。
   - 轻量服务器部署前备份为 `.deploy-backups/pre-094c857-20260712T171317Z.tar.gz`；远端 install/build、server doctor、Supabase doctor、service active 和公网 health 通过。

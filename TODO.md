@@ -4,6 +4,14 @@
 
 ## 已完成
 
+- [x] 2026-07-13 用户明确批准先跳过 G11：
+  - 不进行 1–3 名真实用户招募/联系/录屏，C4 保持未验证，不用 Playwright 或 contract canary 替代真实用户证据。
+  - Loop 转到 G12 启动确认门；此前取消真实卖家反馈和付费试单的决定继续有效。
+
+- [x] 2026-07-13 启动三端一致性同步：
+  - 将此前本地保留的 benchmark runner 62/22 历史 diff 纳入提交，但不运行该 runner。
+  - 本地 main、GitHub main 和生产服务器全部可部署受版本控制文件使用同一 HEAD；env、运行数据、依赖、缓存、备份按部署排除规则保留。
+
 - [x] 2026-07-13 G10 完成 Industry OS 受控生产 contract canary：
   - 提交/推送 `094c857`，HEAD 模式非删除式部署到轻量服务器；备份 `pre-094c857-20260712T171317Z.tar.gz`。
   - 远端 build、server doctor、Supabase doctor、service active、health 通过；未改 production env、migration、n8n 或 zvec。
@@ -100,7 +108,7 @@
 
 ## 下一步
 
-- [ ] `G11 awaiting_user_confirmation`：真实用户 C4 验证需要明确反转此前“取消真实卖家反馈/付费试单”的决定并授予 L5；确认 1–3 名对象、联系渠道、隐私/录屏边界前，不招募、不联系、不标记 C4。
+- [ ] `G12 awaiting_user_confirmation`：是否先启动纯离线预注册与 scorecard/runner 设计；该阶段 live API/provider/credits=0、费用 ¥0。任何真实 3–5 品类 benchmark、预算或最终继续/停止判断另设确认门。
 - [ ] 设计 Planner 与现有 `ResearchWorkflowInput` / public workflow 的阶段边界：应以模块化异步/分阶段执行为主，不把大行业重新塞进单次 300 秒同步 run。
 - [ ] 找 1 名真实目标用户用手机自行完成输入、等待、报告阅读和分享，记录是否能独立走完；完成前维持 C3，不标记 C4。
 - [ ] 根据真实手机阅读反馈决定是否继续压缩完整报告的证据索引章节；当前工程验收已通过，但报告内容本身仍很长。
