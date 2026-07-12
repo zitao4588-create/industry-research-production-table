@@ -479,6 +479,7 @@ export async function runPublicCrawler(
         extractedText,
         cleaningAudit: cleanedDocument.audit,
         databaseTargets: target.databaseTargets,
+        industrySourceRole: source.industrySourceRole,
         sourceQuality: assessSourceQuality({
           target,
           input: qualityInput,

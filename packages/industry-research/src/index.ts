@@ -61,6 +61,13 @@ export type {
   CleanDocumentTextResult,
 } from "./document-cleaner";
 export { cleanDocumentText } from "./document-cleaner";
+export type { EvidenceRoleGateResult } from "./evidence-role-gate";
+export {
+  applyEvidenceRoleGate,
+  bindIndustrySourceRoleToRawDocument,
+  canIndustrySourceRoleSupportClaimRole,
+  evaluateEvidenceRoleGate,
+} from "./evidence-role-gate";
 export type {
   EvidenceQuoteInput,
   EvidenceQuoteReference,
@@ -129,6 +136,123 @@ export {
   selectRotatedFreeModelRoutes,
   shouldUseAliyunFreeModelRouting,
 } from "./glm-workflow";
+export type {
+  IndustryExecutionArtifactContract,
+  IndustryExecutionArtifactRef,
+  IndustryExecutionArtifactType,
+  IndustryExecutionCheckpoint,
+  IndustryExecutionManifest,
+  IndustryExecutionStage,
+  IndustryExecutionStageCheckpoint,
+  IndustryExecutionStageHandler,
+} from "./industry-execution";
+export {
+  assertIndustryExecutionCheckpoint,
+  completeIndustryExecutionStage,
+  createIndustryExecutionCheckpoint,
+  createIndustryExecutionManifest,
+  createIndustryExecutionResumePlan,
+  failIndustryExecutionStage,
+  industryExecutionArtifactContracts,
+  industryExecutionCheckpointSchemaVersion,
+  industryExecutionManifestSchemaVersion,
+  industryExecutionStages,
+  prepareIndustryExecutionCheckpointForResume,
+  runIndustryExecutionStages,
+  startIndustryExecutionStage,
+} from "./industry-execution";
+export { createSkincareModuleContractFixture } from "./industry-module-fixtures";
+export type {
+  IndustryModuleClaimInput,
+  IndustryModuleClaimResult,
+  IndustryModuleCoverageResult,
+  IndustryModuleResult,
+  IndustryModuleResultsArtifact,
+  IndustryModuleRunInput,
+} from "./industry-module-results";
+export {
+  createIndustryModuleResult,
+  createIndustryModuleResultsArtifact,
+  industryModuleResultSchemaVersion,
+  industryModuleResultsSchemaVersion,
+  industryResearchModuleOrder,
+  serializeIndustryModuleResult,
+  serializeIndustryModuleResultsArtifact,
+} from "./industry-module-results";
+export type {
+  IndustryCoverageAxisType,
+  IndustryCoverageMatrixRow,
+  IndustryPlan,
+  IndustryPlanClaimRole,
+  IndustryPlanningInput,
+  IndustryPlanSourceRole,
+  IndustryPlanStatus,
+  IndustryRepresentativeSample,
+  IndustryResearchModule,
+  IndustrySourceRolePolicyEntry,
+  PlanningAxisItem,
+} from "./industry-planner";
+export {
+  canSourceRoleSupportClaimRole,
+  createIndustryPlan,
+  industryPlanSchemaVersion,
+  industrySourceRolePolicy,
+  serializeIndustryPlan,
+} from "./industry-planner";
+export { skincareIndustryPlanningFixture } from "./industry-planner-fixtures";
+export type {
+  IndustryRepresentativeSamplePlan,
+  IndustrySamplingCandidateInput,
+  IndustrySamplingExclusion,
+  IndustrySelectedRepresentativeSample,
+} from "./industry-sampling";
+export {
+  createIndustryRepresentativeSamplePlan,
+  industryRepresentativeSamplePlanSchemaVersion,
+  serializeIndustryRepresentativeSamplePlan,
+} from "./industry-sampling";
+export {
+  createSkincareSamplingContractFixture,
+  skincareSamplingSourceFixture,
+} from "./industry-sampling-fixtures";
+export type {
+  IndustrySourceCandidate,
+  IndustrySourceCandidateBudgetPolicy,
+  IndustrySourceCandidateInput,
+  IndustrySourceCandidatePlan,
+  NoKeyPublicDiscoveryRecord,
+} from "./industry-source-candidates";
+export {
+  createIndustrySourceCandidatePlan,
+  defaultIndustrySourceCandidateBudgetPolicy,
+  industrySourceCandidatePlanSchemaVersion,
+  serializeIndustrySourceCandidatePlan,
+  sourceCandidateInputsFromNoKeyPublicDiscovery,
+  sourceCandidateInputsFromPlannerCalibration,
+} from "./industry-source-candidates";
+export type {
+  IndustryClaimKind,
+  IndustryClaimLedger,
+  IndustryClaimLedgerEntry,
+  IndustryClaimLedgerStatus,
+  IndustryKnowledgeMap,
+  IndustryKnowledgeMapEdge,
+  IndustryKnowledgeMapNode,
+  IndustryReportBundle,
+  IndustryReportChapter,
+  IndustrySynthesisClaimInput,
+} from "./industry-synthesis";
+export {
+  createIndustryClaimLedger,
+  createIndustryKnowledgeMap,
+  createIndustryReportBundle,
+  industryClaimLedgerSchemaVersion,
+  industryKnowledgeMapSchemaVersion,
+  industryReportBundleSchemaVersion,
+  serializeIndustryClaimLedger,
+  serializeIndustryKnowledgeMap,
+} from "./industry-synthesis";
+export { createSkincareSynthesisContractClaims } from "./industry-synthesis-fixtures";
 export {
   createResearchDocumentsFromRawDocuments,
   createResearchSourcesFromPlan,

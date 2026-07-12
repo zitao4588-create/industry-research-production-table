@@ -822,6 +822,8 @@ function createEvidenceBuilder(result: ResearchWorkflowResult) {
           rawDocumentId: rawDocument?.id,
           quote: quote.quote.slice(0, 500),
           note,
+          claimRole: quote.claimRole,
+          sourceRole: quote.sourceRole,
           validation: {
             quoteMatched: quote.quoteMatched,
             sourceAccepted: quote.sourceAccepted,
@@ -830,6 +832,10 @@ function createEvidenceBuilder(result: ResearchWorkflowResult) {
             claimSupportComplete: validation.claimSupportComplete,
             claimQuoteCount: validation.matchedQuotes.length,
             confirmedQuoteCount: validation.confirmedEvidenceCount,
+            roleAuthorized: quote.roleAuthorized,
+            sourceRole: quote.sourceRole,
+            claimRole: quote.claimRole,
+            roleFailureReason: quote.roleFailureReason,
           },
         } satisfies Evidence;
       });
@@ -861,6 +867,11 @@ export function applyGlmStructuredExtraction(
   }
 
   const buildEvidence = createEvidenceBuilder(result);
+  const roleAwareEvidence = result.raw_documents.some(
+    (document) => document.industrySourceRole,
+  );
+  const claimRole = <T extends Evidence["claimRole"]>(role: T) =>
+    roleAwareEvidence ? role : undefined;
   const evidence: Evidence[] = [];
   const evidenceIdsFor = (
     validation: ReturnType<typeof validateEvidenceQuotes>,
@@ -889,6 +900,7 @@ export function applyGlmStructuredExtraction(
             asString(competitor.channel),
             asString(competitor.positioning),
           ],
+          claimRole: claimRole("brand_positioning_product"),
         },
       );
 
@@ -946,6 +958,7 @@ export function applyGlmStructuredExtraction(
             asString(signal.category),
             asString(signal.signal),
           ],
+          claimRole: claimRole("brand_positioning_product"),
         },
       );
 
@@ -981,6 +994,7 @@ export function applyGlmStructuredExtraction(
           claimTexts: [asString(point.theme), asString(point.userNeed)],
           requiredClaimTexts: [asString(point.theme), asString(point.userNeed)],
           requireDemandEvidence: true,
+          claimRole: claimRole("consumer_need"),
         },
       );
 
@@ -1014,6 +1028,7 @@ export function applyGlmStructuredExtraction(
             asString(signal.topic),
             asString(signal.whyItWorks),
           ],
+          claimRole: claimRole("content_traffic_trend"),
         },
       );
 
@@ -1053,6 +1068,7 @@ export function applyGlmStructuredExtraction(
             asString(opportunity.summary),
           ],
           requireDemandEvidence: true,
+          claimRole: claimRole("consumer_need"),
         },
       );
 

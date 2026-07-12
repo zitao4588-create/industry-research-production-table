@@ -102,12 +102,28 @@ export function createResearchReviewItems(
     evidenceIds.length > 0 &&
     evidenceIds.every((evidenceId) => {
       const validation = evidenceById.get(evidenceId)?.validation;
+      const roleAware = Boolean(
+        validation?.sourceRole ||
+          validation?.claimRole ||
+          validation?.roleAuthorized !== undefined,
+      );
       return Boolean(
         validation?.quoteMatched &&
           validation.sourceAccepted &&
-          validation.claimSupportComplete,
+          validation.claimSupportComplete &&
+          (!roleAware || validation.roleAuthorized),
       );
     });
+  const claimRoleForEvidence = (evidenceIds: string[]) => {
+    const roles = [
+      ...new Set(
+        evidenceIds
+          .map((evidenceId) => evidenceById.get(evidenceId)?.claimRole)
+          .filter(Boolean),
+      ),
+    ];
+    return roles.length === 1 ? roles[0] : undefined;
+  };
 
   return [
     ...dataset.competitors.map((competitor) => {
@@ -122,6 +138,7 @@ export function createResearchReviewItems(
         note: evidenceComplete
           ? "竞品名称、渠道与定位的引用均已唯一绑定 acceptedForReport 原文。"
           : "确认竞品是否真实属于目标市场，并补齐完整证据引用。",
+        claimRole: claimRoleForEvidence(competitor.evidenceIds),
       };
     }),
     ...dataset.opportunities.map((opportunity) => ({
@@ -130,6 +147,7 @@ export function createResearchReviewItems(
       targetId: opportunity.id,
       status: opportunity.reviewStatus,
       note: opportunity.reviewNote,
+      claimRole: claimRoleForEvidence(opportunity.evidenceIds),
     })),
   ];
 }

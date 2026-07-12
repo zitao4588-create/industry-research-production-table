@@ -4,7 +4,7 @@
 
 ## 当前项目目标
 
-行业研究生产台是从 `agent-factory` 拆出的独立项目。当前第一条线是电商竞品研究 Agent，用于把行业、品类、市场输入转成公开信息源发现、采集计划、九类数据库、机会评分、人工审核和 Markdown 研究报告。
+行业研究生产台是从 `agent-factory` 拆出的独立项目。当前上位产品方向已升级为 Industry Research OS：接收完整行业和研究坐标，先由 Industry Planner 生成分类、产业链、价格带、渠道、需求、商业模式、监管、来源角色、覆盖矩阵和抽样计划，再把现有采集、证据校验、研究模块、报告和持续更新能力接入下游。电商竞品研究保留为其中一个研究模块，不再作为整个产品的上位定义。
 
 ## 当前技术栈
 
@@ -14,9 +14,104 @@
 - Vitest
 - Biome
 - CLI-first：日常验证优先使用 `scripts/*`，不默认启动 Next dev server
-- 真实 LLM 使用 9router / OpenAI-compatible provider；UI 默认业务流走 `public_web_llm`，n8n 周报仍走低成本 `public_web`
+- LLM 统一走 OpenAI-compatible 配置；UI 默认业务流为 `public_web_llm`，当前生产最近一次受控 canary 使用阿里云 MaaS 免费模型池，生产/付费交付仍必须确认自付费 provider；n8n 周报走低成本 `public_web`
 
 ## 当前真实状态
+
+- 2026-07-12 G9「实现单一 Industry OS UI 流程」已完成本地 L2，Loop 在 G10 的 L4 权限门暂停：
+  - 唯一 `/industry-research` 产品流新增行业、市场/地区、时间范围和研究目标输入；没有第二条产品路由或可见模式选择器，原 `public_web_llm` 和 `?run=` 回放分支保留。
+  - 同路由 `?fixture=industry-os` 只组装 G2–G8 contract fixture，展示计划、11 行覆盖、代表样本、六阶段、六模块、75 nodes / 93 edges 知识地图和 12 章报告；全页标记 contract-only/非行业事实。
+  - G9 专项测试 2/2；`pnpm check` 通过 25 个测试文件、250 条测试；`pnpm build` 通过。
+  - Playwright 本地完整流程通过；360/390/430/1440px 均无横向溢出，控制台 0 error / 0 warning；已有本地 run 成功进入旧报告页。
+  - 详细证据见 `docs/INDUSTRY_OS_UI_G9.md`。当前仍为 Industry OS 本地 C2，未 commit、push、部署、写生产或调用 provider/credits。
+  - 下一步 G10 需要 push/部署、生产 env/服务、受控生产调用与回滚证据，必须先获得用户 L4 确认；未确认前不启动 G10。
+
+- 2026-07-12 G8「实现跨模块综合与行业报告」已完成本地 L2，Loop 自动进入 G9：
+  - 新增 `industry_claim_ledger.v1`，区分 fact/signal/inference/hypothesis；只有 G7 confirmed + coverage pass + 完整 trace 的内容有资格进入基础，blocked claim 不可支持综合。
+  - inference 要求至少两个 supporting claims、两个实际模块且 module binding 一致；opportunity 只能是带 validation plan 的 hypothesis。
+  - 新增固定 12 章本地报告，逐章记录 status/coverage/gaps；blocked 模块保留 BLOCKED 章节，不伪造成结论性正文。
+  - 新增 `industry_knowledge_map.v1`，保存 source→raw→evidence→claim、module/coverage、derived-from、gap 和 counterexample 关系。
+  - contract-only fixture 为 9 fact-form、2 signal、1 inference、1 opportunity hypothesis，但 13/13 均为 contract-only、eligible 外部事实 0；报告逐条标记非行业事实。知识地图 75 nodes / 93 edges。
+  - 四个产物连续生成哈希稳定；旧 `industry_research_delivery_manifest.v1`、8 文件清单和 G3 claim_ledger/industry_report artifact types 保持不变。
+  - `pnpm check` 通过 24 个测试文件、248 条测试；diff/secret 审计通过，未联网、未调用 provider/credits、未写生产。当前 Goal 为 G9：在同一现有 UI 流内接入 Industry OS 计划、覆盖、样本、阶段、模块与报告。
+
+- 2026-07-12 G7「逐个完成六个研究模块」已完成本地 L2，Loop 自动进入 G8：
+  - 新增 `industry_module_result.v1` 与固定六模块顺序的 `industry_module_results.v1`；每个模块独立产出 claims、coverage、gaps 和状态。
+  - confirmed claim 会重新校验 source/raw/quote/claimRole；coverage 同时要求独立来源、来源角色、代表样本和轴项完整，样本必须属于模块允许关系并实际覆盖声明轴。
+  - G7.1–G7.6 严格顺序完成市场、监管、消费者需求、电商竞品、内容流量、商业模式/供应链；单模块 blocked 时其余模块结果保持不变。
+  - 额外门禁阻止内容指标外推转化、无财报的盈利判断和品牌级结论外推全行业。
+  - 本地 contract-only bundle 为 6/6 complete、11 claims、11/11 coverage rows、0 blocked；明确 `synthesisAllowed=false`、不作为真实行业事实。连续两次 SHA-256 均为 `f9c36410b8187f6cc9785d605040c6b067437a96cc62e73fadd1f5f439072f26`。
+  - `pnpm check` 通过 23 个测试文件、239 条测试；diff/secret 审计通过，未联网、未调用 provider/credits、未写生产。当前 Goal 为 G8：claim ledger、跨模块综合和本地行业报告/知识地图。
+
+- 2026-07-12 G6「把 source-role / claim-role 门禁接入证据链」已完成本地 L2，Loop 自动进入 G7：
+  - 正式 source、raw document、evidence 和 review item 增加向后兼容的角色字段；mock/public crawler 与 source database 会保留来源角色。
+  - 新增统一 role gate，缺少角色、source/raw 角色冲突、策略缺失或未授权映射全部 fail-closed；role-aware 结构化抽取按 claim 类型写入角色与校验结果。
+  - 报告确认区会从 source/raw/evidence 重新计算授权，伪造 `sourceAccepted=true` 不能绕过；旧数据完全没有角色元数据时保持原交付行为。
+  - 角色授权是新增约束；`acceptedForReport`、quote 唯一绑定、claim 完整性、高风险数字直接引用和人工 approved 仍必须同时满足。
+  - 专项测试已覆盖 crawler 传播、structured claim 角色绑定、授权正负路径、冲突/缺失、伪造 accepted 与 legacy 兼容。当前 Goal 为 G7：按 G7.1–G7.6 顺序完成六个独立研究模块。
+
+- 2026-07-12 G5「实现代表性抽样」已完成本地 L2，Loop 自动进入 G6：
+  - 新增 `industry_representative_sample_plan.v1`，样本必须绑定 G4 eligible/public source candidate、通过 sampling validation、匹配 relationship/source role，并使用 G2 中存在的轴 ID。
+  - 选择算法按新增 taxonomy/价格带/渠道/商业模式/人群覆盖贡献确定性选择，同分按 entityId；搜索 rank 和输入顺序不参与选择。
+  - 每个选中样本记录来源绑定、选择理由、轴归属、人群、覆盖贡献和选择顺序；未验证、角色错配、未知轴和受阻来源进入 exclusions 并记录原因。
+  - business-model analogy 可补商业模式覆盖，但不计入 competitor；覆盖门通过也只允许进入 module_research，`synthesisAllowed=false`。
+  - 当前真实 G4 官方池产物保持 0 样本、24 轴未覆盖、gate blocked、next=null；不会把监管/统计候选伪装成竞品。contract fixture 选择 6 个虚构样本，覆盖 taxonomy 5/5、价格 3/3、渠道 4/3、商业模式 4/3、人群 3/2，其中 competitor 3、analogy 1 且无交集。
+  - 两类产物连续生成哈希稳定：official-only `56628c619255a77bc1fd384f757d1b34ca9083975697198e5a7b5b96ff58eca0`，contract fixture `121f371f87ea8e1f3f11a34b970b608447ae4e648b6e657432b290b59a689c44`。
+  - `pnpm check` 通过 21 个测试文件、206 条测试，diff/secret 审计通过；未联网、未调用 provider/credits、未新增数据库或触碰生产。当前 Goal 为 G6：来源角色/声明角色门禁接入证据链。
+
+- 2026-07-12 G4「实现来源角色驱动的行业广度扫描」已完成本地 L2，Loop 自动进入 G5：
+  - 新增 `industry_source_candidate_plan.v1`，把候选的 source role、allowed claim roles、研究模块、coverage row/axis/item、优先级、发现方式、合规状态、预算、阻断原因和重复绑定固化为可审计契约。
+  - URL 先规范化再去重；登录、cookie、API key、credits、付费墙、验证码、私人数据、非公开 URL、角色/hostname/品牌占比/请求预算超限全部 fail-closed。
+  - 品牌官网与官方店受全局占比门禁约束，不能占满行业来源池；候选固定为 `candidate_not_evidence`，达到候选门槛也不更新 Planner evidence coverage。
+  - 新增纯函数 no-key public discovery 适配，只接调用方已取得的公开搜索结果，不发请求、不抓正文、不读取 env；当前 runner 只使用 G2 已审计的 7 个官方公开 seed。
+  - 最终 fixture 为 7 个 eligible 候选、2 类来源角色；11 行覆盖中 1 行仅达到候选最低门槛，10 行保持 blocked。planned public requests=7，实际 public/provider/credits 使用均为 0。
+  - 连续两次 `source-candidate-plan.json` SHA-256 均为 `46a153dca6cf5b011ff0f5711bfc425f73b6ce894eacb71c2908dd4b382a8c9a`；`pnpm check` 通过 20 个测试文件、196 条测试，diff/secret 审计通过。
+  - G2–G4 三 Goal 复盘确认范围未漂移、负向门禁有覆盖、旧 runner 62/22 diff 与生产资产未修改；当前 Goal 为 G5：代表性抽样。
+
+- 2026-07-12 G3「实现分阶段本地运行契约」已完成本地 L2，Loop 自动进入 G4：
+  - 新增 `industry_execution_checkpoint.v1` 和 `industry_execution_manifest.v1`；阶段固定为 planning → breadth_scan → sampling → module_research → synthesis → reporting，不能越过未完成阶段。
+  - 每阶段定义必需 artifact type、安全相对路径和 SHA-256 引用；完成阶段不可变，checkpoint schema、阶段顺序、completed 前缀、next stage 或 artifact 不一致会拒绝恢复。
+  - 恢复会跳过全部 completed 阶段；中断中的阶段被标为 `interrupted_execution` 后只重试该阶段；failed 阶段不污染后续阶段。旧 `industry_research_delivery_manifest.v1` 和 8 文件交付包未修改。
+  - 新增 `pnpm execute:industry:fixture`。完整 fixture 二次执行均保持 revision 12、六阶段 attempt=1；受控 proof 在 sampling 后 revision 6 / next=module_research，恢复后 revision 12 且前三阶段 attempt 仍为 1。
+  - fixture 下游产物明确标记 `contract_only_not_research_evidence`，不冒充来源候选、代表样本、模块结果、claim 或完整行业报告；live provider 调用为 0。
+  - `pnpm check` 通过：19 个测试文件、185 条测试；`git diff --check`、敏感信息模式扫描通过；旧 benchmark runner 保持 62 additions / 22 deletions。
+  - 完成等级仍为 C2；未新增数据库/migration/生产状态，未 commit、push、部署。当前 Goal 为 G4：来源角色驱动的行业广度扫描。
+
+- 2026-07-12 G2「校准护肤品 Planner 与覆盖目标」已完成本地 L2，Loop 自动进入 G3：
+  - 新增 `docs/INDUSTRY_PLANNER_SKINCARE_G2_CALIBRATION.md`，只使用 7 个国务院、国家药监局、市场监管总局和国家统计局公开官方页面；没有登录、cookie、API key、provider 或 credits 调用。
+  - 24 个规划项明确分成 8 个 `authority_aligned`、3 个 `method_guardrail`、13 个 `requires_live_validation`。5 个 taxonomy 从互相混用的产品子类改为功效宣称、作用部位、产品剂型、使用人群和使用方法五个正式分类维度。
+  - 价格带改为可比单位价低/中/高位组，不预设大众、高端或奢华标签；渠道、消费者需求和商业模式继续保持待 live 证据验证。
+  - 18 类来源角色全部增加定义、校准依据、最低证据要求和禁止外推；明确国家统计局“化妆品类”宽于护肤品，不能直接支持护肤品规模。
+  - 11 行覆盖目标增加 `targetBasis` 和 `calibrationRationale`，区分监管原文最低门槛、来源三角校验和代表性抽样护栏；当前仍为 0 来源、0 角色、0 样本。
+  - 重新生成 `outputs/industry-plans/skincare/industry-plan.json`，SHA-256 为 `9371c931f02aed2924b3eef406d22006f679f747213bb6c004bbbd31dce9668f`；`liveProviderCalls=0`、`livePublicRequests=0`。
+  - `pnpm check` 通过：18 个测试文件、172 条测试；`git diff --check` 与敏感信息模式扫描通过；旧 benchmark runner 仍保持 62 additions / 22 deletions，未修改。
+  - 完成等级仍为 C2；未 commit、push、部署或生成完整护肤品行业报告。当前 Goal 为 G3：本地分阶段运行契约。
+
+- 2026-07-12 G2–G12 顺序执行 Loop 已建立并推进到 G10 权限门：
+  - 控制器为 `docs/INDUSTRY_OS_G2_G12_LOOP.md`，机器 checkpoint 为 `docs/industry-os-loop-state.json`，自动唤醒规则为 `docs/INDUSTRY_OS_LOOP_HEARTBEAT_PROMPT.md`。
+  - Codex 当前任务 heartbeat `industry-os-g2-g12-loop` 已启用，每小时检查一次；Codex 额度不可用时保留 checkpoint，恢复后从未完成检查点继续，不重跑已完成 Goal。
+  - 同一时间只允许一个子 Goal；当前 `G2–G9=complete`、`G10=awaiting_user_confirmation`，G10–G12 分别在生产部署、真实用户或预算/live 调用门前暂停确认。
+  - 自动权限上限为 L2；commit、push、部署、生产写入、provider/key/credits、外部用户沟通、migration 和重大产品判断不在自动授权范围。
+  - 同一失败两轮无新证据即停止；等待确认和等待额度不重复通知；G12 完成后 heartbeat 停用或保持静默。
+
+- 2026-07-12 G1「固化 Industry OS C2 基线与权威文档」已完成本地 L2：
+  - `README.md` 已明确 Industry Research OS 是上位产品，生产中的电商竞品 H5 是当前首个下游模块，尚未把 Industry OS 新链路部署生产。
+  - 文档权威顺序固定为：Industry OS PRD 管产品方向，`PROJECT_CONTEXT.md` 管动态事实，电商竞品 PRD 管下游模块，benchmark 文档/产物只作运行证据，Industry OS handoff 管恢复入口。
+  - 旧电商竞品 PRD 已增加模块级状态声明；早期 mock/MVP、DeepSeek 和基础设施描述保留为历史演进，不覆盖当前运行事实。
+  - 第一阶段 Goal Prompt 已标记为已完成历史审计材料；handoff 已从“实现 Planner”更新为“C2 基线与 G2 校准恢复入口”。
+  - 旧 runner 中 `skincare-broad-negative` 保留为历史实验标签，不再具有产品判定效力；后续 benchmark 不得要求“护肤品应缩小”。runner 当前 62 additions / 22 deletions 的用户 worktree diff未修改。
+  - 本轮仍未 commit、push、部署或调用 live provider；下一主线为 G2 校准 24 个规划轴、18 类来源角色和 11 行覆盖目标，不直接启动行业广度扫描。
+
+- 2026-07-12 Industry Planner 第一可运行切片已完成本地 C2，尚未 commit、push 或部署：
+  - 新增权威 `Industry Research OS` PRD，明确“护肤品”是合法大行业输入，研究坐标不等于缩小行业，电商竞品研究降为下游模块。
+  - 新增 `industry_plan.v1` 数据契约和确定性 planner，覆盖 scope、taxonomy、value chain、price tiers、channels、consumer needs、business models、监管问题、6 个研究模块、18 类来源角色、覆盖矩阵、代表性抽样、预算、风险、停止条件和 evidence gaps。
+  - 覆盖矩阵已从“一模块一行”补强为 11 行跨轴契约，覆盖 taxonomy、value chain、price tier、channel、consumer need、business model 和 regulation；每行结构化记录最少独立来源、最少来源角色、最少代表样本、当前来源/角色/样本和缺口。
+  - 代表性抽样契约已改为可填充的 `IndustryRepresentativeSample[]`，样本可记录类型、与行业关系、6 类轴归属、选择理由、预期来源角色、验证状态和证据缺口；当前 fixture 仍保持 0 样本，并显式记录 24 个未覆盖轴项。
+  - 来源角色授权为 fail-closed：品牌官网只允许支持品牌定位/产品 claim，不能支持全行业规模、消费者需求或盈利；评论、内容和公司材料也分别限制可支持的 claim role。
+  - 护肤品离线 fixture 明确使用“中国大陆 / 2024-2026”作为该 fixture 的研究坐标，不是系统默认值；CLI 生成 `outputs/industry-plans/skincare/industry-plan.json`，扩展契约后两次 SHA-256 均为 `261a7b4b874fa82ea467a740886b1bd074b594d46c19dae1a825dac846e2db1c`。
+  - 产物包含 5 个 taxonomy、4 个 value-chain、3 个 price-tier、4 个 channel、4 个 consumer-need、4 个 business-model 规划轴，6 个模块全部保持 `blocked_missing_evidence`，覆盖为 0、样本为空；未生成市场规模、增速、需求强度或机会确定性。
+  - `pnpm check` 通过：18 个测试文件、169 条测试，workspace TypeScript 与 Biome 全绿。未修改 UI，因此未运行 `pnpm build`；未调用任何 live LLM、搜索、抓取或生产服务。
+  - 现有 `scripts/run-industry-research-evidence-benchmark-v2.ts` 用户 worktree diff、两份 Industry OS handoff/goal 文档和历史 benchmark 产物均保留，未覆盖、重置或删除。
 
 - 2026-07-12 移动端 H5 双端改造已完成并部署生产，当前完成等级 C3：
   - 保持同一 `/industry-research` 路由和单一简化流程；`≤720px` 使用移动端 H5 信息架构，桌面继续保留宽屏表格与完整报告。

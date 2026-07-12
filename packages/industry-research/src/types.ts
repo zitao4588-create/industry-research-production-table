@@ -1,3 +1,8 @@
+import type {
+  IndustryPlanClaimRole,
+  IndustryPlanSourceRole,
+} from "./industry-planner";
+
 export type ResearchTemplateId = "ecommerce_competitor_research";
 
 export type IndustryResearchDatabaseName =
@@ -127,6 +132,8 @@ export type ResearchSource = {
   automationHint: string;
   discoveryCandidateId?: string;
   priority?: "low" | "medium" | "high";
+  /** Industry OS role-aware path only; omitted by legacy ecommerce runs. */
+  industrySourceRole?: IndustryPlanSourceRole;
 };
 
 export type ResearchDocument = {
@@ -145,6 +152,9 @@ export type Evidence = {
   rawDocumentId?: string;
   quote: string;
   note: string;
+  /** Industry OS role-aware path only; omitted by legacy ecommerce runs. */
+  claimRole?: IndustryPlanClaimRole;
+  sourceRole?: IndustryPlanSourceRole;
   validation?: EvidenceValidation;
 };
 
@@ -157,6 +167,10 @@ export type EvidenceValidation = {
   claimSupportComplete?: boolean;
   claimQuoteCount?: number;
   confirmedQuoteCount?: number;
+  roleAuthorized?: boolean;
+  sourceRole?: IndustryPlanSourceRole;
+  claimRole?: IndustryPlanClaimRole;
+  roleFailureReason?: string;
 };
 
 export type SourceDiscoveryCandidate = {
@@ -239,6 +253,8 @@ export type RawDocument = {
   cleaningAudit?: DocumentCleaningAudit;
   databaseTargets: IndustryResearchDatabaseName[];
   sourceQuality: SourceQuality;
+  /** Must match the bound ResearchSource in the Industry OS role-aware path. */
+  industrySourceRole?: IndustryPlanSourceRole;
 };
 
 export type ExtractionJob = {
@@ -319,6 +335,7 @@ export type SourceDatabaseEntry = {
   reliability: "mock" | "needs_validation" | "trusted";
   refreshCadence: "manual" | "weekly" | "monthly";
   complianceBoundary: string;
+  industrySourceRole?: IndustryPlanSourceRole;
 };
 
 export type CompetitorDatabaseEntry = {
@@ -462,6 +479,7 @@ export type ResearchReviewItem = {
   targetId: string;
   status: ResearchReviewStatus;
   note: string;
+  claimRole?: IndustryPlanClaimRole;
 };
 
 export type ResearchWorkflowInput = {

@@ -1,0 +1,271 @@
+{
+  "schemaVersion": "industry_os_execution_loop.v1",
+  "loopId": "industry-os-g2-g12",
+  "status": "active",
+  "currentGoal": "G10",
+  "currentGoalStatus": "in_progress",
+  "currentCheckpoint": "G10_canary_plan_locked",
+  "permissionCeiling": "L4",
+  "autoAdvance": true,
+  "controllerPath": "docs/INDUSTRY_OS_G2_G12_LOOP.md",
+  "heartbeatPromptPath": "docs/INDUSTRY_OS_LOOP_HEARTBEAT_PROMPT.md",
+  "heartbeat": {
+    "automationId": "industry-os-g2-g12-loop",
+    "name": "Industry OS G2-G12 Loop",
+    "cadence": "hourly",
+    "status": "active"
+  },
+  "retryPolicy": {
+    "maxSameFailureWithoutNewEvidence": 2,
+    "sameFailureCount": 0,
+    "lastFailureFingerprint": null
+  },
+  "pause": {
+    "reason": null,
+    "requiredPermission": null,
+    "requestSummary": null,
+    "decisionRequestHash": null,
+    "notifiedDecisionRequestHash": null
+  },
+  "quota": {
+    "status": "available",
+    "resumeMode": "heartbeat_checkpoint_resume",
+    "lastQuotaError": null
+  },
+  "goals": [
+    {
+      "id": "G2",
+      "status": "complete",
+      "requiresConfirmationBeforeStart": false,
+      "completionEvidence": [
+        "docs/INDUSTRY_PLANNER_SKINCARE_G2_CALIBRATION.md records 7 official sources and limitations",
+        "industry-plan contains 24 calibrated axes: 8 authority / 3 method / 13 live-validation",
+        "18 source roles and 11 coverage rows have auditable policy and target rationale",
+        "pnpm check: 18 files / 172 tests passed",
+        "git diff --check and secret pattern audit passed",
+        "liveProviderCalls=0 and livePublicRequests=0"
+      ]
+    },
+    {
+      "id": "G3",
+      "status": "complete",
+      "requiresConfirmationBeforeStart": false,
+      "completionEvidence": [
+        "industry_execution_checkpoint.v1 and six-stage artifact contracts implemented",
+        "controlled pause at sampling resumed from module_research with all stage attempts equal to 1",
+        "completed fixture rerun remained revision 12 and idempotent",
+        "failure isolation and corrupt checkpoint fail-closed tests passed",
+        "pnpm check: 19 files / 185 tests passed",
+        "git diff --check and secret pattern audit passed"
+      ]
+    },
+    {
+      "id": "G4",
+      "status": "complete",
+      "requiresConfirmationBeforeStart": false,
+      "completionEvidence": [
+        "industry_source_candidate_plan.v1 contract and no-key public discovery adapter implemented",
+        "7 audited official seeds produced 7 eligible candidate-only records with explicit role/claim/module/axis/compliance/budget fields",
+        "1 coverage row met candidate minimum but remained not evidence; 10 rows remained blocked",
+        "brand-controlled share, dedupe, access, role, hostname and request budget tests passed",
+        "source-candidate artifact regenerated twice with stable SHA-256 46a153dca6cf5b011ff0f5711bfc425f73b6ce894eacb71c2908dd4b382a8c9a",
+        "pnpm check: 20 files / 196 tests passed",
+        "git diff --check and secret pattern audit passed; live public/provider/credits usage remained zero"
+      ]
+    },
+    {
+      "id": "G5",
+      "status": "complete",
+      "requiresConfirmationBeforeStart": false,
+      "completionEvidence": [
+        "industry_representative_sample_plan.v1 sampling engine and G3 sampling artifact integration implemented",
+        "selection is independent of search rank/input order and records source bindings, reasons, axes, population and exclusions",
+        "business-model analogy is excluded from competitor sample ids",
+        "official G4 pool remained 0 samples / 24 uncovered / blocked / nextStage null",
+        "contract-only fixture selected 6 samples and passed taxonomy 5/5, price 3/3, channel 4/3, business 4/3, population 3/2 while synthesis remained false",
+        "both sample artifacts regenerated twice with stable SHA-256 hashes",
+        "pnpm check: 21 files / 206 tests passed",
+        "git diff --check and secret pattern audit passed; live provider usage remained zero"
+      ]
+    },
+    {
+      "id": "G6",
+      "status": "complete",
+      "requiresConfirmationBeforeStart": false,
+      "completionEvidence": [
+        "formal source/raw/evidence/review contracts carry backward-compatible source-role and claim-role metadata",
+        "unified role gate fails closed on missing, conflicting, unknown or unauthorized mappings and report delivery recomputes authorization",
+        "role-aware structured extraction writes sourceRole/claimRole and validation while legacy no-role delivery remains compatible",
+        "acceptedForReport, unique quote binding, claim completeness, high-risk direct quote and human approval remain mandatory",
+        "crawler propagation and source-to-raw-to-structured-claim-to-report positive/negative tests passed",
+        "pnpm check: 22 files / 217 tests passed",
+        "git diff --check and secret pattern audit passed; live provider/public/credits usage remained zero"
+      ]
+    },
+    {
+      "id": "G7",
+      "status": "complete",
+      "requiresConfirmationBeforeStart": false,
+      "completionEvidence": [
+        "G7.1 market module: industry_module_result.v1 contract and runner implemented",
+        "G7.1 requires all three market coverage rows, two independent authorized source roles and source/raw/quote traceability",
+        "G7.1 targeted test: 4/4 passed; missing sources, forged accepted role and incomplete coverage fail closed",
+        "G7.2 regulation module: regulator evidence covers all planned questions; brand evidence is unauthorized",
+        "G7.2 isolation test proves a blocked regulation result does not mutate completed market output; cumulative targeted tests 7/7 passed",
+        "G7.3 consumer module requires two authorized demand source roles, direct user evidence and at least two representative samples",
+        "G7.3 single-role coverage and wrong claim-role mappings remain blocked; cumulative targeted tests 10/10 passed",
+        "G7.4 ecommerce module completes taxonomy, price-tier and channel coverage with authorized brand/retail evidence and axis-bound samples",
+        "G7.4 brand-only channel evidence and wrong-relationship/non-covering samples remain blocked; cumulative targeted tests 13/13 passed",
+        "G7.5 content module requires content-platform/search-trend roles and two axis-bound content actors",
+        "G7.5 conversion extrapolation and single-sample coverage remain blocked; cumulative targeted tests 16/16 passed",
+        "G7.6 business/supply-chain module requires aligned value-chain/business-model samples and financial-report evidence for profitability",
+        "industry_module_results.v1 runs all six modules exactly once in fixed order; one blocked module preserves the other five results",
+        "contract-only fixture produced 6 complete modules, 11 traceable claims and 11/11 passing coverage rows with synthesisAllowed=false",
+        "module-results artifact regenerated twice with stable SHA-256 f9c36410b8187f6cc9785d605040c6b067437a96cc62e73fadd1f5f439072f26",
+        "pnpm check: 23 files / 239 tests passed",
+        "git diff --check and secret pattern audit passed; live provider/public/credits usage remained zero"
+      ],
+      "checkpoints": [
+        {
+          "id": "G7.1",
+          "moduleId": "market_landscape",
+          "status": "complete"
+        },
+        {
+          "id": "G7.2",
+          "moduleId": "regulation_and_standards",
+          "status": "complete"
+        },
+        {
+          "id": "G7.3",
+          "moduleId": "consumer_demand",
+          "status": "complete"
+        },
+        {
+          "id": "G7.4",
+          "moduleId": "ecommerce_competitor_research",
+          "status": "complete"
+        },
+        {
+          "id": "G7.5",
+          "moduleId": "content_and_traffic",
+          "status": "complete"
+        },
+        {
+          "id": "G7.6",
+          "moduleId": "business_model_and_supply_chain",
+          "status": "complete"
+        }
+      ]
+    },
+    {
+      "id": "G8",
+      "status": "complete",
+      "requiresConfirmationBeforeStart": false,
+      "completionEvidence": [
+        "industry_claim_ledger.v1 distinguishes fact, signal, inference and hypothesis with eligible/contract_only/blocked evidence status",
+        "only G7 confirmed, coverage-pass and fully traced claims can enter the fact/signal foundation; blocked claims cannot support synthesis",
+        "cross-module inference validates actual supporting-module bindings and opportunities are hypothesis-only with validation plans",
+        "12-chapter report preserves blocked chapters, coverage, counterexamples and gaps instead of drafting unsupported conclusions",
+        "industry_knowledge_map.v1 preserves source-to-raw-to-evidence-to-claim and derived/counterexample relationships",
+        "contract fixture produced 13 contract-only entries, 0 eligible external facts, 12 chapters and a 75-node/93-edge map",
+        "four synthesis artifacts regenerated twice with stable SHA-256 hashes",
+        "G3 claim_ledger/industry_report artifact types and legacy industry_research_delivery_manifest.v1 eight-file package remain unchanged",
+        "pnpm check: 24 files / 248 tests passed",
+        "git diff --check and secret pattern audit passed; live provider/public/credits usage remained zero"
+      ]
+    },
+    {
+      "id": "G9",
+      "status": "complete",
+      "requiresConfirmationBeforeStart": false,
+      "completionEvidence": [
+        "Existing /industry-research route and state machine now accept industry, market, time range and research goal without a second product route or visible mode selector",
+        "Local contract-only fixture shows six stages, plan, 11-row coverage, representative samples, six modules, 12 chapters and 75-node/93-edge knowledge map without env/network/provider/database",
+        "G9 targeted UI tests: 2/2 passed",
+        "pnpm check: 25 files / 250 tests passed; TypeScript and Biome passed",
+        "pnpm build passed with Next.js 16.2.10; /industry-research remains the only product page",
+        "Playwright full fixture flow passed; 360/390/430/1440 widths had no horizontal overflow and console had 0 errors / 0 warnings",
+        "Existing local run replay opened the legacy report component and did not enter the Industry OS fixture",
+        "git diff --check and secret pattern audit passed; benchmark runner diff remained 62 additions / 22 deletions; no commit/push/deploy/provider/credits/production write"
+      ]
+    },
+    {
+      "id": "G10",
+      "status": "in_progress",
+      "requiresConfirmationBeforeStart": true,
+      "completionEvidence": []
+    },
+    {
+      "id": "G11",
+      "status": "pending",
+      "requiresConfirmationBeforeStart": true,
+      "completionEvidence": []
+    },
+    {
+      "id": "G12",
+      "status": "pending",
+      "requiresConfirmationBeforeStart": true,
+      "completionEvidence": []
+    }
+  ],
+  "history": [
+    {
+      "id": "G9",
+      "status": "complete",
+      "summary": "The existing single product flow now renders the G2-G8 contract pipeline across desktop and mobile while preserving normal execution and legacy replay compatibility."
+    },
+    {
+      "id": "G8",
+      "status": "complete",
+      "summary": "Traceable claim ledger, 12-chapter blocked-aware report and knowledge map now separate proposition type from evidence status while preserving old delivery contracts."
+    },
+    {
+      "id": "G7",
+      "status": "complete",
+      "summary": "Six independent traceable module results now enforce source/raw/quote roles, evidence/sample axis coverage, isolation and module-specific inference guardrails."
+    },
+    {
+      "id": "G6",
+      "status": "complete",
+      "summary": "Source-role / claim-role authorization now gates formal source, raw document, structured evidence, review and confirmed report delivery without loosening legacy evidence honesty checks."
+    },
+    {
+      "id": "G5",
+      "status": "complete",
+      "summary": "Representative sampling engine completed with deterministic multi-axis selection, exclusions, analogy isolation and fail-closed official pool."
+    },
+    {
+      "id": "G4",
+      "status": "complete",
+      "summary": "Source-role driven candidate planning completed with no-key adapter, quotas, compliance blocks and candidate/evidence separation."
+    },
+    {
+      "id": "G3",
+      "status": "complete",
+      "summary": "Six-stage local execution, artifact, checkpoint, resume and idempotency contract completed without database or production state."
+    },
+    {
+      "id": "G2",
+      "status": "complete",
+      "summary": "Skincare Planner calibrated with official China regulatory/statistical scope and explicit methodological guardrails."
+    },
+    {
+      "id": "G1",
+      "status": "complete",
+      "summary": "Industry OS C2 基线与权威文档已固化；旧 benchmark 标签保留为历史证据。"
+    }
+  ],
+  "lastCheckpoint": {
+    "goal": "G10",
+    "summary": "G10 preflight passed and a zero-provider, zero-credit, zero-cost production contract canary plan is locked before commit and deploy",
+    "evidence": [
+      "User message on 2026-07-13 Asia/Shanghai: 确认授权",
+      "Authorization scope is G10 L4 as recorded by the prior decision request hash 9fe8d3afe9530c9a9409294d6c8501d7d5142251d0de0b070cb8ffafdcb5f255",
+      "Production preflight: service active, sudo noninteractive, env mode 600 root:root, 24G free, Supabase/zvec enabled, Tavily/Firecrawl/Aliyun flags present, Industry OS UI absent",
+      "docs/INDUSTRY_OS_G10_CANARY_PLAN.md fixes search/crawl/provider requests at 0, credits at 0 and cost ceiling at CNY 0 with fail-fast rollback rules",
+      "Canary is contract-only C3 technical validation; it cannot be represented as external industry evidence, C4 or C5",
+      "benchmark runner diff remains 62 additions / 22 deletions"
+    ]
+  }
+}

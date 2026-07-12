@@ -4,6 +4,79 @@
 
 ## 已完成
 
+- [x] 2026-07-12 G9 实现单一 Industry OS UI 流程：
+  - 在唯一 `/industry-research` 流程增加行业研究坐标、六阶段、计划、覆盖、样本、六模块、知识地图与 12 章报告；未新增第二模式或产品路由。
+  - 本地 fixture 只消费 G2–G8 contract，不访问网络/provider/credits/数据库，并明确标记非行业事实；旧普通执行和 `?run=` 回放保持兼容。
+  - 专项测试 2/2；`pnpm check` 25 files / 250 tests；`pnpm build` 通过。
+  - Playwright 完整流程、旧 run 回放和 360/390/430/1440px 回归通过，四视口无横向溢出，控制台 0 error / 0 warning。
+  - 详细证据见 `docs/INDUSTRY_OS_UI_G9.md`；当前为 C2/L2，未 commit/push/deploy 或写生产。
+
+- [x] 2026-07-12 G8 实现跨模块综合、12 章报告与知识地图：
+  - 新增 claim ledger、report bundle、knowledge map contract/runner、contract fixture、CLI 和 9 条专项测试。
+  - fact/signal 只接受 confirmed+coverage pass+trace 完整内容；inference 校验跨模块支持绑定；opportunity 强制 hypothesis+validation plan。
+  - blocked 章节保留且不生成完整结论；contract fixture 13/13 entries 均 non-eligible/non-external。
+  - 12 章报告含逐章 coverage、反例、gaps 和知识地图；旧 8 文件包与 G3 artifact contract 未改。
+  - `pnpm check` 24 files / 248 tests，四个 fixture 产物哈希稳定，diff/secret 审计通过；未联网、未 commit/push/deploy。
+
+- [x] 2026-07-12 G7 顺序完成六个研究模块：
+  - 新增单模块与六模块 bundle contract/runner、contract-only fixture、CLI 和 22 条模块专项测试。
+  - 六模块各自输出 traceable claims、coverage、gaps；缺源、角色/claim 错配、样本关系/轴错配和覆盖不足独立 fail-closed。
+  - 内容转化外推、无财报盈利判断和品牌全行业外推被显式阻断；单模块失败不污染其余五个结果。
+  - fixture 6/6 complete、11 claims、11/11 coverage，稳定 SHA-256 `f9c36410b8187f6cc9785d605040c6b067437a96cc62e73fadd1f5f439072f26`，但明确不是外部事实且禁止 synthesis。
+  - `pnpm check` 23 files / 239 tests，diff/secret 审计通过；未联网、未调用 provider/credits、未 commit/push/deploy。
+
+- [x] 2026-07-12 G6 把 source-role / claim-role 门禁接入证据链：
+  - 正式 source/raw/evidence/review 契约带角色信息，crawler、结构化抽取、source database 和报告确认区完成接线。
+  - 缺失、冲突和未授权角色映射 fail-closed；伪造 accepted 不能绕过，legacy 无角色数据保持兼容。
+  - 角色授权与 acceptedForReport、quote 唯一绑定、claim 完整性、高风险直接引用和人工审核同时生效。
+  - 专项测试覆盖 source→raw→structured claim→report 全链路；未联网、未调用 provider/credits、未写生产。
+
+- [x] 2026-07-12 G5 实现代表性抽样：
+  - 新增 sampling engine、sample/exclusion records、multi-axis coverage gate、G3 sampling artifact 接线和两类离线产物。
+  - 选择不依赖搜索 rank/输入顺序；类比不计竞争者；未验证、角色错配、未知轴和覆盖不足全部 fail-closed。
+  - 真实 G4 官方池保持 0 样本/blocked；contract-only fixture 选 6 个样本并通过多轴门，但仍禁止 synthesis。
+  - `pnpm check` 21 files / 206 tests，diff/secret 审计通过；live provider=0，未 commit/push/deploy。
+
+- [x] 2026-07-12 G4 实现来源角色驱动的行业广度扫描：
+  - 新增 source candidate contract、7 个官方 seed fixture、no-key public discovery 纯函数适配和 G3 breadth_scan 接线。
+  - 候选携带 role/claim/module/axis/priority/discovery/compliance/budget/block；候选不是 evidence，缺口继续 blocked。
+  - 去重、受限访问、角色/hostname/请求/品牌占比配额和 fail-closed 测试通过；品牌官网不能占满来源池。
+  - fixture 7 eligible、1 行 candidate target met、10 行 blocked，实际公网/provider/credits=0；`pnpm check` 20 files / 196 tests，diff/secret 审计通过。
+
+- [x] 2026-07-12 G3 实现分阶段本地运行契约：
+  - 新增六阶段状态机、artifact contract、`industry_execution_checkpoint.v1`、execution manifest 和本地 runner；不改旧 8 文件交付 manifest。
+  - completed 阶段不可变且恢复时跳过；中断只重试当前阶段，失败不污染后续；损坏 checkpoint fail-closed。
+  - 实际 pause/resume proof 从 sampling 后继续，六阶段 attempt 均为 1；完整 fixture 幂等复跑保持 revision 12。
+  - `pnpm check` 通过：19 files / 185 tests；diff/secret 审计通过，未新增数据库、生产状态或 provider 调用，未 commit/push/deploy。
+
+- [x] 2026-07-12 G2 校准护肤品 Planner 与覆盖目标：
+  - 用 7 个公开官方页面校准中国大陆护肤品规划；监管分类、商业子市场和统计口径明确分层。
+  - 24 个规划项校准为 8 个 authority aligned、3 个 method guardrail、13 个 requires live validation；价格带不再预设品牌语义。
+  - 18 类来源角色补齐定义/最低证据/禁止外推，11 行覆盖目标补齐 target basis 和理由；覆盖仍 fail-closed 为 0/0/0。
+  - `pnpm check` 通过：18 files / 172 tests；diff/secret 审计通过，provider/public 请求均为 0，未 commit/push/deploy。
+
+- [x] 2026-07-12 建立 Industry OS G2–G12 顺序执行 Loop：
+  - 新增总控制器、heartbeat prompt 和机器可读 checkpoint；每个 Goal 有独立结果、验收、权限门和停止条件。
+  - 启用每小时当前任务 heartbeat `industry-os-g2-g12-loop`，用于额度恢复后从 checkpoint 继续。
+  - 自动权限固定为 L1/L2；commit/push/部署/生产/付费或 credits/API key/外部用户沟通必须暂停确认。
+  - G2–G9 已顺序完成；Loop 当前在 G10 的 L4 生产权限门暂停，G10–G12 继续保留各自人工确认门。
+
+- [x] 2026-07-12 G1 固化 Industry OS C2 基线与权威文档：
+  - README 明确 Industry OS 上位产品、电商竞品研究下游模块和本地 C2 / 生产 H5 C3 的状态边界。
+  - 固定文档权威顺序：Industry OS PRD → `PROJECT_CONTEXT.md` 动态事实 → 电商竞品模块 PRD → benchmark 运行证据 → handoff 恢复入口。
+  - 旧电商竞品 PRD 增加模块/历史状态声明；第一阶段 Goal Prompt 标记为已完成，handoff 更新为 G2 校准恢复入口。
+  - `skincare-broad-negative` 定性为保留的历史实验标签，不再是产品判定规则；旧 runner 62/22 worktree diff 和 benchmark 产物未修改。
+  - 权限保持 L2：未 commit、push、部署或联网。
+
+- [x] 2026-07-12 Industry OS 第一阶段 / Industry Planner 本地 C2：
+  - 新增权威 Industry Research OS PRD；“护肤品”被接受为完整行业输入，电商竞品研究明确为下游研究模块。
+  - 新增 `industry_plan.v1`、确定性 planner、18 类来源角色授权、6 个研究模块、11 行跨轴覆盖矩阵、可填充代表性抽样、预算/风险/停止条件和 fail-closed evidence gaps。
+  - 覆盖矩阵结构化记录目标/当前独立来源、来源角色和代表样本，覆盖 taxonomy、value chain、price tier、channel、consumer need、business model 与 regulation；抽样样本可记录轴归属、行业关系和验证状态，当前仍保持 0 样本、24 个未覆盖轴项。
+  - 新增护肤品离线 fixture 与 `pnpm plan:industry`；输出 `outputs/industry-plans/skincare/industry-plan.json`，连续两次生成 SHA-256 一致，live provider/public 请求均为 0。
+  - 自动化测试覆盖大行业输入、必需规划轴、模块完整性、错误 claim-role 阻断、稳定序列化、空覆盖/空样本和跨行业品牌隔离。
+  - `pnpm check` 通过：18 files / 169 tests，TypeScript 和 Biome 全绿；未修改 UI，所以未运行 `pnpm build`。
+  - 本轮只到 L2/C2：未 commit、push、部署、运行新 benchmark、应用 migration 或调用任何 live API；旧 benchmark runner worktree diff 保留。
+
 - [x] 2026-07-12 同址双端 H5 改造、生产部署和免费池手机流程闭环：
   - 修复长报告滚动、动态视口与 safe-area；输入、运行、摘要报告、竞品卡、章节展开、分享/下载/回放均完成移动端适配。
   - 报告 API 升级为 v2 白名单摘要；旧报告无 databases 时继续降级显示 Markdown。
@@ -20,6 +93,8 @@
 
 ## 下一步
 
+- [ ] `G10 awaiting_user_confirmation`：获得 L4 后才可执行受控生产 canary，包括 push/部署、生产配置或服务动作、一次受控调用、artifact/分享/下载/回放验收与回滚；可能涉及 provider credits，未确认前保持暂停。
+- [ ] 设计 Planner 与现有 `ResearchWorkflowInput` / public workflow 的阶段边界：应以模块化异步/分阶段执行为主，不把大行业重新塞进单次 300 秒同步 run。
 - [ ] 找 1 名真实目标用户用手机自行完成输入、等待、报告阅读和分享，记录是否能独立走完；完成前维持 C3，不标记 C4。
 - [ ] 根据真实手机阅读反馈决定是否继续压缩完整报告的证据索引章节；当前工程验收已通过，但报告内容本身仍很长。
 

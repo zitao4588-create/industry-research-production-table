@@ -12,7 +12,16 @@
  * reliable error message (Next redacts thrown server-action errors in prod).
  * ===========================================================================*/
 import {
+  createIndustryModuleResultsArtifact,
+  createIndustryReportBundle,
   createReviewedIndustryResearchReport,
+  createSkincareModuleContractFixture,
+  createSkincareSynthesisContractClaims,
+  type IndustryModuleResultsArtifact,
+  type IndustryPlan,
+  type IndustryReportBundle,
+  type IndustryRepresentativeSamplePlan,
+  industryResearchModuleOrder,
   type ResearchReviewItem,
   type ResearchWorkflowResult,
 } from "@industry-research/core";
@@ -47,6 +56,82 @@ type RunActionResult =
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+export type IndustryOsUiPayload = {
+  schemaVersion: "industry_os_ui_payload.v1";
+  evidenceMode: "contract_fixture";
+  industryPlan: IndustryPlan;
+  representativeSamplePlan: IndustryRepresentativeSamplePlan;
+  moduleResults: IndustryModuleResultsArtifact;
+  reportBundle: IndustryReportBundle;
+  stages: Array<{
+    id:
+      | "planning"
+      | "breadth_scan"
+      | "sampling"
+      | "module_research"
+      | "synthesis"
+      | "reporting";
+    label: string;
+    status: "completed";
+  }>;
+};
+
+type IndustryOsFixtureActionResult =
+  | { ok: true; payload: IndustryOsUiPayload }
+  | { ok: false; error: string };
+
+/**
+ * G9 本地完整流程验收入口。它只组装 G2-G8 contract fixture，不访问 env、
+ * 网络、provider、数据库或生产，也不会写入旧 8 文件交付包。
+ */
+export async function runIndustryOsFixtureAction(): Promise<IndustryOsFixtureActionResult> {
+  try {
+    const fixtures = industryResearchModuleOrder.map((moduleId) => ({
+      moduleId,
+      fixture: createSkincareModuleContractFixture(moduleId),
+    }));
+    const shared = fixtures[0]?.fixture;
+    if (!shared) throw new Error("industry_os_ui_fixture_missing");
+    const moduleResults = createIndustryModuleResultsArtifact({
+      industryPlan: shared.industryPlan,
+      representativeSamplePlan: shared.representativeSamplePlan,
+      moduleInputs: fixtures.map(({ moduleId, fixture }) => ({
+        moduleId,
+        claimInputs: fixture.claimInputs,
+        sources: fixture.sources,
+        rawDocuments: fixture.rawDocuments,
+        evidence: fixture.evidence,
+      })),
+    });
+    const reportBundle = createIndustryReportBundle({
+      moduleResults,
+      evidenceMode: "contract_fixture",
+      synthesisClaims: createSkincareSynthesisContractClaims(),
+    });
+    return {
+      ok: true,
+      payload: {
+        schemaVersion: "industry_os_ui_payload.v1",
+        evidenceMode: "contract_fixture",
+        industryPlan: shared.industryPlan,
+        representativeSamplePlan: shared.representativeSamplePlan,
+        moduleResults,
+        reportBundle,
+        stages: [
+          { id: "planning", label: "研究规划", status: "completed" },
+          { id: "breadth_scan", label: "广度扫描", status: "completed" },
+          { id: "sampling", label: "代表抽样", status: "completed" },
+          { id: "module_research", label: "模块研究", status: "completed" },
+          { id: "synthesis", label: "跨模块综合", status: "completed" },
+          { id: "reporting", label: "报告与知识地图", status: "completed" },
+        ],
+      },
+    };
+  } catch (error) {
+    return { ok: false, error: errorMessage(error) };
+  }
 }
 
 /**

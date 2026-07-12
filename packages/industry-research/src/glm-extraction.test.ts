@@ -407,6 +407,41 @@ describe("generateGlmStructuredExtractionBatched", () => {
 });
 
 describe("applyGlmStructuredExtraction evidence binding", () => {
+  it("binds formal source and claim roles to structured claim evidence", () => {
+    const text = "Contract Brand A DTC 官方定位舒缓保湿";
+    const roleAwareDocument: RawDocument = {
+      ...createRawDocument("role-aware"),
+      sourceId: "source-role-aware",
+      excerpt: text,
+      extractedText: text,
+      industrySourceRole: "brand_official_site",
+    };
+    const dataset = createDataset([roleAwareDocument]);
+    const extraction = extractionWithCompetitor("Contract Brand A", text);
+    extraction.competitors[0] = {
+      ...extraction.competitors[0],
+      channel: "DTC",
+      positioning: "舒缓保湿",
+    };
+
+    const result = applyGlmStructuredExtraction(dataset, extraction);
+    const structuredEvidence = result.evidence.find((item) =>
+      result.competitors[0]?.evidenceIds.includes(item.id),
+    );
+
+    expect(result.competitors).toHaveLength(1);
+    expect(structuredEvidence).toMatchObject({
+      sourceRole: "brand_official_site",
+      claimRole: "brand_positioning_product",
+      validation: {
+        sourceAccepted: true,
+        roleAuthorized: true,
+        sourceRole: "brand_official_site",
+        claimRole: "brand_positioning_product",
+      },
+    });
+  });
+
   it("binds each entity database row to its own evidence source and URL", () => {
     const documents: RawDocument[] = [
       {

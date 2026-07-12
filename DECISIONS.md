@@ -2,6 +2,115 @@
 
 更新时间：2026-07-12
 
+## 2026-07-12：G9 复用唯一产品流，contract fixture 只用于本地验收
+
+- 决策：Industry OS UI 继续使用 `/industry-research` 和原状态机，不新增产品路由、第二模式或用户可见的模式选择器。
+- 决策：市场/地区、时间范围和研究目标作为行业研究坐标加入输入；旧 `ResearchWorkflowInput` 暂无独立 timeRange 字段，因此普通执行将时间范围追加到 researchGoal，未改公开 API contract。
+- 决策：`?fixture=industry-os` 是同路由本地验收入口，只组装 G2–G8 contract fixture；结果必须标明 contract-only/非行业事实，不能写入旧交付包、数据库或生产。
+- 决策：移动报告保留“报告概览 + 12 个编号章节”，桌面显示完整 Markdown；这 13 个移动折叠项不代表 13 章。
+- 决策：旧 `public_web_llm`、分享链接和 `?run=` 回放继续使用原组件与公开报告 API；G9 不改变公开字段、安全白名单或部署配置。
+- 原因：G9 的目标是证明单一产品流能承载 G2–G8 契约，不是提前完成生产接入或创建两套产品体验。
+- 影响：G9 完成等级为 C2/L2；G10 任何 push、部署、生产 env/服务、生产调用或费用必须另行获得 L4。
+
+## 2026-07-12：跨模块综合使用 claim ledger，contract fact-form 不等于外部事实
+
+- 决策：G8 使用 `industry_claim_ledger.v1` 区分 fact、signal、inference、hypothesis；命题类型与证据状态分开，状态为 eligible、contract_only 或 blocked。
+- 决策：直接 fact/signal 只有在 G7 module complete、claim confirmed、coverage pass 且 source/raw/evidence/quote trace 完整时才可 eligible；blocked 内容不能支持综合。
+- 决策：inference 至少需要两个 supporting claims 和两个实际模块，声明 module IDs 必须与支持项模块一致；机会只能是带 validation plan 的 hypothesis。
+- 决策：contract fixture 可以覆盖四种命题类型来证明契约，但全部强制为 `contract_only`、`externalFactEligible=false`，报告必须逐条标记“非行业事实”。
+- 决策：报告固定 12 章并逐章显示 coverage/status/gaps；所需模块 blocked 时保留 BLOCKED 章节，不生成完整结论性正文。
+- 决策：G8 新产物独立于旧生产交付包；`industry_research_delivery_manifest.v1`、8 文件清单和 G3 execution artifact types 不变。
+- 原因：把“fact”标签直接等同真实事实会让 contract fixture 被误读；跨模块推断若只声明 module IDs 而不核对 supporting claims，也可伪造交叉验证。
+- 影响：G9 可在本地 UI 展示 plan/module/report 新契约，但不能改变公开字段边界；G10 生产 canary 仍需单独确认。
+
+## 2026-07-12：六个研究模块独立验收，coverage 必须由证据与样本共同覆盖
+
+- 决策：module research 使用 `industry_module_result.v1`，六模块 bundle 使用固定顺序的 `industry_module_results.v1`；每个模块独立保留 claims、coverage、gaps 和 blocked 状态。
+- 决策：confirmed claim 必须重新校验 source/raw/quote/claim role；coverage 同时检查独立来源、来源角色、代表样本和全部轴项。要求代表样本的 row 只有在样本自身轴归属覆盖该项时才能计数。
+- 决策：单模块失败只阻塞 bundle，不删除、改写或降级其他模块结果；六个模块未全部提供时 bundle fail-closed。
+- 决策：内容/流量数据不能直接证明转化；品牌级 claim 不能外推全行业；盈利/利润判断没有 financial report 时拒绝确认。
+- 决策：G7 contract fixture 只证明 runner 契约，必须保持 `contractFixtureTreatedAsExternalFact=false` 与 `synthesisAllowed=false`；不能写成护肤品行业事实。
+- 原因：只有 claim trace 而没有来源/样本/轴覆盖，仍可能把单点材料外推成模块完成；把模块结果混在一个可变对象里也会让一个失败污染全局状态。
+- 影响：G8 可以消费六个独立结果建立 claim ledger，但只能综合 confirmed 且 coverage 合格的内容；blocked 模块和 fixture 声明必须继续保留 gaps，不得伪造成完整章节。
+
+## 2026-07-12：角色授权成为正式证据门禁，不能信任已有 accepted 标志
+
+- 决策：`industrySourceRolePolicy` 是 source-role / claim-role 唯一授权表；正式 source、raw document、structured evidence、review 和 report 共享同一门禁语义。
+- 决策：role-aware 数据缺少角色、source/raw 角色冲突、策略缺失或映射未授权时 fail-closed；报告阶段必须重新计算，不能直接信任 evidence 中已有的 `sourceAccepted=true`。
+- 决策：角色授权只增加约束，不替代 acceptedForReport、quote 唯一绑定、claim 完整性、高风险数字直接引用或人工 approved。
+- 决策：为保持既有交付兼容，完全没有角色元数据的 legacy 数据继续走旧门禁；一旦 source/raw/evidence 任一处声明角色元数据，就必须完成角色校验，不能降级回 legacy。
+- 原因：Planner helper 若不进入真实 source/raw/claim/report 链路，品牌官网仍可能被误用于市场规模或消费者需求等未授权结论，已有 accepted 标志也可能被伪造或陈旧状态绕过。
+- 影响：G7 六个模块必须为正式 claim 指定角色并保留 source/raw/quote 追溯；任何模块缺少可授权证据都独立 blocked，不得用 contract fixture 补成真实结论。
+
+## 2026-07-12：代表性抽样按新增覆盖选择，搜索 rank 不参与决策
+
+- 决策：G5 只接受绑定 eligible/public source candidate 且显式 `validated_for_sampling` 的实体；未验证、来源受阻、角色错配或未知轴一律排除并记录原因。
+- 决策：选择使用 taxonomy、价格带、渠道、商业模式和人群的新增覆盖贡献；同分按稳定 entityId，忽略搜索 rank 和输入顺序。
+- 决策：business-model analogy 可作为商业模式参照，但永远不计入 competitor sample。
+- 决策：覆盖门通过只允许进入 module_research；G5 不允许 synthesis。覆盖不足时 next stage 为空，不用单样本或官方监管来源凑数。
+- 决策：当前 G4 的 7 个监管/统计候选没有竞品实体，因此权威 sample plan 必须保持 0/blocked；多轴 pass 只由明确标注 contract-only 的虚构 fixture 证明算法。
+- 原因：真实候选不足时自动“选出”竞品会把来源候选误写成行业实体；按搜索排序抽样也会复制搜索引擎偏差。
+- 影响：G6/G7 可以消费 sampling contract，但不能把 contract fixture 写成真实护肤品研究结论；真实样本仍需后续公开来源验证。
+
+## 2026-07-12：广度扫描先生成候选计划，不把搜索结果当证据
+
+- 决策：G4 使用独立 `industry_source_candidate_plan.v1`；每个候选必须自带 source role、allowed claim roles、module、coverage axis assignments、priority、discovery method、compliance、budget 和 block reasons。
+- 决策：URL 在进入配额前规范化和去重；登录、cookie、key、credits、付费墙、验证码、私人数据和非法 URL 直接 blocked。
+- 决策：候选始终标记 `candidate_not_evidence`；候选数量达到规划门槛只能标记 `candidate_target_met_not_evidence`，不得修改 Planner 的真实 coverage。
+- 决策：品牌官网与官方店的可选数量由非品牌来源池和 35% 上限共同约束；没有非品牌来源时，品牌控制来源不能独占行业候选池。
+- 决策：no-key public discovery 适配是纯函数输入边界，不在核心内调用 DDG/Tavily/Firecrawl/Amazon；当前 fixture 只复用 7 个已审计官方 seed。
+- 原因：现有 public discovery 会进入搜索/probe/crawl，且旧 registry 以窄品类品牌官网为主，不能作为大行业广度扫描的默认权威来源池。
+- 影响：G4 只完成候选规划 C2，10/11 覆盖行仍 blocked；G5 只能从已验证候选做抽样，不能把当前 7 个监管/统计候选当作竞品样本。
+
+## 2026-07-12：Industry OS 使用独立六阶段 checkpoint，不改旧交付 manifest
+
+- 决策：Industry OS 执行顺序固定为 planning、breadth_scan、sampling、module_research、synthesis、reporting；未完成前置阶段时后续阶段 fail-closed。
+- 决策：新增 `industry_execution_checkpoint.v1` 和 `industry_execution_manifest.v1`；现有 `industry_research_delivery_manifest.v1` 与 8 文件包继续作为 reporting 下游兼容格式，不在 G3 改写。
+- 决策：completed 阶段 artifact 引用不可变；恢复跳过 completed，只重试首个 pending/failed/interrupted 阶段。checkpoint schema、阶段顺序、completed 前缀、next stage 或 artifact 异常时拒绝恢复。
+- 决策：G3 runner 使用本地文件与原子 checkpoint 写入，不新增数据库或生产状态；fixture 内容必须标明 contract-only，不能伪装真实研究完成。
+- 原因：旧 delivery manifest 只描述单次最终交付包，无法安全表达长流程中断恢复；直接扩写旧格式会把上位执行状态与既有生产包耦合。
+- 影响：G4–G8 可逐阶段填充新 artifact，而旧生产 H5 和交付包保持不变；实际暂停/恢复 proof 和 185 条测试已验证幂等与失败隔离。
+
+## 2026-07-12：监管分类、商业分层与统计口径分离
+
+- 决策：护肤品 taxonomy 使用中国化妆品监管的五个正交分类维度：功效宣称、作用部位、产品剂型、使用人群、使用方法；清洁、保湿、防晒等不再混作同一层级的确定性子市场。
+- 决策：商业子市场必须在后续真实来源和代表样本中定义；监管分类一致只标记 `authority_aligned`，不等于市场事实已验证。
+- 决策：价格带只规划可比单位价低/中/高位组，不预设“大众、中高端、奢华”及数值边界；渠道、消费者需求和商业模式保持 `requires_live_validation`。
+- 决策：国家统计局“化妆品类”宽于护肤品，未完成口径转换前不能支持护肤品市场规模或增速。
+- 决策：覆盖数量是 fail-closed 最低门槛，分为监管原文、来源三角校验和代表性抽样三种依据；不得写成统计充分性或已完成覆盖。
+- 原因：原 Planner 的 taxonomy 有层级混用，价格带带入商业标签，覆盖数量缺少明确理由，可能让规划假设被误读为事实。
+- 影响：G2 在 24 项、18 角色和 11 行总量不变的前提下完成校准；完整报告、商业子市场、价格数值和真实样本仍由 G4/G5 以后处理。
+
+## 2026-07-12：G2–G12 使用顺序 Loop、checkpoint 和小时 heartbeat
+
+- 决策：G2–G12 不包装成单个超级 Goal；使用一个控制器管理 11 个顺序子 Goal，同一时间只允许一个 active/in_progress，前一 Goal 全量验收和 closeout 后才能自动进入下一项。
+- 决策：唯一机器 checkpoint 为 `docs/industry-os-loop-state.json`；控制规则和 Goal Cards 在 `docs/INDUSTRY_OS_G2_G12_LOOP.md`；每小时 heartbeat `industry-os-g2-g12-loop` 只负责读取状态、恢复和推进当前任务。
+- 决策：自动权限上限为 L2。commit/push/部署、生产 env/服务/数据写入、migration、付费或 credits/API key 调用、外部用户沟通和重大产品判断必须暂停等用户确认。
+- 决策：Codex 自身额度不足不算 Goal 失败；checkpoint 保持当前 Goal，heartbeat 能再次执行时从断点恢复。外部 provider 额度不足不适用自动恢复，必须单独确认预算。
+- 决策：同一失败两轮没有新证据即停止；确认请求用 hash 去重，等待确认/额度时不重复通知；G12 完成或用户决定停止项目后结束 Loop，不自动创造新 backlog。
+- 原因：G2–G12 跨本地实现、联网证据、生产、真实用户和商业判断，必须保留每阶段独立权限与完成证据，同时满足用户希望的自动顺序推进和额度恢复续跑。
+- 影响：G2 已启动；G3–G9 可在 L1/L2 内自动推进，G10–G12 默认包含人工确认门。Loop 本身不扩大任何生产、费用或外部沟通授权。
+
+## 2026-07-12：固定 Industry OS 文档权威顺序和历史 benchmark 边界
+
+- 决策：产品方向以 `docs/prds/industry-research-os-prd.md` 为上位权威；当前代码、Git、验证和生产状态以 `PROJECT_CONTEXT.md` 为动态事实源；旧电商竞品 PRD 只定义下游模块；benchmark 文档和产物只提供运行证据；Industry OS handoff 负责新会话恢复。
+- 决策：README 必须同时说明“Industry OS 本地 C2”和“既有电商竞品 H5 生产 C3”，不能把已部署模块误写成整个上位产品，也不能把本地 Planner 写成已经上线。
+- 决策：`skincare-broad-negative` 和 post-kill “输入过宽”结论作为历史实验记录保留，不删除、不重写原始产物；但它们不再具有产品判定效力，后续 benchmark 必须接受“护肤品”为合法行业输入。
+- 决策：`docs/CODEX_INDUSTRY_OS_GOAL_PROMPT.md` 是已完成第一阶段的审计材料，不再作为下一会话执行入口；`docs/CODEX_INDUSTRY_OS_HANDOFF.md` 已更新为 G2 校准恢复入口。
+- 原因：新旧 PRD、README、handoff 和 benchmark 的职责不同；如果不固定权威顺序，新会话会把历史 mock 状态、旧负例或既有生产模块误认为当前上位产品事实。
+- 影响：本轮只修订文档与恢复入口，不修改旧 runner、历史 benchmark、运行代码或生产；commit、push、部署仍需单独授权。
+
+## 2026-07-12：Industry Research OS 成为上位产品，先实现确定性 Industry Planner
+
+- 决策：Industry Research OS 是新的上位产品；“护肤品”等完整大行业是合法输入，市场、时间和研究目标是研究坐标，不是要求用户缩小行业。电商竞品研究保留为一个下游研究模块。
+- 决策：第一阶段只实现 `industry_plan.v1` 本地规划切片。Planner 使用确定性规则与离线 fixture，输出分类、产业链、价格带、渠道、需求、商业模式、监管问题、研究模块、来源角色、覆盖矩阵和代表性抽样计划；不生成完整行业报告。
+- 决策：来源质量与来源角色分层处理。`acceptedForReport` 不能单独授权 claim；品牌官网、评论、内容平台、公司材料等必须经过 `allowedClaimRoles` 门禁，未授权映射一律 fail-closed。
+- 决策：覆盖矩阵必须按规划轴建立结构化行，不再只复述模块状态；目标覆盖使用独立来源数、来源角色数和代表样本数，当前覆盖分别记录真实来源、角色和样本 ID。代表性抽样使用可填充的 `IndustryRepresentativeSample[]`，但零证据 fixture 继续保持空样本和完整未覆盖轴清单。
+- 决策：规划轴全部标记为 `unverified_planning_hypothesis`，6 个模块在零证据阶段保持 `blocked_missing_evidence`，覆盖和样本保持为空；不得用确定性 fixture 伪造市场规模、增速、需求强度或机会确定性。
+- 原因：旧 benchmark 证明当前链路会发生来源不足、品类串线和覆盖失控，但不能推出“大行业必须缩小”。缺失的是行业规划、来源角色、代表性抽样和覆盖控制。
+- 影响：现有电商竞品、公开采集、cleaner、sourceQuality、quote 唯一绑定、claim completeness、人工审核和交付报告继续作为下游资产，第一阶段不改其门禁、不改 UI、不动生产。
+- 完成边界：当前仅本地 C2；未 commit、push、部署或调用 live provider，不代表护肤品报告完成、生产升级、商业化解冻或用户可交付。
+
 ## 2026-07-12：H5 使用同址双端、摘要优先和最小公开摘要接口
 
 - 决策：不新增 `/m` 或第二套前端；`/industry-research` 在 `≤720px` 使用移动 H5 布局，桌面维持宽屏增强版。

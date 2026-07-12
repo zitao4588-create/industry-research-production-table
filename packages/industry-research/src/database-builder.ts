@@ -85,6 +85,7 @@ function createSourceDatabaseEntries({
       complianceBoundary:
         candidate?.complianceBoundary ??
         "补充输入需要人工确认来源授权和可抓取边界。",
+      industrySourceRole: source.industrySourceRole,
     } satisfies SourceDatabaseEntry;
   });
 }
@@ -115,6 +116,7 @@ function buildLeanEvidence(
         document.extractedText.slice(0, 500) ||
         document.title,
       note: "public_web 公开采集证据；业务含义需在审核或 LLM 验收后确认。",
+      sourceRole: document.industrySourceRole,
       validation: {
         quoteMatched: true,
         sourceAccepted: true,

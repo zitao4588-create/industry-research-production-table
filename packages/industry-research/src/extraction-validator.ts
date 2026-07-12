@@ -1,3 +1,5 @@
+import { evaluateEvidenceRoleGate } from "./evidence-role-gate";
+import type { IndustryPlanClaimRole } from "./industry-planner";
 import type {
   EvidenceValidation,
   RawDocument,
@@ -26,6 +28,7 @@ export type EvidenceValidationOptions = {
   claimTexts?: string[];
   requiredClaimTexts?: string[];
   requireDemandEvidence?: boolean;
+  claimRole?: IndustryPlanClaimRole;
 };
 
 export type StructuredExtractionValidationResult = {
@@ -233,7 +236,19 @@ export function validateEvidenceQuotes(
       : quoteMatches;
     const matched =
       constrainedMatches.length === 1 ? constrainedMatches[0] : undefined;
-    const sourceAccepted = matched ? canConfirmWithSource(matched) : false;
+    const sourceQualityAccepted = matched
+      ? canConfirmWithSource(matched)
+      : false;
+    const roleGate = matched
+      ? evaluateEvidenceRoleGate({
+          rawDocument: matched,
+          claimRole: options.claimRole,
+          requireRoleMetadata: Boolean(options.claimRole),
+        })
+      : undefined;
+    const sourceAccepted = Boolean(
+      sourceQualityAccepted && (roleGate?.authorized ?? true),
+    );
     const failureReason =
       quoteMatches.length === 0
         ? "quote_not_found_in_raw_documents"
@@ -241,9 +256,11 @@ export function validateEvidenceQuotes(
           ? "evidence_reference_mismatch"
           : constrainedMatches.length > 1
             ? "ambiguous_quote_match"
-            : sourceAccepted
-              ? undefined
-              : `source_not_confirmable:${matched?.sourceQuality.sourceType ?? "unknown"}`;
+            : !sourceQualityAccepted
+              ? `source_not_confirmable:${matched?.sourceQuality.sourceType ?? "unknown"}`
+              : roleGate && !roleGate.authorized
+                ? roleGate.failureReason
+                : undefined;
 
     if (failureReason) {
       failureReasons.push(failureReason);
@@ -257,6 +274,10 @@ export function validateEvidenceQuotes(
       rawDocumentId: matched?.id,
       sourceId: matched?.sourceId,
       url: matched?.url,
+      roleAuthorized: roleGate?.roleAware ? roleGate.authorized : undefined,
+      sourceRole: roleGate?.sourceRole,
+      claimRole: roleGate?.claimRole,
+      roleFailureReason: roleGate?.failureReason,
       candidateRawDocumentIds: constrainedMatches.map(
         (document) => document.id,
       ),

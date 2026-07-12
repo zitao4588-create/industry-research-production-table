@@ -1,14 +1,18 @@
 # 电商竞品研究 Agent PRD
 
+> 文档状态：**Industry Research OS 下游模块 PRD**。
+>
+> 上位产品定位、行业级输入和阶段化研究链条以 `docs/prds/industry-research-os-prd.md` 为权威；当前真实代码、Git 和生产状态以 `PROJECT_CONTEXT.md` 为准。本文保留早期 mock/MVP 设计作为演进记录，其中“电商竞品研究 Agent”只代表一个研究模块，不再定义整个产品。历史 mock、DeepSeek 和基础设施状态描述不得覆盖当前运行事实。
+
 ## 1. 基础信息
 
 - Agent 名称：电商竞品研究 Agent
-- 产品线：Industry Research Product Line / 行业研究生产台
+- 产品线：Industry Research OS / 电商竞品研究模块
 - 模板 ID：ecommerce_competitor_research
 - 目标客户：想进入或优化电商品类的个人卖家、小团队和服务商
 - 使用人：创始人、运营、选品负责人、内容负责人
 - 所属行业：电商 / 竞品研究 / 行业情报
-- 当前阶段：MVP
+- 当前阶段：模块已进入生产运行；本文正文保留早期 MVP 设计
 - 负责人：industry-research-production-table
 
 ## 2. 一句话定位

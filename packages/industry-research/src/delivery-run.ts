@@ -1,3 +1,4 @@
+import { evaluateEvidenceRoleGate } from "./evidence-role-gate";
 import {
   hasUnsupportedQuantifiedClaim,
   highRiskClaimHasDirectQuote,
@@ -774,8 +775,14 @@ function acceptedEvidenceIds(
     const rawDocument = result.raw_documents.find(
       (document) => document.id === evidence?.rawDocumentId,
     );
+    const source = result.research_sources.find(
+      (candidate) => candidate.id === evidence?.sourceId,
+    );
 
     const validation = evidence?.validation;
+    const roleGate = evidence
+      ? evaluateEvidenceRoleGate({ source, rawDocument, evidence })
+      : undefined;
 
     return (
       Boolean(evidence?.rawDocumentId) &&
@@ -783,7 +790,8 @@ function acceptedEvidenceIds(
       rawDocument?.sourceQuality.acceptedForReport &&
       validation?.quoteMatched === true &&
       validation?.sourceAccepted === true &&
-      validation.claimSupportComplete === true
+      validation.claimSupportComplete === true &&
+      (roleGate?.authorized ?? false)
     );
   });
 }
@@ -803,11 +811,24 @@ function canConfirmReviewItem(
   const highRiskClaims = claimTextsForReviewItem(result, item).filter(
     hasUnsupportedQuantifiedClaim,
   );
+  const roleAwareEvidence = evidenceIds
+    .map((evidenceId) =>
+      result.evidence.find((evidence) => evidence.id === evidenceId),
+    )
+    .filter((evidence): evidence is Evidence => Boolean(evidence))
+    .filter((evidence) => Boolean(evidence.claimRole || evidence.sourceRole));
+  const reviewClaimRoleMatches = item.claimRole
+    ? roleAwareEvidence.length === evidenceIds.length &&
+      roleAwareEvidence.every(
+        (evidence) => evidence.claimRole === item.claimRole,
+      )
+    : true;
 
   return (
     item.status === "approved" &&
     evidenceIds.length > 0 &&
     acceptedIds.length === evidenceIds.length &&
+    reviewClaimRoleMatches &&
     highRiskClaims.every((claim) =>
       highRiskClaimHasDirectQuote(claim, evidenceQuotes),
     )
@@ -903,7 +924,7 @@ export function createReviewedIndustryResearchReport(
     `- rejected：${summary.rejected}`,
     `- confirmedFindings：${credibility.confirmedFindings}`,
     `- needsReviewFindings：${credibility.needsReviewFindings}`,
-    "- 规则：只有人工标记 approved、全部 evidence 均唯一绑定 rawDocumentId / URL、validation 明确通过且数据源 `acceptedForReport=true` 的结论，才进入已确认发现。",
+    "- 规则：只有人工标记 approved、全部 evidence 均唯一绑定 rawDocumentId / URL、validation 明确通过、数据源 `acceptedForReport=true`，且 role-aware 路径的 source role 获准支持 claim role，结论才进入已确认发现。",
     "- 注意：本报告仍不承诺 100% 自动事实判断，交付客户前需由负责人最终复核。",
     "",
     "## 已确认发现",

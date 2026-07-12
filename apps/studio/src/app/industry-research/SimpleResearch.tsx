@@ -19,7 +19,11 @@ import type {
  * renderMarkdown。运行模式固定为 public_web_llm，优先产出结构化竞品/机会报告。
  * ===========================================================================*/
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { runIndustryResearchAction } from "./actions";
+import {
+  type IndustryOsUiPayload,
+  runIndustryOsFixtureAction,
+  runIndustryResearchAction,
+} from "./actions";
 import {
   adaptRun,
   createModelFromInput,
@@ -36,6 +40,7 @@ import {
   type GraphDatabase,
   KnowledgeGraph,
 } from "./components/KnowledgeGraph";
+import { IndustryOsResult } from "./IndustryOsResult";
 import { splitMarkdownSections } from "./report-sections";
 import { fetchRunStreamToken } from "./run-stream-token";
 
@@ -125,14 +130,20 @@ async function fetchReportPayload(runId: string): Promise<ReportPayload> {
 }
 
 /** 单输入 → 完整 ResearchWorkflowInput：行业/市场/目标用合理默认值。 */
-function buildInput(query: string, urlText: string): ResearchWorkflowInput {
+function buildInput(
+  query: string,
+  urlText: string,
+  market: string,
+  timeRange: string,
+  researchGoal: string,
+): ResearchWorkflowInput {
   const q = query.trim();
   return {
-    projectName: `${q} 竞品研究`,
+    projectName: `${q} 行业研究`,
     industry: q,
     category: q,
-    market: "线上电商 / DTC",
-    researchGoal: "找到可切入的产品与内容机会",
+    market: market.trim(),
+    researchGoal: `${researchGoal.trim()}；时间范围：${timeRange.trim()}`,
     templateId: "ecommerce_competitor_research",
     urls: parseUrlLines(urlText),
     csvText: "",
@@ -199,6 +210,11 @@ function toGraphDatabases(
 export default function SimpleResearch() {
   const [phase, setPhase] = useState<Phase>("input");
   const [query, setQuery] = useState("");
+  const [market, setMarket] = useState("线上电商 / DTC");
+  const [timeRange, setTimeRange] = useState("近 24 个月");
+  const [researchGoal, setResearchGoal] = useState(
+    "理解行业结构、竞品与待验证机会",
+  );
   const [urlText, setUrlText] = useState("");
   const [showUrls, setShowUrls] = useState(false);
 
@@ -212,6 +228,9 @@ export default function SimpleResearch() {
   const [runId, setRunId] = useState<string | null>(null);
   const [replay, setReplay] = useState<ReplayData | null>(null);
   const [remoteReport, setRemoteReport] = useState<ReportPayload | null>(null);
+  const [industryOsPayload, setIndustryOsPayload] =
+    useState<IndustryOsUiPayload | null>(null);
+  const [industryOsFixtureMode, setIndustryOsFixtureMode] = useState(false);
 
   const runSeq = useRef(0);
 
@@ -222,6 +241,20 @@ export default function SimpleResearch() {
     requestAnimationFrame(() =>
       document.documentElement.classList.add("booted"),
     );
+  }, []);
+
+  // 同一路由的本地 G9 验收开关；不出现在产品模式选择中，也不访问网络。
+  useEffect(() => {
+    const fixture =
+      new URLSearchParams(window.location.search).get("fixture") ===
+      "industry-os";
+    setIndustryOsFixtureMode(fixture);
+    if (fixture) {
+      setQuery("护肤品");
+      setMarket("中国大陆");
+      setTimeRange("2024-2026");
+      setResearchGoal("建立行业结构、覆盖状态与待验证机会地图");
+    }
   }, []);
 
   // ?run=<id> 回放：从运行记录 API 取报告，直接进入报告屏。
@@ -280,6 +313,10 @@ export default function SimpleResearch() {
       showToast("请先填写要研究的品类 / 行业 / 竞品", "spark");
       return;
     }
+    if (!market.trim() || !timeRange.trim() || !researchGoal.trim()) {
+      showToast("请补全市场、时间范围和研究目标", "spark");
+      return;
+    }
     const invalidUrls = parseUrlLines(urlText).filter(
       (u) => !/^https?:\/\//i.test(u),
     );
@@ -288,13 +325,14 @@ export default function SimpleResearch() {
       return;
     }
 
-    const input = buildInput(q, urlText);
+    const input = buildInput(q, urlText, market, timeRange, researchGoal);
     const skel = createModelFromInput(input);
     const seq = ++runSeq.current;
     setErrorMsg(null);
     setShowErrorDetail(false);
     setModel(null);
     setRemoteReport(null);
+    setIndustryOsPayload(null);
     setIndeterminate(false);
     setSkeleton(skel);
     setEvents(createRunStartedEvents(skel));
@@ -326,6 +364,24 @@ export default function SimpleResearch() {
       setErrorMsg(message);
       setPhase("error");
     };
+
+    if (industryOsFixtureMode) {
+      const fixtureResult = await runIndustryOsFixtureAction();
+      if (runSeq.current !== seq) return;
+      if (!fixtureResult.ok) {
+        applyError(fixtureResult.error);
+        return;
+      }
+      setIndustryOsPayload(fixtureResult.payload);
+      setEvents((xs) => [
+        ...xs,
+        { type: "run.done", at: new Date().toISOString() },
+      ]);
+      setTimeout(() => {
+        if (runSeq.current === seq) setPhase("done");
+      }, 200);
+      return;
+    }
 
     // ---- 优先订阅 SSE 流式进度 ----
     try {
@@ -394,7 +450,7 @@ export default function SimpleResearch() {
       return;
     }
     applySuccess(res.result, res.deliveryPackage?.runId);
-  }, [query, urlText]);
+  }, [industryOsFixtureMode, market, query, researchGoal, timeRange, urlText]);
 
   const resetToInput = useCallback(() => {
     runSeq.current++; // 让任何在途 run 的回调作废
@@ -406,6 +462,7 @@ export default function SimpleResearch() {
     setRunId(null);
     setReplay(null);
     setRemoteReport(null);
+    setIndustryOsPayload(null);
     window.history.replaceState(null, "", window.location.pathname);
   }, []);
 
@@ -420,6 +477,12 @@ export default function SimpleResearch() {
           <InputScreen
             query={query}
             setQuery={setQuery}
+            market={market}
+            setMarket={setMarket}
+            timeRange={timeRange}
+            setTimeRange={setTimeRange}
+            researchGoal={researchGoal}
+            setResearchGoal={setResearchGoal}
             urlText={urlText}
             setUrlText={setUrlText}
             showUrls={showUrls}
@@ -432,6 +495,7 @@ export default function SimpleResearch() {
             events={events}
             skeleton={skeleton}
             indeterminate={indeterminate}
+            industryOs={industryOsFixtureMode}
           />
         )}
         {phase === "error" && (
@@ -443,7 +507,13 @@ export default function SimpleResearch() {
             onBack={resetToInput}
           />
         )}
-        {phase === "done" && model && (
+        {phase === "done" && industryOsPayload && (
+          <IndustryOsResult
+            payload={industryOsPayload}
+            onRestart={resetToInput}
+          />
+        )}
+        {phase === "done" && !industryOsPayload && model && (
           <DoneScreen
             model={model}
             runId={runId}
@@ -465,6 +535,12 @@ export default function SimpleResearch() {
 function InputScreen({
   query,
   setQuery,
+  market,
+  setMarket,
+  timeRange,
+  setTimeRange,
+  researchGoal,
+  setResearchGoal,
   urlText,
   setUrlText,
   showUrls,
@@ -473,6 +549,12 @@ function InputScreen({
 }: {
   query: string;
   setQuery: (v: string) => void;
+  market: string;
+  setMarket: (v: string) => void;
+  timeRange: string;
+  setTimeRange: (v: string) => void;
+  researchGoal: string;
+  setResearchGoal: (v: string) => void;
   urlText: string;
   setUrlText: (v: string) => void;
   showUrls: boolean;
@@ -499,9 +581,9 @@ function InputScreen({
       <div className="sr-hero-content">
         <div className="sr-title-wrap">
           <h1 className="sr-title">
-            输入一个品类，
+            输入一个行业，
             <br />
-            得到一份竞品研究报告
+            得到一份可追溯研究报告
           </h1>
         </div>
 
@@ -518,6 +600,35 @@ function InputScreen({
                   if (e.key === "Enter") onStart();
                 }}
                 placeholder="例如：宠物肠胃益生菌"
+              />
+            </div>
+            <div className="sr-coordinate-grid">
+              <div className="field">
+                <label htmlFor="sr-market">市场 / 地区</label>
+                <input
+                  id="sr-market"
+                  value={market}
+                  onChange={(event) => setMarket(event.target.value)}
+                  placeholder="例如：中国大陆"
+                />
+              </div>
+              <div className="field">
+                <label htmlFor="sr-time-range">时间范围</label>
+                <input
+                  id="sr-time-range"
+                  value={timeRange}
+                  onChange={(event) => setTimeRange(event.target.value)}
+                  placeholder="例如：2024-2026"
+                />
+              </div>
+            </div>
+            <div className="field sr-goal-field">
+              <label htmlFor="sr-research-goal">研究目标</label>
+              <input
+                id="sr-research-goal"
+                value={researchGoal}
+                onChange={(event) => setResearchGoal(event.target.value)}
+                placeholder="例如：理解行业结构与待验证机会"
               />
             </div>
             <div className="sr-examples">
@@ -567,7 +678,12 @@ function InputScreen({
               type="button"
               className="btn btn-primary"
               onClick={onStart}
-              disabled={!query.trim()}
+              disabled={
+                !query.trim() ||
+                !market.trim() ||
+                !timeRange.trim() ||
+                !researchGoal.trim()
+              }
             >
               <Icon name="play" size={15} />
               开始研究
@@ -581,24 +697,39 @@ function InputScreen({
 }
 
 /* ============================== 运行 =============================== */
-const MILESTONES = ["找资料", "整理竞品", "提炼机会"];
+const LEGACY_MILESTONES = ["找资料", "整理竞品", "提炼机会"];
+const INDUSTRY_OS_MILESTONES = [
+  "研究规划",
+  "广度扫描",
+  "代表抽样",
+  "模块研究",
+  "跨模块综合",
+  "报告与知识地图",
+];
 
 function RunningScreen({
   events,
   skeleton,
   indeterminate,
+  industryOs,
 }: {
   events: RunEvent[];
   skeleton: UIResearchModel;
   indeterminate: boolean;
+  industryOs: boolean;
 }) {
   const d = useMemo(() => deriveRunState(events, skeleton), [events, skeleton]);
   const pct = Math.round(d.progress * 100);
-  // 0 找资料 · 1 整理竞品 · 2 提炼机会 · 3 完成
-  const stage = pct < 34 ? 0 : pct < 67 ? 1 : pct < 100 ? 2 : 3;
+  const milestones = industryOs ? INDUSTRY_OS_MILESTONES : LEGACY_MILESTONES;
+  const stage = Math.min(
+    milestones.length,
+    Math.floor(d.progress * milestones.length),
+  );
   const headline = indeterminate
     ? "正在研究，请稍候…"
-    : ["正在找资料…", "正在整理竞品…", "正在提炼机会…", "即将完成…"][stage];
+    : industryOs
+      ? `${milestones[Math.min(stage, milestones.length - 1)]}…`
+      : ["正在找资料…", "正在整理竞品…", "正在提炼机会…", "即将完成…"][stage];
   const graphDatabases = useMemo(
     () => toGraphDatabases(d.databases),
     [d.databases],
@@ -652,7 +783,7 @@ function RunningScreen({
             />
           </div>
           <div className="sr-milestones">
-            {MILESTONES.map((label, i) => {
+            {milestones.map((label, i) => {
               const done = i < stage;
               const active = i === stage;
               const color = done

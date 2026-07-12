@@ -1,0 +1,62 @@
+{
+  "schemaVersion": "industry_source_candidate_fixture.v1",
+  "fixtureStatus": "audited_public_seeds_not_evidence",
+  "candidates": [
+    {
+      "name": "化妆品监督管理条例（国务院令第727号）",
+      "url": "https://www.beijing.gov.cn/zhengce/gwywj/202006/t20200630_1935123.html",
+      "sourceRole": "regulator",
+      "discoveryMethod": "official_public_seed",
+      "priority": "critical",
+      "estimatedPublicRequests": 1
+    },
+    {
+      "name": "化妆品分类规则和分类目录（2021年第49号）",
+      "url": "https://yjj.scjgj.fujian.gov.cn/hzp/flfg/202106/t20210622_5630812.htm",
+      "sourceRole": "regulator",
+      "discoveryMethod": "official_public_seed",
+      "priority": "critical",
+      "estimatedPublicRequests": 1
+    },
+    {
+      "name": "化妆品功效宣称评价规范办事口径",
+      "url": "https://zwfw.nmpa.gov.cn/web/taskview/11100000MB0341032Y100017214900101",
+      "sourceRole": "regulator",
+      "discoveryMethod": "official_public_seed",
+      "priority": "critical",
+      "estimatedPublicRequests": 1
+    },
+    {
+      "name": "化妆品注册备案管理办法",
+      "url": "https://www.samr.gov.cn/cms_files/filemanager/samr/www/samrnew/samrgkml/nsjg/fgs/202101/W020211127402192291034.pdf",
+      "sourceRole": "regulator",
+      "discoveryMethod": "official_public_seed",
+      "priority": "critical",
+      "estimatedPublicRequests": 1
+    },
+    {
+      "name": "国家统计局关于化妆品类统计范围的答复",
+      "url": "https://www.stats.gov.cn/hd/lyzx/zxgk/202405/t20240524_1954124.html",
+      "sourceRole": "government_statistics",
+      "discoveryMethod": "official_public_seed",
+      "priority": "critical",
+      "estimatedPublicRequests": 1
+    },
+    {
+      "name": "国家统计局统计用零售业态分类答复",
+      "url": "https://www.stats.gov.cn/hd/cjwtjd/202302/t20230207_1902274.html",
+      "sourceRole": "government_statistics",
+      "discoveryMethod": "official_public_seed",
+      "priority": "critical",
+      "estimatedPublicRequests": 1
+    },
+    {
+      "name": "国家统计局社会消费品零售总额定义与局限",
+      "url": "https://www.stats.gov.cn/zs/tjws/tjzb/202301/t20230101_1903707.html",
+      "sourceRole": "government_statistics",
+      "discoveryMethod": "official_public_seed",
+      "priority": "critical",
+      "estimatedPublicRequests": 1
+    }
+  ]
+}

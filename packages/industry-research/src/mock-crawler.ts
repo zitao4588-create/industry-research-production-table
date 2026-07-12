@@ -205,6 +205,7 @@ export function runMockCrawler(
       excerpt: extractedText.slice(0, 160),
       extractedText,
       databaseTargets: target.databaseTargets,
+      industrySourceRole: source.industrySourceRole,
       sourceQuality: assessSourceQuality({
         target,
         input,

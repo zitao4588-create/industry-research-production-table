@@ -2,6 +2,35 @@
 
 更新时间：2026-07-12
 
+## 已处理：G9 本地浏览器验收受 dev 编译与 Host 白名单影响
+
+- 现象：旧 Next dev session 仍存在但端口不再监听；重启后 `/industry-research` 按需编译出现 `socket hang up`。改用已成功构建的本地 production server 后页面稳定加载。
+- 分类：本地开发服务器运行态/按需编译问题，不是 G9 页面逻辑错误；`pnpm build` 已通过。
+- 现象：首次验证旧 `?run=` 回放时报告 API 返回 403 `Host 不在允许列表。`，因为默认安全白名单只含生产域名。
+- 处理：没有修改 `.env` 或安全默认值；仅为当前本地 server 进程临时加入 localhost/127.0.0.1 host 与 origin，随后旧 run 成功进入原报告页。
+- 验证：G9 fixture 完整流程通过，四视口无横向溢出，控制台 0 error / 0 warning；旧回放显示 `hasLegacyReport=true`、`hasIndustryOsFixture=false`。
+
+## 已处理：G4 离线 fixture 因 Codex usage limit 延迟
+
+- 现象：G4 专项 typecheck 和 10 条测试通过后，沙箱外运行离线 source-candidate fixture 的批准流程返回 Codex usage limit，并提示 18:48 后恢复。
+- 分类：Codex 自身额度等待，不是 provider credits、代码、fixture 或网络错误。
+- 处理：Loop 写入 `waiting_quota`，保留 G4 与未完成验收；后续 heartbeat 在额度恢复后复核 Git/checkpoint，只继续 fixture 和全量验收，没有重跑 G2/G3。
+- 验证：恢复后 fixture 连续两次成功且哈希一致；实际 public/provider/credits 使用均为 0，最终 `pnpm check` 为 20 个文件、196 条测试通过。
+
+## 已处理：Industry Planner / Execution CLI 在沙箱内创建 tsx IPC 管道失败
+
+- 现象：在 Planner 初建、G2 重新生成产物和 G3 首次运行 execution fixture 时，沙箱内的 `tsx` 在系统临时目录创建 IPC pipe 报 `listen EPERM`，该次没有生成 JSON。
+- 分类：本地执行沙箱权限问题，不是 Planner 逻辑、fixture 或网络/provider 错误。
+- 处理：经权限批准后在沙箱外运行同一离线命令；命令只读取本地 fixture 并写入本地 JSON，没有联网。
+- 验证：相关离线命令在获准环境均成功；当前 `industry-plan.json` SHA-256 为 `9371c931f02aed2924b3eef406d22006f679f747213bb6c004bbbd31dce9668f`。G3 完整 fixture 和 pause/resume proof 均完成，revision 12、六阶段 attempt=1；产物记录 live provider/public 请求为 0。
+
+## 已处理：Planner 单测读取 JSON fixture 时缺少 Node 类型
+
+- 现象：第一轮 `pnpm check` 在核心 package typecheck 阶段报 `node:fs`、`node:path` 和 `process` 未定义；该 package 的 `tsconfig` 只加载 ES/DOM 类型。
+- 原因：新测试为了读取 JSON fixture 引入了 Node API，突破了现有核心包测试的类型边界；Planner 本身和 7 条针对性 Vitest 已正常通过。
+- 处理：未新增 `@types/node`、未修改全局 tsconfig；改为导出无 Node 依赖的 `skincareIndustryPlanningFixture` 测试常量，JSON fixture 继续作为 CLI 输入。
+- 验证：workspace typecheck 通过；覆盖矩阵与抽样契约补强后，最终 `pnpm check` 为 18 个测试文件、169 条测试全部通过，Biome 无问题。
+
 ## 已处理：页面仅无横向溢出，但长报告仍可能被全局 overflow 截断
 
 - 现象：旧版只验证 390px `scrollWidth=clientWidth`；全局 `body { overflow:hidden }`，完成页/分享回放没有独立纵向滚动容器，长报告在手机上存在无法滚到底的风险。竞品仍使用最小宽度 560px 表格横滑，顶部操作按钮也会堆叠。
