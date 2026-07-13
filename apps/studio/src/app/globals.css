@@ -862,6 +862,46 @@ table.data tbody tr:hover td:first-child::before { content: ""; position: absolu
 .sr-report-view .section-title h2 { font-size: 18px; }
 .sr-report-desktop { max-height: none; }
 .sr-report-mobile { display: none; }
+.sr-report-failure { max-width: 920px; }
+.sr-failure-card {
+  margin-top: 24px; padding: clamp(22px, 4vw, 38px);
+  border: 1px solid color-mix(in oklch, #efb35f 38%, var(--hairline));
+  border-radius: var(--r-lg);
+  background:
+    linear-gradient(145deg, color-mix(in oklch, #efb35f 8%, transparent), transparent 46%),
+    color-mix(in oklch, var(--surface) 58%, transparent);
+}
+.sr-failure-badge {
+  display: inline-flex; padding: 6px 10px; border: 1px solid color-mix(in oklch, #efb35f 42%, transparent);
+  border-radius: 99px; color: #efc47e; background: color-mix(in oklch, #efb35f 9%, transparent);
+  font-family: var(--font-mono); font-size: 10px; letter-spacing: .06em;
+}
+.sr-failure-card > h2 {
+  max-width: 22ch; margin-top: 18px; font-family: var(--font-display);
+  font-size: clamp(24px, 4vw, 38px); line-height: 1.08; letter-spacing: -.035em;
+}
+.sr-failure-lead { max-width: 62ch; margin-top: 13px; color: var(--ink-2); font-size: 14px; line-height: 1.7; }
+.sr-failure-metrics {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px; margin-top: 26px;
+}
+.sr-failure-metrics > div {
+  padding: 16px; border: 1px solid var(--hairline); border-radius: var(--r-md);
+  background: color-mix(in oklch, var(--bg) 48%, transparent);
+}
+.sr-failure-metrics dt { color: var(--faint); font-size: 11px; }
+.sr-failure-metrics dd { margin-top: 7px; font-family: var(--font-mono); font-size: 25px; font-weight: 700; }
+.sr-failure-explanation { display: grid; gap: 1px; margin-top: 22px; overflow: hidden; border: 1px solid var(--hairline); border-radius: var(--r-md); }
+.sr-failure-explanation > div {
+  display: grid; grid-template-columns: 118px minmax(0, 1fr); gap: 18px;
+  padding: 15px 17px; background: color-mix(in oklch, var(--surface) 72%, var(--bg));
+}
+.sr-failure-explanation span { color: var(--faint); font-size: 11px; }
+.sr-failure-explanation strong { font-size: 13.5px; font-weight: 500; line-height: 1.55; }
+.sr-failure-actions { display: flex; align-items: flex-start; gap: 12px; margin-top: 24px; }
+.sr-failure-actions details { min-width: 0; flex: 1; }
+.sr-failure-actions summary { width: fit-content; padding: 10px 2px; color: var(--muted); cursor: pointer; font-size: 12px; }
+.sr-failure-actions details .report-md { max-height: 360px; margin-top: 10px; border: 1px solid var(--hairline); border-radius: var(--r-md); }
 .sr-positioning { color: var(--ink-2); max-width: 40ch; }
 .sr-competitor-cards { display: none; }
 .sr-empty-copy { color: var(--muted); font-size: 13.5px; padding: 8px 2px; }
@@ -1110,6 +1150,15 @@ table.data tbody tr:hover td:first-child::before { content: ""; position: absolu
   .sr-report-graph .run-stage-bottom .c span { font-size: 8px; }
   .sr-report-view .section-title { margin: 30px 0 16px; }
   .sr-report-view .section-title h2 { font-size: 17px; }
+  .sr-failure-card { margin-top: 18px; padding: 20px 17px; }
+  .sr-failure-card > h2 { font-size: 27px; }
+  .sr-failure-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .sr-failure-metrics > div { padding: 12px 10px; }
+  .sr-failure-metrics dt { min-height: 28px; font-size: 9px; line-height: 1.4; }
+  .sr-failure-metrics dd { font-size: 21px; }
+  .sr-failure-explanation > div { grid-template-columns: 1fr; gap: 5px; padding: 14px; }
+  .sr-failure-actions { display: grid; }
+  .sr-failure-actions .btn { min-height: 46px; justify-content: center; }
   .ios-runtime-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .sr-opportunity-card {
     grid-template-columns: 26px minmax(0, 1fr) auto;

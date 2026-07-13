@@ -64,6 +64,14 @@ const GRAPH_PLACEHOLDER: GraphDatabase[] = [
 type Phase = "input" | "running" | "error" | "done" | "replay";
 
 type ReportSummary = {
+  quality?: {
+    status: "usable" | "technical_blocked" | "insufficient_evidence";
+    canUseReport: boolean;
+    confirmedFindings: number;
+    needsReviewFindings: number;
+    effectiveEvidence: number;
+    technicalFailureCount: number;
+  };
   counts: { evidence: number; competitors: number; opportunities: number };
   competitors: Array<{
     name: string;
@@ -82,7 +90,8 @@ type ReportSummary = {
 type ReportPayload = {
   schemaVersion?:
     | "industry_research_run_report.v1"
-    | "industry_research_run_report.v2";
+    | "industry_research_run_report.v2"
+    | "industry_research_run_report.v3";
   input?: {
     projectName?: string;
     category?: string;
@@ -1050,6 +1059,85 @@ function ReportView({
     );
     showToast("报告已下载", "copy");
   };
+
+  if (summary?.quality && !summary.quality.canUseReport) {
+    const isTechnical = summary.quality.status === "technical_blocked";
+
+    return (
+      <article className="view sr-report-view sr-report-failure">
+        <div className="sr-report-head">
+          <div>
+            <div className="sr-report-eyebrow">本次研究未完成</div>
+            <h1>{title}</h1>
+            <p>{sub}</p>
+          </div>
+        </div>
+
+        <section className="sr-failure-card">
+          <span className="sr-failure-badge">
+            {isTechnical ? "运行出现技术问题" : "公开证据不足"}
+          </span>
+          <h2>
+            {isTechnical
+              ? "这次没有生成可用的行业报告"
+              : "目前还不能形成可靠的行业结论"}
+          </h2>
+          <p className="sr-failure-lead">
+            {isTechnical
+              ? `资料采集或处理过程中出现了 ${summary.quality.technicalFailureCount} 个问题，并且没有形成任何已确认发现。`
+              : "系统没有找到足够多、能回到原网页核对的有效资料。"}
+          </p>
+
+          <dl className="sr-failure-metrics">
+            <div>
+              <dt>已确认发现</dt>
+              <dd>{summary.quality.confirmedFindings}</dd>
+            </div>
+            <div>
+              <dt>待核查线索</dt>
+              <dd>{summary.quality.needsReviewFindings}</dd>
+            </div>
+            <div>
+              <dt>技术问题</dt>
+              <dd>{summary.quality.technicalFailureCount}</dd>
+            </div>
+          </dl>
+
+          <div className="sr-failure-explanation">
+            <div>
+              <span>这意味着什么</span>
+              <strong>本次研究失败了，需要重新采集和验证资料。</strong>
+            </div>
+            <div>
+              <span>这不意味着什么</span>
+              <strong>不代表这个行业没有机会，也不代表应该停止商业化。</strong>
+            </div>
+            <div>
+              <span>下一步</span>
+              <strong>
+                重新搜索公开市场，只保留与目标品类直接相关、能核对原文的材料。
+              </strong>
+            </div>
+          </div>
+
+          <div className="sr-failure-actions">
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={onRestart}
+            >
+              <Icon name="spark" size={14} />
+              重新研究
+            </button>
+            <details>
+              <summary>查看技术记录</summary>
+              <div className="report report-md">{renderMarkdown(markdown)}</div>
+            </details>
+          </div>
+        </section>
+      </article>
+    );
+  }
 
   return (
     <article className="view sr-report-view">

@@ -109,6 +109,27 @@ describe("assessSourceQuality", () => {
     expect(quality.acceptedForReport).toBe(false);
   });
 
+  it("does not mistake generic ecommerce market language for refrigerator evidence", () => {
+    const refrigeratorInput: ResearchWorkflowInput = {
+      ...input,
+      projectName: "冰箱行业研究",
+      industry: "冰箱",
+      category: "冰箱",
+      market: "线上电商 / DTC",
+    };
+    const quality = assessSourceQuality({
+      target: target("https://www.amz123.com/"),
+      input: refrigeratorInput,
+      title: "跨境电商物流软件与 DTC 运营服务",
+      url: "https://www.amz123.com/",
+      extractedText:
+        "跨境电商 DTC 市场 物流仓储 软件服务 商品运营 品牌官网".repeat(30),
+    });
+
+    expect(quality.sourceRelevance).toBe("low");
+    expect(quality.acceptedForReport).toBe(false);
+  });
+
   it("keeps lifestyle media out of accepted evidence even when it mentions skincare", () => {
     const skincareInput: ResearchWorkflowInput = {
       ...input,

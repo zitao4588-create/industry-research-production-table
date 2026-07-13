@@ -56,13 +56,14 @@ export async function GET(request: Request, context: RouteContext) {
     }
 
     return NextResponse.json({
-      schemaVersion: "industry_research_run_report.v2",
+      schemaVersion: "industry_research_run_report.v3",
       runId: run.runId,
       input: buildSafeReportInput(run.input),
       reportMarkdown,
       summary: buildSafeReportSummary({
         databases: run.databases,
         runLog: run.run_log,
+        reportMarkdown,
       }),
     });
   } catch (error) {

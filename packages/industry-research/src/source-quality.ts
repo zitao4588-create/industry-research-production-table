@@ -276,10 +276,8 @@ function relevanceTerms(input: ResearchWorkflowInput) {
   const baseTerms = [
     input.industry,
     input.category,
-    input.market,
     ...input.industry.split(/\s+|\/|,|，/),
     ...input.category.split(/\s+|\/|,|，/),
-    ...input.market.split(/\s+|\/|,|，/),
   ]
     .map((term) => term.trim())
     .filter((term) => term.length >= 2);
