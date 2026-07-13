@@ -60,7 +60,7 @@ function errorMessage(error: unknown): string {
 
 export type IndustryOsUiPayload = {
   schemaVersion: "industry_os_ui_payload.v1";
-  evidenceMode: "contract_fixture";
+  evidenceMode: "contract_fixture" | "verified_external_evidence";
   industryPlan: IndustryPlan;
   representativeSamplePlan: IndustryRepresentativeSamplePlan;
   moduleResults: IndustryModuleResultsArtifact;
@@ -76,6 +76,34 @@ export type IndustryOsUiPayload = {
     label: string;
     status: "completed";
   }>;
+  runtime: {
+    persistence: {
+      adapter: "existing_supabase_and_local_delivery_store";
+      databaseMigrationRequired: false;
+      writePerformed: false;
+    };
+    stream: {
+      transport: "existing_same_origin_sse";
+      liveConnectionOpened: false;
+    };
+    progress: {
+      completedStages: number;
+      totalStages: number;
+    };
+    coverage: {
+      passedRows: number;
+      totalRows: number;
+    };
+    gaps: string[];
+    usage: {
+      publicRequests: number;
+      searchRequests: number;
+      firecrawlRequests: number;
+      reservedCredits: number;
+      llmRequests: number;
+      costYuan: number;
+    };
+  };
 };
 
 type IndustryOsFixtureActionResult =
@@ -110,6 +138,17 @@ export async function runIndustryOsFixtureAction(): Promise<IndustryOsFixtureAct
       evidenceMode: "contract_fixture",
       synthesisClaims: createSkincareSynthesisContractClaims(),
     });
+    const stages = [
+      { id: "planning", label: "研究规划", status: "completed" },
+      { id: "breadth_scan", label: "广度扫描", status: "completed" },
+      { id: "sampling", label: "代表抽样", status: "completed" },
+      { id: "module_research", label: "模块研究", status: "completed" },
+      { id: "synthesis", label: "跨模块综合", status: "completed" },
+      { id: "reporting", label: "报告与知识地图", status: "completed" },
+    ] as const;
+    const coverageRows = moduleResults.moduleResults.flatMap(
+      (module) => module.coverage,
+    );
     return {
       ok: true,
       payload: {
@@ -119,14 +158,43 @@ export async function runIndustryOsFixtureAction(): Promise<IndustryOsFixtureAct
         representativeSamplePlan: shared.representativeSamplePlan,
         moduleResults,
         reportBundle,
-        stages: [
-          { id: "planning", label: "研究规划", status: "completed" },
-          { id: "breadth_scan", label: "广度扫描", status: "completed" },
-          { id: "sampling", label: "代表抽样", status: "completed" },
-          { id: "module_research", label: "模块研究", status: "completed" },
-          { id: "synthesis", label: "跨模块综合", status: "completed" },
-          { id: "reporting", label: "报告与知识地图", status: "completed" },
-        ],
+        stages: [...stages],
+        runtime: {
+          persistence: {
+            adapter: "existing_supabase_and_local_delivery_store",
+            databaseMigrationRequired: false,
+            writePerformed: false,
+          },
+          stream: {
+            transport: "existing_same_origin_sse",
+            liveConnectionOpened: false,
+          },
+          progress: {
+            completedStages: stages.length,
+            totalStages: stages.length,
+          },
+          coverage: {
+            passedRows: coverageRows.filter((row) => row.status === "pass")
+              .length,
+            totalRows: coverageRows.length,
+          },
+          gaps: [
+            ...new Set([
+              ...moduleResults.gaps,
+              ...moduleResults.moduleResults.flatMap((module) => module.gaps),
+              ...coverageRows.flatMap((row) => row.gaps),
+              ...reportBundle.claimLedger.gaps,
+            ]),
+          ],
+          usage: {
+            publicRequests: 0,
+            searchRequests: 0,
+            firecrawlRequests: 0,
+            reservedCredits: 0,
+            llmRequests: 0,
+            costYuan: 0,
+          },
+        },
       },
     };
   } catch (error) {

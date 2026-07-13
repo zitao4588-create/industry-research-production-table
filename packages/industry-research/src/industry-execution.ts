@@ -1,7 +1,11 @@
+import { sha256IndustryContent } from "./industry-raw-document-store";
+
 export const industryExecutionCheckpointSchemaVersion =
   "industry_execution_checkpoint.v1" as const;
 export const industryExecutionManifestSchemaVersion =
   "industry_execution_manifest.v1" as const;
+export const industryExecutionOperationReceiptSchemaVersion =
+  "industry_execution_operation_receipt.v1" as const;
 
 export const industryExecutionStages = [
   "planning",
@@ -84,6 +88,37 @@ export type IndustryExecutionManifest = {
   };
 };
 
+export type IndustryExecutionOperationReceipt = {
+  schemaVersion: typeof industryExecutionOperationReceiptSchemaVersion;
+  artifactType: "industry-execution-operation-receipt";
+  operationKey: `sha256:${string}`;
+  idempotencyKey: `sha256:${string}`;
+  runId: string;
+  planId: string;
+  inputHash: `sha256:${string}`;
+  stage: IndustryExecutionStage;
+  operationId: string;
+  kind: string;
+  status: "started_unconfirmed" | "completed";
+  startedAt: string;
+  completedAt: string | null;
+  result: unknown;
+};
+
+export type IndustryExecutionOperationStore = {
+  begin: (receipt: IndustryExecutionOperationReceipt) => Promise<{
+    created: boolean;
+    receipt: IndustryExecutionOperationReceipt;
+  }>;
+  complete: (receipt: IndustryExecutionOperationReceipt) => Promise<void>;
+};
+
+export type IndustryExecutionOperationRunner = <Result>(input: {
+  operationId: string;
+  kind: string;
+  execute: (input: { idempotencyKey: `sha256:${string}` }) => Promise<Result>;
+}) => Promise<Result>;
+
 export const industryExecutionArtifactContracts: IndustryExecutionArtifactContract[] =
   [
     {
@@ -161,6 +196,117 @@ function validateArtifactRef(ref: IndustryExecutionArtifactRef) {
       `industry_execution_invalid_artifact_hash:${ref.artifactType}`,
     );
   }
+}
+
+function assertOperationReceipt(
+  receipt: IndustryExecutionOperationReceipt,
+  expected: {
+    operationKey: `sha256:${string}`;
+    checkpoint: IndustryExecutionCheckpoint;
+    stage: IndustryExecutionStage;
+    operationId: string;
+    kind: string;
+  },
+) {
+  if (
+    receipt.schemaVersion !== industryExecutionOperationReceiptSchemaVersion ||
+    receipt.artifactType !== "industry-execution-operation-receipt" ||
+    receipt.operationKey !== expected.operationKey ||
+    receipt.idempotencyKey !== expected.operationKey ||
+    receipt.runId !== expected.checkpoint.runId ||
+    receipt.planId !== expected.checkpoint.planId ||
+    receipt.inputHash !== expected.checkpoint.inputHash ||
+    receipt.stage !== expected.stage ||
+    receipt.operationId !== expected.operationId ||
+    receipt.kind !== expected.kind ||
+    !receipt.startedAt ||
+    !["started_unconfirmed", "completed"].includes(receipt.status) ||
+    (receipt.status === "completed" && !receipt.completedAt) ||
+    (receipt.status === "started_unconfirmed" && receipt.completedAt !== null)
+  ) {
+    throw new Error(
+      `industry_execution_operation_receipt_invalid:${expected.operationId}`,
+    );
+  }
+}
+
+async function createIndustryExecutionOperationRunner(input: {
+  checkpoint: IndustryExecutionCheckpoint;
+  stage: IndustryExecutionStage;
+  store?: IndustryExecutionOperationStore;
+  now: () => string;
+}): Promise<IndustryExecutionOperationRunner> {
+  return async <Result>(operation: {
+    operationId: string;
+    kind: string;
+    execute: (input: { idempotencyKey: `sha256:${string}` }) => Promise<Result>;
+  }) => {
+    const operationId = operation.operationId.trim();
+    const kind = operation.kind.trim();
+    if (!/^[a-z0-9][a-z0-9._:-]{0,127}$/i.test(operationId)) {
+      throw new Error("industry_execution_operation_id_invalid");
+    }
+    if (!/^[a-z0-9][a-z0-9._:-]{0,127}$/i.test(kind)) {
+      throw new Error("industry_execution_operation_kind_invalid");
+    }
+    if (!input.store) {
+      throw new Error(
+        `industry_execution_operation_store_required:${operationId}`,
+      );
+    }
+    const operationKey = await sha256IndustryContent(
+      [
+        industryExecutionOperationReceiptSchemaVersion,
+        input.checkpoint.runId,
+        input.checkpoint.planId,
+        input.checkpoint.inputHash,
+        input.stage,
+        operationId,
+        kind,
+      ].join("\n"),
+    );
+    const startedReceipt: IndustryExecutionOperationReceipt = {
+      schemaVersion: industryExecutionOperationReceiptSchemaVersion,
+      artifactType: "industry-execution-operation-receipt",
+      operationKey,
+      idempotencyKey: operationKey,
+      runId: input.checkpoint.runId,
+      planId: input.checkpoint.planId,
+      inputHash: input.checkpoint.inputHash,
+      stage: input.stage,
+      operationId,
+      kind,
+      status: "started_unconfirmed",
+      startedAt: input.now(),
+      completedAt: null,
+      result: null,
+    };
+    const claimed = await input.store.begin(startedReceipt);
+    assertOperationReceipt(claimed.receipt, {
+      operationKey,
+      checkpoint: input.checkpoint,
+      stage: input.stage,
+      operationId,
+      kind,
+    });
+    if (!claimed.created) {
+      if (claimed.receipt.status === "completed") {
+        return structuredClone(claimed.receipt.result) as Result;
+      }
+      throw new Error(
+        `industry_execution_operation_outcome_unconfirmed:${operationId}`,
+      );
+    }
+    const result = await operation.execute({ idempotencyKey: operationKey });
+    const completedReceipt: IndustryExecutionOperationReceipt = {
+      ...startedReceipt,
+      status: "completed",
+      completedAt: input.now(),
+      result: structuredClone(result),
+    };
+    await input.store.complete(completedReceipt);
+    return result;
+  };
 }
 
 function validateStageArtifacts(
@@ -446,6 +592,7 @@ export type IndustryExecutionStageHandler = (input: {
   stage: IndustryExecutionStage;
   checkpoint: IndustryExecutionCheckpoint;
   contract: IndustryExecutionArtifactContract;
+  runOperation: IndustryExecutionOperationRunner;
 }) => Promise<IndustryExecutionArtifactRef[]>;
 
 export async function runIndustryExecutionStages(input: {
@@ -454,6 +601,7 @@ export async function runIndustryExecutionStages(input: {
   now: () => string;
   saveCheckpoint?: (checkpoint: IndustryExecutionCheckpoint) => Promise<void>;
   stopAfterStage?: IndustryExecutionStage;
+  operationStore?: IndustryExecutionOperationStore;
 }) {
   assertIndustryExecutionCheckpoint(input.checkpoint);
   let checkpoint = prepareIndustryExecutionCheckpointForResume(
@@ -469,10 +617,17 @@ export async function runIndustryExecutionStages(input: {
     if (!contract)
       throw new Error(`industry_execution_contract_missing:${stage}`);
     try {
+      const runOperation = await createIndustryExecutionOperationRunner({
+        checkpoint,
+        stage,
+        store: input.operationStore,
+        now: input.now,
+      });
       const artifactRefs = await input.handler({
         stage,
         checkpoint,
         contract,
+        runOperation,
       });
       checkpoint = completeIndustryExecutionStage(
         checkpoint,

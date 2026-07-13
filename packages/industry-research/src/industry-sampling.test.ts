@@ -82,6 +82,72 @@ describe("Industry representative sampling", () => {
     expect(first.assertions.searchRankDeterminedSelection).toBe(false);
   });
 
+  it("keeps validated zero-incremental samples when a module relationship minimum requires them", () => {
+    const fixture = contractFixture();
+    const sourceCandidatePlan = structuredClone(fixture.sourceCandidatePlan);
+    const sourceTemplate = sourceCandidatePlan.candidates.find(
+      (candidate) => candidate.status === "eligible_candidate",
+    );
+    if (!sourceTemplate) throw new Error("g5_source_template_missing");
+    const contentSources = [
+      {
+        ...sourceTemplate,
+        id: "source-candidate-content-platform",
+        name: "Content platform fixture",
+        canonicalUrl: "https://content-platform.example/public-report",
+        hostname: "content-platform.example",
+        sourceRole: "content_platform" as const,
+      },
+      {
+        ...sourceTemplate,
+        id: "source-candidate-creator-data",
+        name: "Creator data fixture",
+        canonicalUrl: "https://creator-data.example/public-report",
+        hostname: "creator-data.example",
+        sourceRole: "creator_data" as const,
+      },
+    ];
+    sourceCandidatePlan.candidates.push(...contentSources);
+    const channelIds = fixture.industryPlan.channels.map((item) => item.id);
+    const contentCandidates: IndustrySamplingCandidateInput[] = contentSources
+      .slice(0, 2)
+      .map((source, index) => ({
+        entityId: `content-actor-${index + 1}`,
+        name: `Content actor ${index + 1}`,
+        sampleType: "content_source",
+        relationshipToIndustry: "content_actor",
+        sourceCandidateIds: [source.id],
+        validationStatus: "validated_for_sampling",
+        validationBasis: ["public content-source contract fixture"],
+        searchRank: null,
+        populationSegments: [],
+        axisAssignments: {
+          taxonomyIds: [],
+          valueChainIds: [],
+          priceTierIds: [],
+          channelIds,
+          consumerNeedIds: [],
+          businessModelIds: [],
+        },
+        selectionRationale: "Required content-actor relationship coverage.",
+      }));
+    const plan = createIndustryRepresentativeSamplePlan({
+      industryPlan: fixture.industryPlan,
+      sourceCandidatePlan,
+      samplingCandidates: [...fixture.samplingCandidates, ...contentCandidates],
+      requiredRelationshipMinimums: { content_actor: 2 },
+    });
+
+    expect(plan.relationshipCoverageGate.status).toBe("pass");
+    expect(plan.relationshipCoverageGate.selectedCounts.content_actor).toBe(2);
+    expect(
+      plan.selectedSamples.filter(
+        (sample) => sample.relationshipToIndustry === "content_actor",
+      ),
+    ).toHaveLength(2);
+    expect(plan.coverageGate.status).toBe("pass");
+  });
+
   it("never counts a business-model analogy as a competitor", () => {
     const fixture = contractFixture();
     const plan = createIndustryRepresentativeSamplePlan({

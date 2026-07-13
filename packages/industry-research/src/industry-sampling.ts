@@ -75,6 +75,16 @@ export type IndustryRepresentativeSamplePlan = {
     requiredPopulationSegments: number;
     status: "pass" | "blocked_insufficient_coverage";
   };
+  relationshipCoverageGate: {
+    requiredMinimums: Partial<
+      Record<IndustryRepresentativeSample["relationshipToIndustry"], number>
+    >;
+    selectedCounts: Record<
+      IndustryRepresentativeSample["relationshipToIndustry"],
+      number
+    >;
+    status: "pass" | "blocked_insufficient_coverage";
+  };
   competitorSampleIds: string[];
   analogySampleIds: string[];
   uncoveredAxisItemIds: string[];
@@ -130,11 +140,17 @@ function unique<T extends string>(values: T[]) {
 }
 
 function axisIds(plan: IndustryPlan) {
+  const moduleChannelIds = plan.coverageMatrix
+    .filter((row) => row.axisType === "channel")
+    .flatMap((row) => row.axisItemIds);
   return {
     taxonomyIds: new Set(plan.taxonomy.map((item) => item.id)),
     valueChainIds: new Set(plan.valueChain.map((item) => item.id)),
     priceTierIds: new Set(plan.priceTiers.map((item) => item.id)),
-    channelIds: new Set(plan.channels.map((item) => item.id)),
+    channelIds: new Set([
+      ...plan.channels.map((item) => item.id),
+      ...moduleChannelIds,
+    ]),
     consumerNeedIds: new Set(plan.consumerNeeds.map((item) => item.id)),
     businessModelIds: new Set(plan.businessModels.map((item) => item.id)),
   };
@@ -266,9 +282,10 @@ function coverageFromSelected(
   selected: IndustrySelectedRepresentativeSample[],
   assignmentKey: keyof IndustryRepresentativeSample["axisAssignments"],
 ) {
+  const allowedIds = new Set(allIds);
   const coveredIds = unique(
     selected.flatMap((sample) => sample.axisAssignments[assignmentKey]),
-  );
+  ).filter((id) => allowedIds.has(id));
   return {
     coveredIds,
     uncoveredIds: allIds.filter((id) => !coveredIds.includes(id)),
@@ -280,6 +297,9 @@ export function createIndustryRepresentativeSamplePlan(input: {
   sourceCandidatePlan: IndustrySourceCandidatePlan;
   samplingCandidates: IndustrySamplingCandidateInput[];
   minPopulationSegments?: number;
+  requiredRelationshipMinimums?: Partial<
+    Record<IndustryRepresentativeSample["relationshipToIndustry"], number>
+  >;
 }): IndustryRepresentativeSamplePlan {
   const { industryPlan, sourceCandidatePlan } = input;
   if (sourceCandidatePlan.industryPlanId !== industryPlan.planId) {
@@ -289,6 +309,30 @@ export function createIndustryRepresentativeSamplePlan(input: {
   if (minPopulationSegments < 1) {
     throw new Error("industry_sampling_population_requirement_invalid");
   }
+  const relationshipOrder = [
+    "direct_competitor",
+    "supply_chain_actor",
+    "channel_actor",
+    "content_actor",
+    "business_model_analogy",
+  ] as const satisfies readonly IndustryRepresentativeSample["relationshipToIndustry"][];
+  const requiredRelationshipMinimums = Object.fromEntries(
+    relationshipOrder
+      .filter((relationship) =>
+        Object.hasOwn(input.requiredRelationshipMinimums ?? {}, relationship),
+      )
+      .map((relationship) => {
+        const minimum = input.requiredRelationshipMinimums?.[relationship] ?? 0;
+        if (!Number.isInteger(minimum) || minimum < 0) {
+          throw new Error(
+            `industry_sampling_relationship_requirement_invalid:${relationship}`,
+          );
+        }
+        return [relationship, minimum];
+      }),
+  ) as Partial<
+    Record<IndustryRepresentativeSample["relationshipToIndustry"], number>
+  >;
 
   const excludedCandidates: IndustrySamplingExclusion[] = [];
   const validCandidates = input.samplingCandidates
@@ -320,28 +364,11 @@ export function createIndustryRepresentativeSamplePlan(input: {
   const selectedSamples: IndustrySelectedRepresentativeSample[] = [];
   const covered = new Set<string>();
   const remaining = [...validCandidates];
-  while (remaining.length > 0) {
-    remaining.sort((left, right) => {
-      const scoreDifference =
-        contributionScore(right.keys, covered) -
-        contributionScore(left.keys, covered);
-      return (
-        scoreDifference ||
-        left.input.entityId.localeCompare(right.input.entityId)
-      );
-    });
-    const selected = remaining.shift();
-    if (!selected) break;
-    const newKeys = selected.keys.filter((key) => !covered.has(key));
-    if (newKeys.length === 0) {
-      excludedCandidates.push({
-        entityId: selected.input.entityId,
-        name: selected.input.name,
-        sourceCandidateIds: [...selected.input.sourceCandidateIds],
-        reasons: ["no_incremental_coverage"],
-      });
-      continue;
-    }
+  const redundantCandidates: typeof validCandidates = [];
+  const selectCandidate = (
+    selected: (typeof validCandidates)[number],
+    newKeys: string[],
+  ) => {
     for (const key of newKeys) covered.add(key);
     selectedSamples.push({
       id: `sample-${stableHash(selected.input.entityId)}`,
@@ -362,6 +389,54 @@ export function createIndustryRepresentativeSamplePlan(input: {
       ),
       coverageContributionKeys: newKeys,
       selectionOrder: selectedSamples.length + 1,
+    });
+  };
+  while (remaining.length > 0) {
+    remaining.sort((left, right) => {
+      const scoreDifference =
+        contributionScore(right.keys, covered) -
+        contributionScore(left.keys, covered);
+      return (
+        scoreDifference ||
+        left.input.entityId.localeCompare(right.input.entityId)
+      );
+    });
+    const selected = remaining.shift();
+    if (!selected) break;
+    const newKeys = selected.keys.filter((key) => !covered.has(key));
+    if (newKeys.length === 0) {
+      redundantCandidates.push(selected);
+      continue;
+    }
+    selectCandidate(selected, newKeys);
+  }
+  for (const relationship of relationshipOrder) {
+    const minimum = requiredRelationshipMinimums[relationship] ?? 0;
+    let selectedCount = selectedSamples.filter(
+      (sample) => sample.relationshipToIndustry === relationship,
+    ).length;
+    const matching = redundantCandidates
+      .filter(
+        (candidate) => candidate.input.relationshipToIndustry === relationship,
+      )
+      .sort((left, right) =>
+        left.input.entityId.localeCompare(right.input.entityId),
+      );
+    while (selectedCount < minimum) {
+      const candidate = matching.shift();
+      if (!candidate) break;
+      const index = redundantCandidates.indexOf(candidate);
+      if (index >= 0) redundantCandidates.splice(index, 1);
+      selectCandidate(candidate, []);
+      selectedCount += 1;
+    }
+  }
+  for (const candidate of redundantCandidates) {
+    excludedCandidates.push({
+      entityId: candidate.input.entityId,
+      name: candidate.input.name,
+      sourceCandidateIds: [...candidate.input.sourceCandidateIds],
+      reasons: ["no_incremental_coverage"],
     });
   }
 
@@ -413,6 +488,19 @@ export function createIndustryRepresentativeSamplePlan(input: {
       (taxonomyCounts.get(item.id) ?? 0) >=
       requirements.minSamplesPerTaxonomyItem,
   ).length;
+  const selectedRelationshipCounts = Object.fromEntries(
+    relationshipOrder.map((relationship) => [
+      relationship,
+      selectedSamples.filter(
+        (sample) => sample.relationshipToIndustry === relationship,
+      ).length,
+    ]),
+  ) as Record<IndustryRepresentativeSample["relationshipToIndustry"], number>;
+  const relationshipGatePassed = relationshipOrder.every(
+    (relationship) =>
+      selectedRelationshipCounts[relationship] >=
+      (requiredRelationshipMinimums[relationship] ?? 0),
+  );
   const gatePassed =
     taxonomyItemsMeetingMinimum === industryPlan.taxonomy.length &&
     coverage.priceTiers.coveredIds.length >=
@@ -420,7 +508,8 @@ export function createIndustryRepresentativeSamplePlan(input: {
     coverage.channels.coveredIds.length >= requirements.minCoveredChannels &&
     coverage.businessModels.coveredIds.length >=
       requirements.minCoveredBusinessModels &&
-    coverage.populationSegments.length >= minPopulationSegments;
+    coverage.populationSegments.length >= minPopulationSegments &&
+    relationshipGatePassed;
   const coverageGate = {
     taxonomyItemsMeetingMinimum,
     requiredTaxonomyItems: industryPlan.taxonomy.length,
@@ -433,6 +522,13 @@ export function createIndustryRepresentativeSamplePlan(input: {
     coveredPopulationSegments: coverage.populationSegments.length,
     requiredPopulationSegments: minPopulationSegments,
     status: gatePassed
+      ? ("pass" as const)
+      : ("blocked_insufficient_coverage" as const),
+  };
+  const relationshipCoverageGate = {
+    requiredMinimums: requiredRelationshipMinimums,
+    selectedCounts: selectedRelationshipCounts,
+    status: relationshipGatePassed
       ? ("pass" as const)
       : ("blocked_insufficient_coverage" as const),
   };
@@ -457,6 +553,16 @@ export function createIndustryRepresentativeSamplePlan(input: {
     : [
         "代表性覆盖不足，禁止进入 module_research 和综合判断。",
         ...uncoveredAxisItemIds.map((id) => `uncovered_axis_item:${id}`),
+        ...relationshipOrder
+          .filter(
+            (relationship) =>
+              selectedRelationshipCounts[relationship] <
+              (requiredRelationshipMinimums[relationship] ?? 0),
+          )
+          .map(
+            (relationship) =>
+              `relationship_minimum:${relationship}:${selectedRelationshipCounts[relationship]}/${requiredRelationshipMinimums[relationship] ?? 0}`,
+          ),
       ];
 
   return {
@@ -468,6 +574,7 @@ export function createIndustryRepresentativeSamplePlan(input: {
         sourceCandidatePlanId: sourceCandidatePlan.planId,
         candidates: input.samplingCandidates,
         minPopulationSegments,
+        requiredRelationshipMinimums,
       }),
     )}`,
     industryPlanId: industryPlan.planId,
@@ -476,6 +583,7 @@ export function createIndustryRepresentativeSamplePlan(input: {
     excludedCandidates,
     coverage,
     coverageGate,
+    relationshipCoverageGate,
     competitorSampleIds,
     analogySampleIds,
     uncoveredAxisItemIds,

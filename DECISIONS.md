@@ -2,6 +2,33 @@
 
 更新时间：2026-07-13
 
+## 2026-07-13：M2.3 第一轮只形成原文候选，后续 wave 使用独立预算
+
+- 决策事实：洗碗机 M2.3 第一轮使用 18/30 public requests、3/3 Tavily、Firecrawl 保守预留 50/50 credits、0 LLM、¥0.192/¥2 和 42.374 秒；6 份原文全部写入本地不可变仓库，未写生产、数据库或报告。
+- 决策事实：6 份原文中只有 2 份通过强品类相关性复核；海尔洗地机和空调页面虽被旧 `sourceQuality` 接受，仍因标题/路径冲突降为 `category_relevance_mismatch`；另 2 份美的新闻页被来源质量拒绝。
+- 决策：旧 `acceptedForReport=true` 不是 M2 覆盖充分条件；必须同时通过 route、source role、强品类相关性和后续 evidence 门禁。raw candidate 不得直接进入 M3。
+- 决策：`live_budget` 改为 Goal-scoped grant，记录 Goal、范围、时间和 decision hash。M2.3 授权不能自动授权 M2.4 或 M4.2；M2.4 定向 wave 必须单独确认。
+- 原因：第一轮证明通用搜索容易把品牌站内相邻品类页面排到前面，同时只有品牌官网角色，无法支持市场、监管、消费者或渠道结论。
+- 影响：当前 0/11 coverage rows 达到原文候选目标，Loop 诚实停在 M2.4 权限门。下一轮先定向补权威与渠道来源，并修复强品类相关性，仍不调用 LLM。
+
+## 2026-07-13：原始采集先进入不可变版本仓库，raw document 不等于 evidence
+
+- 决策：公开采集入口先经过统一 route contract；路由明确 adapter、来源角色、权限、阻断原因和产物层级，搜索/sitemap/RSS 发现结果只算 candidate。
+- 决策：公开页面原文按规范 URL 与 SHA-256 内容指纹去重；同 URL 同内容幂等，同 URL 内容变化新增版本并链接旧 document，不覆盖历史快照。
+- 决策：每个唯一快照必须有一条采集审计，记录 route、时间、请求/provider/credits/费用；原文被修改、摘要与文档不一致或版本链损坏时 fail-closed。
+- 决策：带账号密码、内网/本机地址、登录、cookie、验证码、付费墙、私人数据或未授权来源角色的链路不得进入原文仓库。
+- 原因：后续 claim/quote 必须能回到“当时真正抓到的原文”；覆盖写入和覆盖旧文件会让报告无法复核，也可能把候选或脏数据误当证据。
+- 影响：M2.1/M2.2 只完成本地契约和离线 fixture；M2.3 在精确预算获批前不执行真实请求，raw document 仍需清洗、来源质量、quote 和 claim-role 门禁后才可能成为 evidence。
+
+## 2026-07-13：Data-to-Report 使用 M1–M6 顺序 Loop，采集任务先于真实采集
+
+- 决策：新建独立 `industry_os_data_report_loop.v1`，把 M1–M6 拆成 24 个顺序小 Goal；旧 `industry-os-loop-state.json` 的 G2–G12 完成历史只读保留，不覆盖、不复用。
+- 决策：默认权限保持 L2；状态机在 live API/credits、commit/push/deploy 和真实用户外联前分别进入 `awaiting_permission`，总 Loop 的启动不能替代这些具体授权。
+- 决策：Planner 先把每个 coverage row 编译成 `industry_acquisition_task.v1`，明确研究问题、允许来源角色、目标 claim 角色、覆盖、预算、合规、停止条件和 gap；搜索候选始终不等于 evidence。
+- 决策：洗碗机 M1 fixture 必须保持零 live request、零费用、零 external facts。M1 完成只代表采集计划可执行且稳定，不代表数据集或报告完成。
+- 原因：此前单次大 run 同时承担发现、采集、抽取和报告，遇到缺源或超时时难以判断失败在哪一层，也容易把技术失败误写为停止商业化。
+- 影响：M2 先实现统一路由和不可变原始数据层，再申请受控 live 预算；覆盖不足时诚实停在 M2，不进入 M3 生成结论。
+
 ## 2026-07-13：统一报告决策模型，分离证据质量与商业去留
 
 - 决策：所有报告共用 `research_decision_guidance.v1`，只输出研究就绪度、商业化是否已评估、依据和下一验证动作。
@@ -619,3 +646,71 @@
 - 影响：
   - mock 工作流现在产出 8 个候选、19 份 raw documents、27 个抽取任务、74 条 evidence。
   - 竞品、产品、痛点、内容、关键词、机会数据更接近设计稿。
+## 2026-07-13：Loop 内 live_budget 改为 standing authorization，但每波仍执行硬上限
+
+- 决策：用户授权 M1–M6 Loop 内所有 `live_budget`，后续不再逐波暂停询问；状态机升级到 `industry_os_data_report_loop.v2`，同时保留每个 Goal/wave 的范围、上限、时间和 hash 审计。
+- 边界：standing authorization 仅覆盖有限、可审计的 live provider/public requests，不包含 commit、push、部署、生产或数据库写入、migration、真实用户外联和公开发布。
+- 验证：M2.4 三个 wave 各自执行 24 public / 3 Tavily / 20 Firecrawl credits / 0 LLM / ¥1 / 10 分钟硬上限，实际合计 21 public、9 Tavily、保守预留 5 Firecrawl credits、0 LLM、¥0.576。
+
+## 2026-07-13：M2 以关键 raw-candidate coverage 作为进入 M3 的门槛
+
+- 决策：raw document 永远不是 evidence；但 M3 本身负责原子 claim 和 quote 提取，因此 M2 的进入条件是 4/4 critical raw-candidate coverage 通过，而不是要求所有 11 行都已形成证据。
+- 结果：18 份不可变原文中 11 份通过强品类与来源门，4/4 关键行、4/11 总行达标；7 个非关键 gap 继续显式保留。官方标准记录只在来源角色、标准号、品类名和至少两项发布字段同时满足时允许窄规则覆盖通用导航噪音判定。
+- 拒绝：2 份 PDF 仅抓到二进制载荷、2 份串品类和 5 份低质量来源不得进入 M3 claims。
+## 2026-07-13：M3.1 原子事实必须直接命中 quote 并绑定不可变 raw
+
+- 决策：新增 `industry_atomic_claims.v1`；claim statement 去除末尾标点和空白后必须是 quote 的连续子串，quote 必须在同 URL 的清洗正文中逐字命中，并同时绑定 immutable document ID、route、task、coverage row、source role 和 claim role。
+- 门禁：只有 M2 `raw_candidate_relevant_not_evidence` 可以进入；category mismatch、source-quality rejected 和 binary PDF 即使 URL、route、quote 存在也 fail-closed。商业化停止/进入建议不能作为原子事实。
+- 结果：洗碗机生成 7 条原子事实、0 rejected candidates；每条 claim 额外绑定清洗正文 SHA-256，消除旧 wave 内 extracted ID 重号造成的版本歧义；确定性 replay SHA-256 均为 `a2d6f9f8b1e68b3ac6778d8674134c1cb156135dd7f086f35d3ececd7e5c13aa`。本阶段 LLM、报告、商业化判断和生产写入均为 0/false。
+## 2026-07-13：机会只能作为带失败标准的未验证假设
+
+- 决策：新增 `industry_opportunity_hypotheses.v1`；每条假设必须标记 `unverified_opportunity_hypothesis`，声明目标用户、问题、原子事实基础、假设前提、至少两个未知项，以及含样本、步骤、成功、失败和停止条件的验证计划。
+- 权限：验证执行固定为 `not_started` 且需要 L5；M3.2 只准备计划，不联系用户。事实只能作为 hypothesis 的基础，不能证明 hypothesis 成立。
+- 门禁：禁止“已确认机会、必然、应该推出、巨大机会、蓝海、值得/不值得进入、停止/终止商业化”等确定性或商业去留措辞。研究决策只能是 `validation_ready / requires_real_world_validation`。
+- 结果：3 条洗碗机假设引用全部 7 条原子事实，计划 15 个参与者 session，实际执行 0；确定性 replay SHA-256 为 `88fb9c65d40395b66ef7b7aaa54c3b6caf13f99c039accdcb11e876a5532c42d`。
+## 2026-07-13：M3.3 报告按事实、假设、缺口和拒绝来源分级
+
+- 决策：新增 `industry_graded_report.v1`；确认事实与未验证假设必须分章，coverage 11 行逐行显示，拒绝来源与 evidence appendix 不得省略。M3.3 产物只标 `draft_pending_m3_4_review`。
+- 边界：报告决策字段固定为 `no_project_go_or_stop_decision`，商业状态只允许 `requires_real_world_validation`。覆盖缺口不能改写成负面商业结论，事实也不能证明假设。
+- 结果：报告包含 7 facts、3 hypotheses、4/11 coverage、7 gaps、7 rejected sources；JSON/Markdown replay SHA-256 分别为 `21b255295ec63b3756925995eee42881c598a7e283957b1b43aa224365b28603` 与 `5dc72ea937ce71958e90bdf2893b83c6ae225be9c6599d7ded98711a56709ed7`。
+
+## 2026-07-13：M3.4 用独立审查证书完成本地 C2，不改写 M3.3 冻结报告
+
+- 决策：新增 `industry_m3_report_review.v1` 作为 M3.3 报告的独立验收证书；M3.3 原始 JSON/Markdown 保持冻结，不通过事后改写状态制造“已审核”产物。
+- 门禁：自动核对全部 claim 的 immutable raw、清洗正文 hash、quote offsets、statement 子串、source/claim role 和 M2 强相关绑定；再覆盖 market、regulation、product 三类代表性抽查，以及章节顺序、附录完整性、7 个 gap、7 个拒绝来源、L5/not_started 假设、禁用商业去留结论和移动可读性。
+- 结果：7/7 claim 通过，审查证书两次生成 SHA-256 均为 `598a1d35d2d19334ac5f4d3776a4984cbf037be2bfcfef3776c70dd71f2a7e99`；`pnpm check` 通过 36 个测试文件、306 条测试。M3 达到 `C2_local_verified` 并解锁 M4.1。
+- 边界：本地 Codex 审查不等于独立人工复核或真实用户验证，二者仍为 false；不产生商业化继续/停止结论，也不授权 commit、push、部署或生产写入。
+
+## 2026-07-13：M4.1 保留护肤品大行业输入，六模块各自领取覆盖任务
+
+- 决策：新增 `industry_m4_module_acquisition_plan.v1`，直接用 Planner 的完整“护肤品”输入生成行业计划和采集计划；禁止在 M4.1 中自动改写成品牌、单品或 SKU。
+- 模块：市场规模与结构 3 个任务、监管与标准 1 个、消费者需求 1 个、电商竞品 3 个、内容与流量 1 个、商业模式与供应链 2 个，合计六模块 11 个 coverage-driven tasks。
+- 边界：M4.1 全部为 `offline_plan`，public/provider/credits/cost/LLM/external facts 均为 0；候选仍不是 evidence。M4.2 真实采集必须使用 standing `live_budget`，但每波仍需单独硬上限和审计。
+- 结果：两次 `module_acquisition_plan.json` SHA-256 均为 `c1a82ecb592bb6d3147827208b9c5b6e4b4e4f11802952bb9274832e86dd3713`；`pnpm check` 通过 37 个测试文件、308 条测试。
+
+## 2026-07-13：M4.2 三波后按来源覆盖门暂停，不用数据量替代三角校验
+
+- 执行：三波各自受 36 public / 6 Tavily / 30 Firecrawl credits / 0 LLM / ¥2 / 12 分钟上限保护，实际合计 83 public、18 Tavily、9 Firecrawl、保守 45 credits、0 LLM、¥1.152；原文全部只写本地不可变仓库。
+- 数据：累计 56 份 immutable raw，32 份通过强护肤相关性，11 份品类不匹配、13 份来源质量拒绝、3 份二进制载荷。5 个代表样本基于实际产品/品牌/零售/供应链页面编译，抽样门 5/5 taxonomy、3/3 observed price groups、3/3 channels、3/3 business models、2/2 population segments 全通过；observed price groups 不外推为行业价格带。
+- 门禁：把代表样本贡献合并后，coverage 仍只有 2/11、critical 1/4。监管与竞品 observed price row 达标；其余行仍缺独立来源、来源角色或供应链样本。56 份 raw 和 32 份 relevant candidates 不能代替这些门槛。
+- 决策：触发 `maximum_three_planned_live_waves_reached`，Loop 暂停在 M4.2，禁止进入 M4.3。恢复条件是新的来源策略或授权导入可核验的研究/财报/内容数据，不是继续重复相同搜索。商业化状态仍为 `not_evaluated`。
+- 审计：final coverage SHA-256 为 `e8138907ecc7ef2529ede2177d572448c1439618b73b9fae743b1662f85d5372`。第三波 Firecrawl 30/30 credits 触顶后预算器未发送额外请求；historical `runError` 文案遗漏已在后续代码修正，未重跑第三波。
+
+## 2026-07-13：M4.2 只用公开市场恢复，不再等待人工补充
+
+- 决策：用户明确选择公开市场路径，恢复只允许公开研究机构、监管、上市公司财报、品牌/零售、内容平台和供应链页面；manual supplement 与 authorized import 固定为 0，不通过放宽 coverage、伪造样本或把 raw candidate 当 evidence 来过门。
+- 结果：三波恢复后累计 82 份 immutable raw、49 份相关 candidates 和 9 个代表样本；11/11 coverage、critical 4/4。六波总账为 130 public、24 Tavily、23 Firecrawl、115 reserved credits、0 LLM、¥1.536。
+- 历史边界：前三波 2/11 coverage 的暂停记录继续保留，它证明旧来源策略不足；后续通过的是新的公开来源组合，不是事后改写旧结果。
+
+## 2026-07-13：M4.3/M4.4 复用现有模块与综合器，不新增第二套报告后端
+
+- 决策：六模块按固定顺序消费通过门禁的公开证据；综合阶段复用既有 `industry_claim_ledger.v1`、12 章 report bundle 与知识图谱，只新增一个本地编排脚本和证据附录，不再建立新的报告引擎。
+- 分层：33 条直接 claim 可以作为 fact/signal；1 条跨模块关系只能是 inference；2 个方向只能标为带目标用户、问题、反证和验证方法的 hypothesis。商业化状态固定为 `requires_real_world_validation`，公开数据与工程通过不能生成继续或停止结论。
+- 兼容：护肤报告不含洗碗机内容；洗碗机 JSON/Markdown 回放与既有 C2 hash 完全一致；旧 8 文件交付边界不变。M4 达到本地 C2，未获得生产 C3 或真实用户 C4。
+
+## 2026-07-14：M5 继续复用现有 runner、存储、SSE 和单一 UI
+
+- Runner：不引入队列、数据库或微服务；在现有六阶段 checkpoint runner 上增加原子 operation receipt。相同 run/stage/operation 使用稳定幂等键，completed receipt 直接复用；`started_unconfirmed` 禁止自动重发，先核对外部结果，防止重复扣费。
+- UI/存储：不新增第二套页面或 migration。Industry OS payload 只增加公开安全 runtime summary；Supabase 继续保存现有 JSON run_log/manifest，本地 8 文件与同源 SSE 契约保持不变。
+- 兼容：M5.3 用既有洗碗机 run 验证公开分享白名单、Origin 拒绝、详情/下载鉴权和 8 文件下载；replay 只验证 401 安全边界，没有为验收触发新的公开抓取。
+- 权限：M5.1–M5.3 结束于本地 C2。M5.4 的 commit、push 和生产部署必须单独获得 L3/L4；standing live_budget 不自动授权这些动作。

@@ -81,6 +81,8 @@ export function IndustryOsResult({
     ["商业模式", industryPlan.businessModels],
   ] as const;
   const title = `${industryPlan.inputCoordinates.industry} Industry OS`;
+  const runtime = payload.runtime;
+  const isContractFixture = payload.evidenceMode === "contract_fixture";
 
   return (
     <article
@@ -97,7 +99,11 @@ export function IndustryOsResult({
           </p>
         </div>
         <div className="ios-head-actions">
-          <span className="ios-contract-badge">CONTRACT ONLY · 非行业事实</span>
+          <span className="ios-contract-badge">
+            {isContractFixture
+              ? "CONTRACT ONLY · 非行业事实"
+              : "PUBLIC EVIDENCE · 公开证据"}
+          </span>
           <button
             type="button"
             className="btn btn-ghost"
@@ -144,7 +150,10 @@ export function IndustryOsResult({
         <div className="section-title">
           <h2 id="ios-stage-title">六阶段进度</h2>
           <span className="line" />
-          <span className="meta">6 / 6 contract checkpoints</span>
+          <span className="meta">
+            {runtime.progress.completedStages} / {runtime.progress.totalStages}
+            checkpoints
+          </span>
         </div>
         <ol className="ios-stage-list">
           {payload.stages.map((stage, index) => (
@@ -157,6 +166,59 @@ export function IndustryOsResult({
             </li>
           ))}
         </ol>
+      </section>
+
+      <section className="ios-section" aria-labelledby="ios-runtime-title">
+        <div className="section-title">
+          <h2 id="ios-runtime-title">运行状态与费用</h2>
+          <span className="line" />
+          <span className="meta">公开安全摘要</span>
+        </div>
+        <div className="ios-runtime-grid">
+          <div className="ios-runtime-card">
+            <span>阶段</span>
+            <b>
+              {runtime.progress.completedStages}/{runtime.progress.totalStages}
+            </b>
+            <small>已完成</small>
+          </div>
+          <div className="ios-runtime-card">
+            <span>Coverage</span>
+            <b>
+              {runtime.coverage.passedRows}/{runtime.coverage.totalRows}
+            </b>
+            <small>通过行</small>
+          </div>
+          <div className="ios-runtime-card">
+            <span>研究缺口</span>
+            <b>{runtime.gaps.length}</b>
+            <small>缺口 {runtime.gaps.length}</small>
+          </div>
+          <div className="ios-runtime-card">
+            <span>本轮费用</span>
+            <b>¥{runtime.usage.costYuan.toFixed(3)}</b>
+            <small>
+              public {runtime.usage.publicRequests} · search{" "}
+              {runtime.usage.searchRequests}
+              {" · "}crawl {runtime.usage.firecrawlRequests} · LLM{" "}
+              {runtime.usage.llmRequests}
+            </small>
+          </div>
+        </div>
+        <div className="ios-runtime-meta">
+          <span>存储：复用 Supabase / 本地 8 文件交付</span>
+          <span>进度：复用同源 SSE run/stream</span>
+          <span>
+            本页写入：{runtime.persistence.writePerformed ? "是" : "否"}
+          </span>
+        </div>
+        {runtime.gaps.length > 0 && (
+          <ul className="ios-runtime-gaps">
+            {runtime.gaps.map((gap) => (
+              <li key={gap}>{gap}</li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <section className="ios-section" aria-labelledby="ios-plan-title">

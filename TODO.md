@@ -4,6 +4,13 @@
 
 ## 已完成
 
+- [x] 2026-07-13 Industry OS Data-to-Report M1：Planner 生成可执行采集任务：
+  - 建立独立 M1–M6 顺序 Loop、heartbeat 和机器 checkpoint，不覆盖旧 G2–G12 历史。
+  - 新增采集任务/任务计划契约、fail-closed 校验器和 coverage row 编译器；11/11 行均生成带角色、覆盖、预算、合规与停止条件的任务。
+  - 新增洗碗机离线输入与 `pnpm plan:industry:acquisition`；产物 11 tasks、0 live request、0 provider、0 cost、0 external facts。
+  - 两次输出 SHA-256 一致；`pnpm check` 28 files / 255 tests，`git diff --check` 通过。
+  - 完成等级为 L2/C2 契约切片；没有真实采集、真实报告、commit、push 或部署。
+
 - [x] 2026-07-13 用户明确批准先跳过 G11：
   - 不进行 1–3 名真实用户招募/联系/录屏，C4 保持未验证，不用 Playwright 或 contract canary 替代真实用户证据。
   - Loop 转到 G12 启动确认门；此前取消真实卖家反馈和付费试单的决定继续有效。
@@ -108,6 +115,24 @@
 
 ## 下一步
 
+- [x] M2.1：统一公开网页、搜索发现、sitemap/RSS、复杂公开页面和授权导入的 adapter/router 契约；22 条专项测试覆盖权限、来源角色和安全阻断。
+- [x] M2.2：实现不可变 raw document、采集审计、SHA-256、规范 URL、内容去重、版本保留和幂等本地 fixture；两次输出指纹一致。
+- [x] M2.3：洗碗机第一轮真实扫描完成；18 public、3 Tavily、Firecrawl 保守 50 credits、0 LLM、¥0.192、42.374 秒，全部在批准上限内，6 份原文已进入不可变本地仓库。
+- [x] M2.3 离线复核：2 份相关原文候选、2 份串品类、2 份来源质量拒绝；单一品牌官网角色不足，11/11 coverage rows 有缺口，明确禁止进入 M3。
+- [x] M2.4：在 standing `live_budget` 下完成 3 个各自有硬上限的定向 wave；18 份不可变原文中 11 份强相关，4/4 关键 coverage rows 达标，7 个非关键缺口保留，M3.1 ready。
+- [x] M3.1：生成 7 条原子事实，逐条绑定不可变 raw、精确 quote、claim role、source role 和 coverage row；二进制 PDF、串品类和低质量来源均通过反向测试保持 fail-closed。
+- [x] M3.2：生成 3 条明确未验证、事实可追溯的 opportunity hypotheses；每条均有目标用户、问题、未知项、L5 验证方法及可量化成功/失败标准，商业化状态保持 `requires_real_world_validation`。
+- [x] M3.3：生成分级 JSON/Markdown 洗碗机报告，分章展示 7 条确认事实、3 条未验证假设、7 个覆盖缺口、7 个拒绝来源和完整证据附录；无项目继续/终止结论。
+- [x] M3.4：全部 7 条 claim 证据链通过，并抽查 market/regulation/product 三类代表性事实；Markdown 章节、附录、移动可读性、商业结论禁区、确定性回放和完整回归均通过。M3 达到本地 C2；未完成独立人工复核或真实用户验证。
+- [x] M4.1：护肤品完整大行业输入已编译成六模块 11 个离线采集任务；输入范围未缩成品牌/SKU，两次产物 hash 一致，live/LLM/外部事实为 0。
+- [x] M4.2：前三波在 2/11 coverage 诚实暂停后，按“只搜索公开市场、不做人工补充”执行三波新来源恢复；最终 82 immutable raw / 49 relevant candidates / 9 samples，11/11 coverage、critical 4/4，manual/import/LLM 均为 0。
+- [x] M4.3：六个护肤行业模块全部完成，33 条 exact-quote claim 通过，0 blocked module；缺口没有被改写成商业结论。
+- [x] M4.4：生成护肤综合报告、claim ledger、知识图谱和 33 组公开证据附录；1 条推断与 2 条机会假设均和事实分层。洗碗机报告逐字节回放一致，`pnpm check` 37 files / 313 tests。
+- [x] M5.1：复用现有六阶段 runner，新增原子 operation receipt 与稳定幂等键；完成“外部操作后故障→零重复执行恢复→主动暂停→完成剩余阶段”证明，未知结果 fail-closed。
+- [x] M5.2：单一结果页展示阶段、coverage、缺口、请求数和费用；沿用现有 Supabase/本地交付存储与同源 SSE，不新增 migration、数据库或 UI 分支。
+- [x] M5.3：旧 8 文件、公开分享、详情、下载、replay 鉴权和公开字段白名单兼容验收通过；replay 未实际执行。
+- [ ] M5.4（awaiting L3/L4）：审阅当前大工作区后生成一个 commit、push main、备份并非删除式部署，执行零 provider contract canary 和回滚门；不含 migration/backfill、付费/live crawl canary或外联。
+
 - [x] 分支工作入口收束到 `main`；所有历史分支提交已合并，未提交 G12、后台清理与报告优化修改完整保留。
 - [x] 报告决策模型拆分为研究就绪度与商业化评估；证据不足不再自动生成停止项目结论。
 - [x] 五类 finding 全部进入审核队列；`report.md` 与 `reviewed_report.md` 统一使用证据门禁，并删除重复候选 renderer。
@@ -116,8 +141,8 @@
 - [x] G12 纯离线预注册与统一 scorecard/runner 已完成：锁定 5 品类、3/5 kill rule、pre/post-kill 隔离、8 类失败原因和 C5 fail-closed；live API/provider/credits=0、费用 ¥0。
 - [x] G12 live benchmark 已在 ¥10、250 Firecrawl credits、160 public requests、15 LLM requests 上限内执行；前三项 0/3 PASS 后触发 kill，后两项未调用。
 - [x] G12 决策范围已纠正：`evidence_pipeline_blocked` 只表示证据流水线受阻，商业化状态为 `not_evaluated`，不再自动生成停止项目结论。
-- [ ] 复用洗碗机现有产物，先修复 claim 完整性、quote 绑定和机会假设生成；不再新增品类 benchmark。
-- [ ] 设计 Planner 与现有 `ResearchWorkflowInput` / public workflow 的阶段边界：应以模块化异步/分阶段执行为主，不把大行业重新塞进单次 300 秒同步 run。
+- [x] 复用洗碗机现有产物，完成 claim、quote、机会假设与报告决策修复；不再新增品类 benchmark。
+- [ ] M5.1 让 Planner 与现有 `ResearchWorkflowInput` / public workflow 以模块化异步阶段衔接，不把大行业重新塞进单次 300 秒同步 run。
 - [ ] G11 已由用户明确跳过；仅在用户主动重新开放真实用户验证并确认联系与隐私边界后，才找目标用户复验。当前维持 C3，不标记 C4。
 - [ ] 根据真实手机阅读反馈决定是否继续压缩完整报告的证据索引章节；当前工程验收已通过，但报告内容本身仍很长。
 

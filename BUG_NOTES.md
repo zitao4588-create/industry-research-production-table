@@ -2,6 +2,25 @@
 
 更新时间：2026-07-13
 
+## 已处理：M4.4 首次全量校验只被新脚本排版规则拦截
+
+- 现象：M4.4 生成与类型检查成功，37 个测试文件、313 条测试也全部通过，但第一次 `pnpm check` 在 Biome 阶段因 import 顺序和换行格式退出 1。
+- 分类：静态排版问题，不是报告、证据、洗碗机回放或公开数据错误。
+- 处理：只对新增 M4.4 脚本执行项目格式器，没有改业务条件；随后完整 `pnpm check` 通过。
+
+## 已处理：M5 本地生产服务首次启动参数和端口权限失败
+
+- 第一次：项目 `start` 脚本已内置 `--port ${PORT:-3000}`，额外传 `-- -p 3105` 被 Next 当成项目目录，服务未启动。
+- 第二次：改用 `PORT=3105` 后，沙箱禁止监听本地端口，返回 `listen EPERM 0.0.0.0:3105`；这是运行环境权限，不是应用构建错误。
+- 处理：在获准的本地环境用同一构建和 `PORT=3105` 启动；UI、health、分享、详情和下载只读检查通过。测试完成后发送中断信号并确认 3105 无监听。
+
+## 待处理：M2.3 通用站内发现会召回同品牌相邻品类页面
+
+- 现象：洗碗机第一轮 6 份原文中，海尔洗地机产品页和空调售后页被旧 `sourceQuality` 标为 accepted；页面导航中各出现 3 次“洗碗机”，但标题和 URL 明确属于其他品类。美的中英文新闻页也占用了 2 个 crawl 名额。
+- 分类：发现排序与品类相关性门禁问题，不是 Firecrawl、Tavily、预算或原文存储失败。
+- 当前保护：新增 `industry_m2_wave_verification.v1`，要求至少 2 次品类词命中且标题/URL 无冲突品类词；旧 accepted 标志不能绕过。两份串品类页面已标为 `category_relevance_mismatch`，不计 coverage、不进入 evidence。
+- 后续：M2.4 在执行新 wave 前，把强品类相关性前移到 crawl target 选择，并优先政府统计、监管/标准、行业协会/研究机构和可信渠道；保留第一轮原始产物，不覆盖或删除。
+
 ## 已处理：G10 服务重启窗口首次 health 返回 502
 
 - 现象：部署脚本完成远端 build/doctor 并重启服务后，第一次公网 health 请求返回 502。
@@ -29,7 +48,13 @@
 - 现象：在 Planner 初建、G2 重新生成产物和 G3 首次运行 execution fixture 时，沙箱内的 `tsx` 在系统临时目录创建 IPC pipe 报 `listen EPERM`，该次没有生成 JSON。
 - 分类：本地执行沙箱权限问题，不是 Planner 逻辑、fixture 或网络/provider 错误。
 - 处理：经权限批准后在沙箱外运行同一离线命令；命令只读取本地 fixture 并写入本地 JSON，没有联网。
-- 验证：相关离线命令在获准环境均成功；当前 `industry-plan.json` SHA-256 为 `9371c931f02aed2924b3eef406d22006f679f747213bb6c004bbbd31dce9668f`。G3 完整 fixture 和 pause/resume proof 均完成，revision 12、六阶段 attempt=1；产物记录 live provider/public 请求为 0。
+- 验证：相关离线命令在获准环境均成功；当前 `industry-plan.json` SHA-256 为 `9371c931f02aed2924b3eef406d22006f679f747213bb6c004bbbd31dce9668f`。G3 完整 fixture 和 pause/resume proof 均完成，revision 12、六阶段 attempt=1；M3.4 审查入口也遇到相同沙箱限制，在受控权限下原命令及确定性回放均成功，审查证书 hash 一致。产物记录 live provider/public 请求为 0。
+
+## 已处理：M4.2 第三波触顶后 historical runError 未标记 already_exhausted
+
+- 现象：第三波 Firecrawl 保守预留达到 30/30 credits 后，预算器正确拒绝剩余候选且没有继续发送请求；但 runner 只识别 `cap_reached`，没有把随后返回的 `m2_live_budget_already_exhausted` 写入 `runError`，因此该波 `run_audit.status` 仍显示 completed。
+- 分类：审计状态文字遗漏，不是预算门禁失效；真实 usage 仍为 22 public、6 Tavily、6 Firecrawl、30 reserved credits、0 LLM、¥0.384，触顶后新增请求为 0。
+- 处理：后续 runner 同时识别 `already_exhausted`；M4.2 final coverage audit 单列 final-wave cap 事实。没有重跑第三波，避免重复费用。
 
 ## 已处理：Planner 单测读取 JSON fixture 时缺少 Node 类型
 
@@ -458,3 +483,11 @@
 - 现象：390px 左右移动视口下，页面能加载且无错误覆盖层，但 Browser 自动化点击 `开始研究` 时底层 CDP 输入命令超时。
 - 判断：更像浏览器自动化通道在缩放状态下不稳定，不是页面运行时报错。
 - 处理：记录为验收工具限制；桌面与较宽移动视口已完成完整运行路径验证。
+## 2026-07-13：M2.4 定向 wave 暴露的采集与验证问题
+
+- 已修复：首次启动 M2.4 时上一波目录写错，程序在读取旧不可变数据集时以 `ENOENT` 停止；发生在联网前，请求和费用均为 0，随后使用正确目录重跑。
+- 已修复：定向 runner 曾把不存在的 `task.targetDatabases` 传给 crawler，raw document 已生成但 extraction job 对 `undefined.map` 报错；改为明确的 `source_database`，后续 wave crawl runs 全部完成。
+- 已修复：原生 fetch 对 PDF 保存的是二进制 `%PDF-` 载荷，通用 source-quality 曾可能误判为可接受；M2 verifier 现在显式识别并拒绝 binary payload，原始快照保留但不能进入 claim。
+- 已修复：官方标准详情页因导航文本较多被通用规则误杀；新增窄规则，只在 standards/regulator 来源、明确 GB 标准号、洗碗机强相关且至少包含两项发布字段时作为相关 raw candidate，仍不直接成为 evidence。
+- 当前未解：7 个非关键 coverage rows 仍缺用户评论、可信零售、商业模式、供应链和内容渠道等代表性样本；它们必须在后续报告中显示为 coverage gaps，不能被市场关键行的通过掩盖。
+- 已修复：M3.1 独立审计发现不同 wave 的 `public-raw-document-1` 等清洗文档 ID 会重号，单靠 extracted ID 无法唯一证明 quote 版本；atomic claim 现同时绑定 canonical URL、不可变 raw document ID、清洗正文 SHA-256 和 quote offsets，独立审计及 deterministic replay 均通过。

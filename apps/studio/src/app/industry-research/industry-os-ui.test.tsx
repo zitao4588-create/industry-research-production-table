@@ -22,6 +22,28 @@ describe("G9 single-route Industry OS local flow", () => {
     expect(result.stages.every((stage) => stage.status === "completed")).toBe(
       true,
     );
+    expect(result.runtime).toMatchObject({
+      persistence: {
+        adapter: "existing_supabase_and_local_delivery_store",
+        databaseMigrationRequired: false,
+        writePerformed: false,
+      },
+      stream: {
+        transport: "existing_same_origin_sse",
+        liveConnectionOpened: false,
+      },
+      progress: { completedStages: 6, totalStages: 6 },
+      coverage: { passedRows: 11, totalRows: 11 },
+      gaps: [],
+      usage: {
+        publicRequests: 0,
+        searchRequests: 0,
+        firecrawlRequests: 0,
+        reservedCredits: 0,
+        llmRequests: 0,
+        costYuan: 0,
+      },
+    });
     expect(result.industryPlan.coverageMatrix).toHaveLength(11);
     expect(
       result.representativeSamplePlan.selectedSamples.length,
@@ -46,6 +68,11 @@ describe("G9 single-route Industry OS local flow", () => {
     expect(html).toContain("Coverage Matrix");
     expect(html).toContain("Representative Samples");
     expect(html).toContain("六阶段进度");
+    expect(html).toContain("运行状态与费用");
+    expect(html).toContain("缺口 0");
+    expect(html).toContain("¥0.000");
+    expect(html).toContain("复用 Supabase / 本地 8 文件交付");
+    expect(html).toContain("复用同源 SSE run/stream");
     expect(html).toContain("六个研究模块");
     expect(html).toContain("12 章行业报告");
     expect(html).toContain("知识地图摘要");

@@ -136,11 +136,51 @@ export {
   shouldUseAliyunFreeModelRouting,
 } from "./glm-workflow";
 export type {
+  IndustryAcquisitionAdapter,
+  IndustryAcquisitionRoute,
+  IndustryAcquisitionRouteInput,
+  IndustryAcquisitionTargetKind,
+} from "./industry-acquisition-router";
+export {
+  assertIndustryAcquisitionRoute,
+  createIndustryAcquisitionRoute,
+  industryAcquisitionRouteSchemaVersion,
+  isSafeIndustryPublicUrl,
+  serializeIndustryAcquisitionRoute,
+} from "./industry-acquisition-router";
+export type {
+  IndustryAcquisitionTask,
+  IndustryAcquisitionTaskPlan,
+  IndustryAcquisitionTaskStatus,
+} from "./industry-acquisition-task";
+export {
+  assertIndustryAcquisitionTask,
+  createIndustryAcquisitionTaskPlan,
+  industryAcquisitionTaskPlanSchemaVersion,
+  industryAcquisitionTaskSchemaVersion,
+  serializeIndustryAcquisitionTask,
+  serializeIndustryAcquisitionTaskPlan,
+} from "./industry-acquisition-task";
+export type {
+  IndustryAtomicClaim,
+  IndustryAtomicClaimCandidate,
+  IndustryAtomicClaimRejection,
+  IndustryAtomicClaimsArtifact,
+} from "./industry-atomic-claims";
+export {
+  createIndustryAtomicClaimsArtifact,
+  industryAtomicClaimsSchemaVersion,
+  serializeIndustryAtomicClaimsArtifact,
+} from "./industry-atomic-claims";
+export type {
   IndustryExecutionArtifactContract,
   IndustryExecutionArtifactRef,
   IndustryExecutionArtifactType,
   IndustryExecutionCheckpoint,
   IndustryExecutionManifest,
+  IndustryExecutionOperationReceipt,
+  IndustryExecutionOperationRunner,
+  IndustryExecutionOperationStore,
   IndustryExecutionStage,
   IndustryExecutionStageCheckpoint,
   IndustryExecutionStageHandler,
@@ -155,11 +195,60 @@ export {
   industryExecutionArtifactContracts,
   industryExecutionCheckpointSchemaVersion,
   industryExecutionManifestSchemaVersion,
+  industryExecutionOperationReceiptSchemaVersion,
   industryExecutionStages,
   prepareIndustryExecutionCheckpointForResume,
   runIndustryExecutionStages,
   startIndustryExecutionStage,
 } from "./industry-execution";
+export type {
+  IndustryGradedReportArtifact,
+  IndustryReportCoverageEntry,
+} from "./industry-graded-report";
+export {
+  createIndustryGradedReport,
+  industryGradedReportSchemaVersion,
+  serializeIndustryGradedReport,
+} from "./industry-graded-report";
+export type {
+  IndustryM2LiveBudget,
+  IndustryM2LiveBudgetSnapshot,
+  IndustryM2LiveRequestAudit,
+  IndustryM2LiveRequestKind,
+  IndustryM2LiveRequestPhase,
+} from "./industry-m2-live-budget";
+export {
+  createIndustryM2LiveBudgetTracker,
+  industryM23LiveBudget,
+  industryM24LiveBudget,
+  industryM42PublicGapClosureLiveBudget,
+  industryM42PublicRecoveryLiveBudget,
+  industryM42RegulationChangeLiveBudget,
+  industryM42Wave1LiveBudget,
+  industryM42Wave2LiveBudget,
+  industryM42Wave3LiveBudget,
+} from "./industry-m2-live-budget";
+export type {
+  IndustryM2WaveRawDocumentInput,
+  IndustryM2WaveVerification,
+} from "./industry-m2-wave-verification";
+export {
+  industryM2WaveVerificationSchemaVersion,
+  serializeIndustryM2WaveVerification,
+  verifyIndustryM2Wave,
+} from "./industry-m2-wave-verification";
+export type { IndustryM3ReportReviewArtifact } from "./industry-m3-report-review";
+export {
+  createIndustryM3ReportReview,
+  industryM3ReportReviewSchemaVersion,
+  serializeIndustryM3ReportReview,
+} from "./industry-m3-report-review";
+export type { IndustryM4ModuleAcquisitionPlanArtifact } from "./industry-m4-module-acquisition-plan";
+export {
+  createIndustryM4ModuleAcquisitionPlan,
+  industryM4ModuleAcquisitionPlanSchemaVersion,
+  serializeIndustryM4ModuleAcquisitionPlan,
+} from "./industry-m4-module-acquisition-plan";
 export { createSkincareModuleContractFixture } from "./industry-module-fixtures";
 export type {
   IndustryModuleClaimInput,
@@ -178,6 +267,38 @@ export {
   serializeIndustryModuleResult,
   serializeIndustryModuleResultsArtifact,
 } from "./industry-module-results";
+export type {
+  IndustryHypothesisValidationPlan,
+  IndustryOpportunityHypothesesArtifact,
+  IndustryOpportunityHypothesis,
+  IndustryOpportunityHypothesisCandidate,
+  IndustryOpportunityHypothesisRejection,
+} from "./industry-opportunity-hypotheses";
+export {
+  createIndustryOpportunityHypothesesArtifact,
+  industryOpportunityHypothesesSchemaVersion,
+  serializeIndustryOpportunityHypothesesArtifact,
+} from "./industry-opportunity-hypotheses";
+export type {
+  IndustryOsDataReportGoalId,
+  IndustryOsDataReportGoalStatus,
+  IndustryOsDataReportLoopState,
+  IndustryOsDataReportMilestone,
+  IndustryOsDataReportPermission,
+} from "./industry-os-data-report-loop";
+export {
+  assertIndustryOsDataReportLoopState,
+  beginIndustryOsDataReportGoalVerification,
+  completeIndustryOsDataReportGoal,
+  createInitialIndustryOsDataReportLoopState,
+  failIndustryOsDataReportGoal,
+  grantIndustryOsDataReportGoalPermission,
+  grantIndustryOsDataReportStandingLiveBudget,
+  industryOsDataReportGoalCatalog,
+  industryOsDataReportLoopSchemaVersion,
+  startIndustryOsDataReportGoal,
+  startIndustryOsDataReportGoalWithStandingLiveBudget,
+} from "./industry-os-data-report-loop";
 export type {
   IndustryCoverageAxisType,
   IndustryCoverageMatrixRow,
@@ -198,7 +319,27 @@ export {
   industrySourceRolePolicy,
   serializeIndustryPlan,
 } from "./industry-planner";
-export { skincareIndustryPlanningFixture } from "./industry-planner-fixtures";
+export {
+  dishwasherIndustryPlanningFixture,
+  skincareIndustryPlanningFixture,
+} from "./industry-planner-fixtures";
+export type {
+  IndustryImmutableRawDocument,
+  IndustryRawDocumentAuditEvent,
+  IndustryRawDocumentInput,
+  IndustryRawDocumentPutResult,
+  IndustryRawDocumentStore,
+} from "./industry-raw-document-store";
+export {
+  assertIndustryRawDocumentStore,
+  canonicalizeIndustryRawDocumentUrl,
+  createIndustryRawDocumentStore,
+  industryImmutableRawDocumentSchemaVersion,
+  industryRawDocumentStoreSchemaVersion,
+  putIndustryRawDocument,
+  serializeIndustryRawDocumentStore,
+  sha256IndustryContent,
+} from "./industry-raw-document-store";
 export type {
   IndustryRepresentativeSamplePlan,
   IndustrySamplingCandidateInput,

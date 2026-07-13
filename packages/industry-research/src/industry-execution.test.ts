@@ -6,6 +6,8 @@ import {
   createIndustryExecutionManifest,
   createIndustryExecutionResumePlan,
   type IndustryExecutionArtifactRef,
+  type IndustryExecutionOperationReceipt,
+  type IndustryExecutionOperationStore,
   type IndustryExecutionStage,
   industryExecutionArtifactContracts,
   industryExecutionStages,
@@ -82,6 +84,28 @@ function completeThrough(target: IndustryExecutionStage) {
     if (stage === target) break;
   }
   return current;
+}
+
+function operationStore() {
+  const receipts = new Map<string, IndustryExecutionOperationReceipt>();
+  const store: IndustryExecutionOperationStore = {
+    begin: async (receipt) => {
+      const existing = receipts.get(receipt.operationKey);
+      if (existing) {
+        return { created: false, receipt: structuredClone(existing) };
+      }
+      receipts.set(receipt.operationKey, structuredClone(receipt));
+      return { created: true, receipt: structuredClone(receipt) };
+    },
+    complete: async (receipt) => {
+      const existing = receipts.get(receipt.operationKey);
+      if (existing?.status !== "started_unconfirmed") {
+        throw new Error("test_operation_receipt_transition_invalid");
+      }
+      receipts.set(receipt.operationKey, structuredClone(receipt));
+    },
+  };
+  return { store, receipts };
 }
 
 describe("Industry staged execution contract", () => {
@@ -332,6 +356,112 @@ describe("Industry staged execution contract", () => {
     expect(prepared.status).toBe("failed");
     expect(prepared.nextStage).toBe("breadth_scan");
     expect(prepared.stages[1]?.error?.code).toBe("interrupted_execution");
+  });
+
+  it("reuses a completed external operation receipt after the stage fails", async () => {
+    const operation = operationStore();
+    let externalCalls = 0;
+    let failAfterOperation = true;
+    let tick = 0;
+    const first = await runIndustryExecutionStages({
+      checkpoint: checkpoint(),
+      operationStore: operation.store,
+      now: () => `2026-07-12T00:07:${String(tick++).padStart(2, "0")}Z`,
+      handler: async ({ stage, runOperation }) => {
+        if (stage === "breadth_scan") {
+          const result = await runOperation({
+            operationId: "public-source-discovery",
+            kind: "external-request",
+            execute: async ({ idempotencyKey }) => {
+              externalCalls += 1;
+              return { idempotencyKey, candidateCount: 2 };
+            },
+          });
+          expect(result.candidateCount).toBe(2);
+          if (failAfterOperation) {
+            failAfterOperation = false;
+            throw new Error("fixture_failure_after_external_operation");
+          }
+        }
+        return artifactsFor(stage);
+      },
+    });
+    const resumed = await runIndustryExecutionStages({
+      checkpoint: first,
+      operationStore: operation.store,
+      now: () => `2026-07-12T00:08:${String(tick++).padStart(2, "0")}Z`,
+      handler: async ({ stage, runOperation }) => {
+        if (stage === "breadth_scan") {
+          const result = await runOperation({
+            operationId: "public-source-discovery",
+            kind: "external-request",
+            execute: async () => {
+              externalCalls += 1;
+              throw new Error("completed_operation_must_not_execute_again");
+            },
+          });
+          expect(result).toMatchObject({ candidateCount: 2 });
+        }
+        return artifactsFor(stage);
+      },
+    });
+
+    expect(first.status).toBe("failed");
+    expect(first.nextStage).toBe("breadth_scan");
+    expect(resumed.status).toBe("completed");
+    expect(resumed.stages[1]?.attemptCount).toBe(2);
+    expect(externalCalls).toBe(1);
+    expect([...operation.receipts.values()]).toHaveLength(1);
+    expect([...operation.receipts.values()][0]?.status).toBe("completed");
+  });
+
+  it("fails closed instead of repeating an operation with an unknown outcome", async () => {
+    const operation = operationStore();
+    let externalCalls = 0;
+    let tick = 0;
+    const first = await runIndustryExecutionStages({
+      checkpoint: checkpoint(),
+      operationStore: operation.store,
+      now: () => `2026-07-12T00:09:${String(tick++).padStart(2, "0")}Z`,
+      handler: async ({ stage, runOperation }) => {
+        if (stage === "breadth_scan") {
+          await runOperation({
+            operationId: "provider-generation",
+            kind: "paid-provider-request",
+            execute: async () => {
+              externalCalls += 1;
+              throw new Error("connection_lost_after_request_sent");
+            },
+          });
+        }
+        return artifactsFor(stage);
+      },
+    });
+    const resumed = await runIndustryExecutionStages({
+      checkpoint: first,
+      operationStore: operation.store,
+      now: () => `2026-07-12T00:10:${String(tick++).padStart(2, "0")}Z`,
+      handler: async ({ stage, runOperation }) => {
+        if (stage === "breadth_scan") {
+          await runOperation({
+            operationId: "provider-generation",
+            kind: "paid-provider-request",
+            execute: async () => {
+              externalCalls += 1;
+              return { status: "unexpected_repeat" };
+            },
+          });
+        }
+        return artifactsFor(stage);
+      },
+    });
+
+    expect(first.status).toBe("failed");
+    expect(resumed.status).toBe("failed");
+    expect(resumed.stages[1]?.error?.message).toContain(
+      "industry_execution_operation_outcome_unconfirmed",
+    );
+    expect(externalCalls).toBe(1);
   });
 
   it("creates a completion manifest without changing the old delivery package", async () => {

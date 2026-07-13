@@ -302,8 +302,14 @@ const sourceRolePolicySeeds: SourceRolePolicySeed[] = [
   },
   {
     sourceRole: "trusted_retail_channel",
-    allowedClaimRoles: ["brand_positioning_product"],
-    prohibitedInferences: ["零售上架不能单独证明全市场份额或需求规模。"],
+    allowedClaimRoles: [
+      "brand_positioning_product",
+      "business_model_supply_chain",
+    ],
+    prohibitedInferences: [
+      "零售上架不能单独证明全市场份额或需求规模。",
+      "零售页面只能证明渠道与展示模式，不能单独证明收入、利润或平台抽成。",
+    ],
   },
   {
     sourceRole: "consumer_review",
@@ -902,6 +908,7 @@ function createResearchModules(): IndustryResearchModule[] {
         "company_material",
         "industry_media",
         "supply_chain_company",
+        "trusted_retail_channel",
       ],
       targetClaimRoles: ["business_model_supply_chain"],
       coverageTargets: [
@@ -982,20 +989,34 @@ function createCoverageMatrix(params: {
     };
   };
 
+  const marketMeasureIds = [
+    "market-scope-definition",
+    "market-size",
+    "market-growth",
+    "market-subcategory-structure",
+    "market-time-region",
+  ];
+  const contentChannelIds = [
+    "content-channel-platform",
+    "content-channel-search",
+    "content-channel-creator",
+    "content-channel-live",
+  ];
+
   return [
     row({
       id: "coverage-market-taxonomy",
       moduleId: "market_landscape",
       axisType: "taxonomy",
-      axisItemIds: axes.taxonomy.map((item) => item.id),
-      dimension: "监管分类维度与商业市场结构的口径转换",
+      axisItemIds: marketMeasureIds,
+      dimension: "市场口径、规模、增速、细分结构与时间地区",
       minIndependentSources: 2,
       minSourceRoles: 2,
       minRepresentativeSamples: 0,
       requirements: [
-        "五个监管分类维度需要保留正式来源绑定",
-        "商业子市场必须另行定义，不能直接等同监管分类",
-        "记录地区和时间范围",
+        "市场规模和增速必须同时记录统计口径、地区和时间",
+        "化妆品类、美妆个护与护肤品口径不得混用",
+        "商业子市场和品类结构必须由市场来源单独定义",
       ],
     }),
     row({
@@ -1081,12 +1102,15 @@ function createCoverageMatrix(params: {
       id: "coverage-content-channels",
       moduleId: "content_and_traffic",
       axisType: "channel",
-      axisItemIds: axes.channels.map((item) => item.id),
-      dimension: "内容与流量渠道覆盖",
+      axisItemIds: contentChannelIds,
+      dimension: "内容平台、主动搜索、创作者与直播形态覆盖",
       minIndependentSources: 2,
       minSourceRoles: 2,
       minRepresentativeSamples: 2,
-      requirements: ["按平台记录指标定义，不能把互动外推为转化"],
+      requirements: [
+        "按平台记录内容供给、搜索、创作者和直播指标定义",
+        "不能把曝光、互动或创作者数量外推为购买转化",
+      ],
     }),
     row({
       id: "coverage-supply-chain",
@@ -1103,12 +1127,15 @@ function createCoverageMatrix(params: {
       id: "coverage-business-models",
       moduleId: "business_model_and_supply_chain",
       axisType: "business_model",
-      axisItemIds: axes.businessModels.map((item) => item.id),
-      dimension: "商业模式覆盖",
+      axisItemIds: axes.businessModels.slice(0, 3).map((item) => item.id),
+      dimension: "已观察到的品牌、供应链服务与零售平台模式覆盖",
       minIndependentSources: 2,
       minSourceRoles: 2,
       minRepresentativeSamples: Math.min(3, axes.businessModels.length),
-      requirements: ["盈利判断优先使用财报或等价证据"],
+      requirements: [
+        "盈利判断优先使用财报或等价证据",
+        "专业服务与内容驱动模式保留为非阻断观察项，未证实不得写成已存在模式",
+      ],
     }),
   ];
 }

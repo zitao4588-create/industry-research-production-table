@@ -47,7 +47,10 @@ function createSharedFixturePlans() {
     sourceCandidatePlan,
     samplingCandidates,
   });
-  const channels = industryPlan.channels.map((item) => item.id);
+  const contentChannels =
+    industryPlan.coverageMatrix.find(
+      (row) => row.id === "coverage-content-channels",
+    )?.axisItemIds ?? [];
   representativeSamplePlan.selectedSamples.push(
     {
       id: "g7-contract-content-a",
@@ -59,7 +62,7 @@ function createSharedFixturePlans() {
         taxonomyIds: [],
         valueChainIds: [],
         priceTierIds: [],
-        channelIds: channels.slice(0, 2),
+        channelIds: contentChannels.slice(0, 2),
         consumerNeedIds: [],
         businessModelIds: [],
       },
@@ -69,7 +72,7 @@ function createSharedFixturePlans() {
       evidenceGaps: ["contract_only_not_external_evidence"],
       sourceCandidateIds: ["g7-contract-content-candidate-a"],
       populationSegments: [],
-      coverageContributionKeys: channels
+      coverageContributionKeys: contentChannels
         .slice(0, 2)
         .map((id) => `channel:${id}`),
       selectionOrder: representativeSamplePlan.selectedSamples.length + 1,
@@ -84,7 +87,7 @@ function createSharedFixturePlans() {
         taxonomyIds: [],
         valueChainIds: [],
         priceTierIds: [],
-        channelIds: channels.slice(2),
+        channelIds: contentChannels.slice(2),
         consumerNeedIds: [],
         businessModelIds: [],
       },
@@ -94,7 +97,9 @@ function createSharedFixturePlans() {
       evidenceGaps: ["contract_only_not_external_evidence"],
       sourceCandidateIds: ["g7-contract-content-candidate-b"],
       populationSegments: [],
-      coverageContributionKeys: channels.slice(2).map((id) => `channel:${id}`),
+      coverageContributionKeys: contentChannels
+        .slice(2)
+        .map((id) => `channel:${id}`),
       selectionOrder: representativeSamplePlan.selectedSamples.length + 2,
     },
   );

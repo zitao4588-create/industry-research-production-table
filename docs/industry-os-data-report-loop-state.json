@@ -1,0 +1,495 @@
+{
+  "schemaVersion": "industry_os_data_report_loop.v2",
+  "loopId": "industry-os-data-report-m1-m6",
+  "status": "active",
+  "currentMilestone": "M5",
+  "currentGoal": "M5.4",
+  "currentGoalStatus": "in_progress",
+  "permissionCeiling": "L2",
+  "autoAdvance": true,
+  "controllerPath": "docs/INDUSTRY_OS_DATA_REPORT_M1_M6_LOOP.md",
+  "heartbeatPromptPath": "docs/INDUSTRY_OS_DATA_REPORT_HEARTBEAT_PROMPT.md",
+  "retryPolicy": {
+    "maxSameFailureWithoutNewEvidence": 2,
+    "sameFailureCount": 0,
+    "lastFailureFingerprint": null
+  },
+  "pause": null,
+  "grantedPermissions": [
+    {
+      "goal": "M2.3",
+      "permission": "live_budget",
+      "scopeSummary": "Dishwasher wave 1 only: at most 30 public HTTP requests, 3 Tavily searches, 50 Firecrawl credits, 0 LLM requests, CNY 2 cash cap and 10 minutes; local artifacts only, no production/database writes.",
+      "grantedAt": "2026-07-13T11:24:00.000Z",
+      "decisionRequestHash": "83282fe56fdf74f38a547eb3c1c5f5c77c0d99cd3e9cfb35ffb73557a18be93f"
+    },
+    {
+      "goal": "M2.4",
+      "permission": "live_budget",
+      "scopeSummary": "Dishwasher M2.4 targeted wave: at most 24 public HTTP requests, 3 Tavily searches, 20 Firecrawl credits, 0 LLM requests, CNY 1 cash cap and 10 minutes; authority and trusted-channel sources only; local artifacts only, no production/database writes.",
+      "grantedAt": "2026-07-13T13:25:54.000Z",
+      "decisionRequestHash": "c3531cf9f7dae1abbac3a3df592c210cd4a6f49ef6b0314b304ad58b9b83b6fc"
+    },
+    {
+      "goal": "M2.4",
+      "permission": "live_budget",
+      "scopeSummary": "Dishwasher M2.4 targeted wave 2: at most 24 public HTTP requests, 3 Tavily searches, 20 Firecrawl credits, 0 LLM requests, CNY 1 cash cap and 10 minutes; research-institution, financial-report and association sources; local artifacts only, no production/database writes.",
+      "grantedAt": "2026-07-13T13:36:16.000Z",
+      "decisionRequestHash": "1cf366675bf3f228caea7dd2844535d3463833cdacd6a05d95d6b4e6b5a7872c"
+    },
+    {
+      "goal": "M2.4",
+      "permission": "live_budget",
+      "scopeSummary": "Dishwasher M2.4 targeted wave 3 and final automatic M2.4 wave: at most 24 public HTTP requests, 3 Tavily searches, 20 Firecrawl credits, 0 LLM requests, CNY 1 cash cap and 10 minutes; household-appliance research institute and official standards sources; local artifacts only, no production/database writes.",
+      "grantedAt": "2026-07-13T13:38:21.000Z",
+      "decisionRequestHash": "62b9beb9eaac7fbd58558ccc4ad24d3c706768665c7b36e694050db5003bc98f"
+    },
+    {
+      "goal": "M5.4",
+      "permission": "L4",
+      "scopeSummary": "One reviewed commit from the current M1-M5.3 worktree; push main; production backup; non-deleting deployment; zero-provider contract canary covering health, UI, share and download; rollback if a production verification gate fails. Excludes migration, backfill, paid or live crawl canary, real-user contact and public communication.",
+      "grantedAt": "2026-07-13T16:26:21.000Z",
+      "decisionRequestHash": "72114f00d253a0fb9b620db41ba0a07a3b13ef53a3951aa1113cd88410667602"
+    }
+  ],
+  "standingPermissions": [
+    {
+      "permission": "live_budget",
+      "scopeSummary": "All live_budget gates inside the existing M1-M6 Industry OS Data-to-Report Loop; no repeated user confirmation is required.",
+      "policySummary": "Every goal must declare and enforce a finite hard cap and write an audit. This does not authorize commit, push, deploy, production/database writes, migrations, or external communication.",
+      "grantedAt": "2026-07-13T13:25:54.000Z",
+      "authorizationHash": "e2248af42c4309255f5cd6886207934796e248bded965268880750ae900a4c67"
+    }
+  ],
+  "goals": [
+    {
+      "id": "M1.1",
+      "milestone": "M1",
+      "status": "complete",
+      "requiredPermission": null
+    },
+    {
+      "id": "M1.2",
+      "milestone": "M1",
+      "status": "complete",
+      "requiredPermission": null
+    },
+    {
+      "id": "M1.3",
+      "milestone": "M1",
+      "status": "complete",
+      "requiredPermission": null
+    },
+    {
+      "id": "M1.4",
+      "milestone": "M1",
+      "status": "complete",
+      "requiredPermission": null
+    },
+    {
+      "id": "M2.1",
+      "milestone": "M2",
+      "status": "complete",
+      "requiredPermission": null
+    },
+    {
+      "id": "M2.2",
+      "milestone": "M2",
+      "status": "complete",
+      "requiredPermission": null
+    },
+    {
+      "id": "M2.3",
+      "milestone": "M2",
+      "status": "complete",
+      "requiredPermission": "live_budget"
+    },
+    {
+      "id": "M2.4",
+      "milestone": "M2",
+      "status": "complete",
+      "requiredPermission": "live_budget"
+    },
+    {
+      "id": "M3.1",
+      "milestone": "M3",
+      "status": "complete",
+      "requiredPermission": null
+    },
+    {
+      "id": "M3.2",
+      "milestone": "M3",
+      "status": "complete",
+      "requiredPermission": null
+    },
+    {
+      "id": "M3.3",
+      "milestone": "M3",
+      "status": "complete",
+      "requiredPermission": null
+    },
+    {
+      "id": "M3.4",
+      "milestone": "M3",
+      "status": "complete",
+      "requiredPermission": null
+    },
+    {
+      "id": "M4.1",
+      "milestone": "M4",
+      "status": "complete",
+      "requiredPermission": null
+    },
+    {
+      "id": "M4.2",
+      "milestone": "M4",
+      "status": "complete",
+      "requiredPermission": "live_budget"
+    },
+    {
+      "id": "M4.3",
+      "milestone": "M4",
+      "status": "complete",
+      "requiredPermission": null
+    },
+    {
+      "id": "M4.4",
+      "milestone": "M4",
+      "status": "complete",
+      "requiredPermission": null
+    },
+    {
+      "id": "M5.1",
+      "milestone": "M5",
+      "status": "complete",
+      "requiredPermission": null
+    },
+    {
+      "id": "M5.2",
+      "milestone": "M5",
+      "status": "complete",
+      "requiredPermission": null
+    },
+    {
+      "id": "M5.3",
+      "milestone": "M5",
+      "status": "complete",
+      "requiredPermission": null
+    },
+    {
+      "id": "M5.4",
+      "milestone": "M5",
+      "status": "in_progress",
+      "requiredPermission": "L4"
+    },
+    {
+      "id": "M6.1",
+      "milestone": "M6",
+      "status": "planned",
+      "requiredPermission": null
+    },
+    {
+      "id": "M6.2",
+      "milestone": "M6",
+      "status": "planned",
+      "requiredPermission": "L5"
+    },
+    {
+      "id": "M6.3",
+      "milestone": "M6",
+      "status": "planned",
+      "requiredPermission": "L5"
+    },
+    {
+      "id": "M6.4",
+      "milestone": "M6",
+      "status": "planned",
+      "requiredPermission": null
+    }
+  ],
+  "history": [
+    {
+      "goal": "M1.1",
+      "status": "complete",
+      "summary": "industry_acquisition_task.v1 contract, validator, serialization and permission/compliance gates verified.",
+      "at": "2026-07-13T11:03:00.000Z"
+    },
+    {
+      "goal": "M1.2",
+      "status": "complete",
+      "summary": "Planner coverage matrix now compiles into deterministic zero-live-budget acquisition tasks with priority, compliance and stop conditions.",
+      "at": "2026-07-13T11:06:00.000Z"
+    },
+    {
+      "goal": "M1.3",
+      "status": "complete",
+      "summary": "Dishwasher fixture and CLI generated 11 deterministic offline acquisition tasks with zero live budget and no external facts.",
+      "at": "2026-07-13T11:08:00.000Z"
+    },
+    {
+      "goal": "M1.4",
+      "status": "complete",
+      "summary": "M1 milestone audit passed schema, state-machine, determinism, secret, full-check and diff gates; project context and decisions were updated.",
+      "at": "2026-07-13T11:10:00.000Z"
+    },
+    {
+      "goal": "M2.1",
+      "status": "complete",
+      "summary": "Unified offline route plans now cover native public pages, search discovery, sitemap/RSS, complex public pages, authorized imports and manual input with permission and compliance gates.",
+      "at": "2026-07-13T11:13:00.000Z"
+    },
+    {
+      "goal": "M2.2",
+      "status": "complete",
+      "summary": "Immutable raw-document storage now validates SHA-256 content, canonical URL deduplication, retained versions, audit usage, tamper detection and atomic local fixture output.",
+      "at": "2026-07-13T11:19:00.000Z"
+    },
+    {
+      "goal": "M2.3",
+      "status": "in_progress",
+      "summary": "Goal started with a user-confirmed M2.3-only live_budget scope; the grant must not authorize M4.2 or any other goal.",
+      "at": "2026-07-13T11:24:00.000Z"
+    },
+    {
+      "goal": "M2.3",
+      "status": "complete",
+      "summary": "Dishwasher live wave 1 completed within its scoped budget; immutable raw storage and offline coverage verification passed, but only 2/6 documents were relevant candidates and 0/11 coverage rows met, so M3 remains blocked.",
+      "at": "2026-07-13T11:37:00.000Z"
+    },
+    {
+      "goal": "M2.4",
+      "status": "in_progress",
+      "summary": "Goal started under the user-authorized standing live_budget with its own hard cap: 24 public requests, 3 Tavily searches, 20 Firecrawl credits, 0 LLM, CNY 1 and 10 minutes.",
+      "at": "2026-07-13T13:25:54.000Z"
+    },
+    {
+      "goal": "M2.4",
+      "status": "in_progress",
+      "summary": "Standing live_budget authorization recorded for remaining M1-M6 budget gates; each goal still requires a finite enforced cap and audit, without commit, push, deploy, production/database writes or external communication.",
+      "at": "2026-07-13T13:25:54.000Z"
+    },
+    {
+      "goal": "M2.4",
+      "status": "in_progress",
+      "summary": "Targeted wave 1 added two relevant industry-association raw candidates but critical coverage remained 0/4; bounded wave 2 started under standing live_budget to target research institutions, financial reports and additional association pages.",
+      "at": "2026-07-13T13:36:16.000Z"
+    },
+    {
+      "goal": "M2.4",
+      "status": "in_progress",
+      "summary": "Targeted wave 2 added four more category-relevant candidates but financial-report PDFs were binary payloads and the research-provider result was only a homepage. A third and final automatic M2.4 wave started with a separate hard cap to target the national appliance research institute and official standards pages.",
+      "at": "2026-07-13T13:38:21.000Z"
+    },
+    {
+      "goal": "M2.4",
+      "status": "verifying",
+      "summary": "Three bounded targeted waves completed; immutable store, binary-payload rejection, category relevance and critical coverage entered offline verification.",
+      "at": "2026-07-13T13:40:20.000Z"
+    },
+    {
+      "goal": "M2.4",
+      "status": "complete",
+      "summary": "Dishwasher M2 dataset reached 18 immutable raw documents and 11 strongly relevant raw candidates; all 4 critical coverage rows passed, 2 binary PDFs were rejected, and 7 non-critical rows remain explicit gaps. M3.1 may begin claim extraction, but raw documents are still not evidence.",
+      "at": "2026-07-13T13:40:40.000Z"
+    },
+    {
+      "goal": "M3.1",
+      "status": "in_progress",
+      "summary": "Goal started locally with zero live budget: extract atomic claims only from M2 strongly relevant candidates and bind each claim to an immutable raw document, exact quote, claim role, source role and coverage row.",
+      "at": "2026-07-13T13:42:32.000Z"
+    },
+    {
+      "goal": "M3.1",
+      "status": "verifying",
+      "summary": "Atomic claim contract, fail-closed tests and dishwasher artifact completed; full binding, rejection gates and deterministic replay entered verification.",
+      "at": "2026-07-13T13:48:00.000Z"
+    },
+    {
+      "goal": "M3.1",
+      "status": "complete",
+      "summary": "Generated 7 atomic dishwasher facts across market, regulation and product taxonomy; every claim binds an immutable raw document, exact quote, authorized claim/source roles and coverage row. Seven rejected M2 documents remain excluded, including both binary PDFs and both cross-category pages.",
+      "at": "2026-07-13T13:48:14.000Z"
+    },
+    {
+      "goal": "M3.2",
+      "status": "in_progress",
+      "summary": "Goal started locally with zero live budget: convert possible directions into explicitly unverified opportunity hypotheses with target user, problem, fact basis, unknowns, validation method and pass/fail criteria; no commercialization decision is allowed.",
+      "at": "2026-07-13T13:59:53.000Z"
+    },
+    {
+      "goal": "M3.2",
+      "status": "verifying",
+      "summary": "Hypothesis contract, conclusion guardrails, three dishwasher hypotheses and their fact bindings completed; deterministic replay and independent validation-boundary audit started.",
+      "at": "2026-07-13T14:03:40.000Z"
+    },
+    {
+      "goal": "M3.2",
+      "status": "complete",
+      "summary": "Created three explicitly unverified dishwasher opportunity hypotheses with target user, problem, all seven atomic facts as traceable basis, assumptions, unknowns, L5-gated validation plans and measurable success/failure criteria. No validation was executed and no commercialization conclusion was produced.",
+      "at": "2026-07-13T14:03:59.000Z"
+    },
+    {
+      "goal": "M3.3",
+      "status": "in_progress",
+      "summary": "Goal started locally with zero live budget: assemble a graded dishwasher report that visibly separates confirmed atomic facts, unverified hypotheses, coverage gaps, rejected sources and exact evidence trace; no project continuation or termination conclusion is allowed.",
+      "at": "2026-07-13T14:05:29.000Z"
+    },
+    {
+      "goal": "M3.3",
+      "status": "verifying",
+      "summary": "JSON and Markdown graded report completed; source parity, chapter separation, evidence appendix, conclusion language and deterministic replay entered verification.",
+      "at": "2026-07-13T14:08:45.000Z"
+    },
+    {
+      "goal": "M3.3",
+      "status": "complete",
+      "summary": "Generated a source-traceable local dishwasher report with 7 confirmed atomic facts, 3 unverified hypotheses, all 11 coverage rows, 7 explicit gaps, 7 rejected sources and a complete evidence appendix. The report remains draft_pending_m3_4_review and contains no project go/stop conclusion.",
+      "at": "2026-07-13T14:09:05.000Z"
+    },
+    {
+      "goal": "M3.4",
+      "status": "in_progress",
+      "summary": "Local review started: audit every claim source chain, spot-check representative market, regulation and product claims, verify report contract, mobile readability and deterministic hashes, then run the full offline regression gate.",
+      "at": "2026-07-13T14:11:17.000Z"
+    },
+    {
+      "goal": "M3.4",
+      "status": "verifying",
+      "summary": "All seven claim chains and three representative claim roles passed; review certificate replay matched and the workspace entered full typecheck, test and formatting verification.",
+      "at": "2026-07-13T14:17:48.000Z"
+    },
+    {
+      "goal": "M3.4",
+      "status": "complete",
+      "summary": "M3 reached local C2: all seven claim chains, market/regulation/product spot checks, report contract, evidence appendix, L5 hypothesis boundary, mobile readability, deterministic replay and full regression passed. No independent human or real-user validation was claimed.",
+      "at": "2026-07-13T14:18:04.000Z"
+    },
+    {
+      "goal": "M4.1",
+      "status": "in_progress",
+      "summary": "Broad skincare planning started offline: preserve the complete industry input, compile coverage rows into tasks for all six research modules, enforce zero live budget and prove no brand or SKU narrowing transform is applied.",
+      "at": "2026-07-13T14:19:47.000Z"
+    },
+    {
+      "goal": "M4.1",
+      "status": "verifying",
+      "summary": "The broad skincare input compiled into 11 offline tasks across all six modules; deterministic replay and full workspace regression entered verification.",
+      "at": "2026-07-13T14:22:22.000Z"
+    },
+    {
+      "goal": "M4.1",
+      "status": "complete",
+      "summary": "M4.1 preserved skincare as a broad-industry scope and produced 11 coverage-driven offline tasks across all six research modules with zero live budget, LLM calls or external facts. Deterministic replay and full regression passed.",
+      "at": "2026-07-13T14:22:28.000Z"
+    },
+    {
+      "goal": "M4.2",
+      "status": "in_progress",
+      "summary": "Skincare live breadth wave one started under standing live_budget with hard caps of 36 public requests, 6 Tavily searches, 30 Firecrawl credits, 0 LLM requests, CNY 2 and 12 minutes; outputs remain local raw, coverage and sampling audits only.",
+      "at": "2026-07-13T14:23:48.000Z"
+    },
+    {
+      "goal": "M4.2",
+      "status": "in_progress",
+      "summary": "Wave one completed within cap: 28 public requests, 6 Tavily, 0 Firecrawl, 0 LLM and CNY 0.384 produced 22 immutable documents and 8 relevant raw candidates, but only regulation passed, 10 coverage rows remained gaps and no representative sample was fabricated. A separately capped targeted wave two will focus research, consumer, product, retail, trend and supply-chain sources.",
+      "at": "2026-07-13T14:28:12.000Z"
+    },
+    {
+      "goal": "M4.2",
+      "status": "in_progress",
+      "summary": "Wave two completed within cap: 33 public requests, 6 Tavily, 3 Firecrawl requests with 15 reserved credits, 0 LLM and CNY 0.384 brought the cumulative store to 46 documents and 24 relevant raw candidates. A zero-live-request sampling compile then passed 5/5 taxonomy, 3/3 observed price groups, 3/3 channels, 3/3 business models and 2/2 population segments with five validated samples. One final targeted wave will address remaining cross-role source gaps.",
+      "at": "2026-07-13T14:36:28.000Z"
+    },
+    {
+      "goal": "M4.2",
+      "status": "paused",
+      "summary": "Three bounded waves completed with aggregate usage of 83 public requests, 18 Tavily, 9 Firecrawl, 45 reserved credits, 0 LLM and CNY 1.152. The store contains 56 immutable documents and 32 relevant raw candidates; five validated samples passed the sampling gate, but final combined coverage is only 2/11 and critical 1/4. The maximum-three-wave stop condition fired, so M4.3 cannot begin without a materially new source strategy or authorized verifiable imports.",
+      "at": "2026-07-13T14:40:45.000Z"
+    },
+    {
+      "goal": "M4.2",
+      "status": "in_progress",
+      "summary": "User selected a materially new public-market-only recovery strategy. The bounded recovery targets NIQ/Kantar public research, public listed-company reports, public retail pages, Ocean Engine and creator-data reports; no manual imports, private data, login, paywall bypass, LLM, production write or threshold relaxation is allowed.",
+      "at": "2026-07-13T15:00:00.000Z"
+    },
+    {
+      "goal": "M4.2",
+      "status": "complete",
+      "summary": "Six bounded public-market waves produced 82 immutable raw documents, 49 relevant raw candidates and 9 validated representative samples. All 11 coverage rows and all 4 critical rows passed with aggregate usage of 130 public requests, 24 Tavily searches, 23 Firecrawl requests, 115 reserved credits, 0 LLM and CNY 1.536; manual supplements and authorized imports remained zero.",
+      "at": "2026-07-13T15:45:00.000Z"
+    },
+    {
+      "goal": "M4.3",
+      "status": "complete",
+      "summary": "All six skincare research modules completed from validated public evidence with 33 confirmed exact-quote claims, 11/11 module coverage rows and no blocked modules; no live requests, LLM calls, manual supplements, authorized imports or commercialization assessment occurred in module research.",
+      "at": "2026-07-13T15:48:00.000Z"
+    },
+    {
+      "goal": "M4.4",
+      "status": "complete",
+      "summary": "The broad-industry report contains 33 traceable direct claims, one cross-module inference, two explicitly unverified opportunity hypotheses and a 33-entry public-source appendix. Decision guidance is validation_ready/requires_real_world_validation with no stop conclusion. Dishwasher JSON and Markdown replay matched the prior C2 artifacts byte-for-byte, and full workspace validation passed 37 files and 313 tests.",
+      "at": "2026-07-13T15:52:00.000Z"
+    },
+    {
+      "goal": "M5.1",
+      "status": "in_progress",
+      "summary": "M5.1 started by reusing the existing six-stage checkpoint runner. The only identified gap is preventing an external operation from being sent again when it completed before the stage checkpoint was persisted; implementation is limited to stable operation keys, local receipts and fail-closed recovery.",
+      "at": "2026-07-13T15:56:00.000Z"
+    },
+    {
+      "goal": "M5.1",
+      "status": "complete",
+      "summary": "The existing six-stage runner now uses atomic operation receipts and stable idempotency keys. A three-run proof failed after one simulated external operation, resumed it from the completed receipt with zero repeated executions, paused after sampling and completed the remaining stages. Unknown outcomes fail closed. Full validation passed 37 files and 315 tests.",
+      "at": "2026-07-13T16:01:00.000Z"
+    },
+    {
+      "goal": "M5.2",
+      "status": "in_progress",
+      "summary": "M5.2 started as a reuse audit of the existing Supabase run store, SSE transport and single Industry Research UI. Only missing stage, coverage, gap or cost visibility will be added; no second UI, database migration or production write is authorized.",
+      "at": "2026-07-13T16:02:00.000Z"
+    },
+    {
+      "goal": "M5.2",
+      "status": "complete",
+      "summary": "The single Industry OS result view now exposes a public-safe runtime summary for completed stages, coverage, gaps, request counts and cost while explicitly reusing the existing Supabase/local delivery store and same-origin SSE stream. The contract fixture performs no writes or live connections. Full validation passed 37 files and 315 tests, and the production build succeeded after allowing its existing Google Fonts network dependency.",
+      "at": "2026-07-13T16:05:00.000Z"
+    },
+    {
+      "goal": "M5.3",
+      "status": "in_progress",
+      "summary": "M5.3 started as a compatibility-only audit of the legacy eight-file package, share replay, download, public-field whitelist and security boundaries. No new feature or production action is planned unless a concrete regression is found.",
+      "at": "2026-07-13T16:06:00.000Z"
+    },
+    {
+      "goal": "M5.3",
+      "status": "complete",
+      "summary": "Compatibility passed without additional product code: 73 targeted tests passed; local UI and health returned 200; the public report returned only whitelisted keys and rejected an evil Origin; detail and download required the internal key; the downloaded legacy manifest still listed all eight files; replay remained protected and was not executed. The temporary local server was stopped.",
+      "at": "2026-07-13T16:09:00.000Z"
+    },
+    {
+      "goal": "M5.4",
+      "status": "awaiting_permission",
+      "summary": "M5.4 is paused at the L3/L4 gate. Proposed scope is one reviewed commit, push main, backup plus non-deleting production deployment, and a zero-provider contract canary with rollback. No migration, backfill, paid/live crawl canary or external communication is included.",
+      "at": "2026-07-13T16:10:00.000Z"
+    },
+    {
+      "goal": "M5.4",
+      "status": "in_progress",
+      "summary": "User explicitly authorized the scoped M5.4 L4 release: one reviewed commit, push main, backup plus non-deleting production deployment, zero-provider contract verification and rollback on a failed production gate. Migration, backfill, paid or live crawl canary, real-user contact and public communication remain excluded.",
+      "at": "2026-07-13T16:26:21.000Z"
+    }
+  ],
+  "lastCheckpoint": {
+    "goal": "M5.4",
+    "summary": "M5.4 L4 release permission is granted and execution has started; M5.1-M5.3 remain locally verified at C2.",
+    "evidence": [
+      "M5.1 atomic receipt runner proof completed; duplicate external executions after resume=0 and unknown outcomes fail closed",
+      "M5.2 single UI shows stages, coverage, gaps and cost while reusing existing storage/SSE contracts; pnpm check 37 files/315 tests and production build passed",
+      "M5.3 targeted compatibility tests 73/73 passed",
+      "local UI/health/public report=200; evil Origin=403; detail/download without key=401 and with key=200",
+      "legacy manifest still has 8 files; replay was auth-checked but not executed; local server stopped; production write false",
+      "M5.4 user authorization hash=72114f00d253a0fb9b620db41ba0a07a3b13ef53a3951aa1113cd88410667602"
+    ],
+    "updatedAt": "2026-07-13T16:26:21.000Z"
+  }
+}

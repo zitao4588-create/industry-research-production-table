@@ -156,6 +156,13 @@ describe("Industry Planner", () => {
         "business_model_supply_chain",
       ),
     ).toBe(false);
+    expect(
+      canSourceRoleSupportClaimRole(
+        plan,
+        "trusted_retail_channel",
+        "business_model_supply_chain",
+      ),
+    ).toBe(true);
   });
 
   it("calibrates all 18 source roles with definitions and minimum evidence", () => {
@@ -223,6 +230,19 @@ describe("Industry Planner", () => {
       plan.coverageMatrix.find((row) => row.axisType === "regulation")
         ?.targetCoverage.targetBasis,
     ).toBe("primary_authority_minimum");
+    expect(
+      plan.coverageMatrix.find((row) => row.id === "coverage-market-taxonomy")
+        ?.axisItemIds,
+    ).toContain("market-size");
+    expect(
+      plan.coverageMatrix.find((row) => row.id === "coverage-content-channels")
+        ?.axisItemIds,
+    ).toEqual([
+      "content-channel-platform",
+      "content-channel-search",
+      "content-channel-creator",
+      "content-channel-live",
+    ]);
   });
 
   it("defines a fillable representative sample contract while staying fail-closed", () => {

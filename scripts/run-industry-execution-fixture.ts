@@ -8,6 +8,8 @@ import {
   createIndustryPlan,
   type IndustryExecutionArtifactRef,
   type IndustryExecutionCheckpoint,
+  type IndustryExecutionOperationReceipt,
+  type IndustryExecutionOperationStore,
   type IndustryExecutionStage,
   type IndustryPlanningInput,
   industryExecutionStages,
@@ -100,11 +102,70 @@ const stopAfterStage = industryExecutionStages.find(
 if (stopAfterArgument && !stopAfterStage) {
   throw new Error(`industry_execution_invalid_stop_after:${stopAfterArgument}`);
 }
+const failAfterOperationArgument = argumentValue("fail-after-operation");
+const failAfterOperationStage = industryExecutionStages.find(
+  (stage) => stage === failAfterOperationArgument,
+);
+if (failAfterOperationArgument && !failAfterOperationStage) {
+  throw new Error(
+    `industry_execution_invalid_fail_after_operation:${failAfterOperationArgument}`,
+  );
+}
 const inputText = await readFile(inputPath, "utf8");
 const planningInput = JSON.parse(inputText) as IndustryPlanningInput;
 const plan = createIndustryPlan(planningInput);
 const expectedInputHash = sha256(inputText);
 await mkdir(outputDir, { recursive: true });
+const operationReceiptDir = join(outputDir, "operation-receipts");
+await mkdir(operationReceiptDir, { recursive: true });
+
+function operationReceiptPath(operationKey: `sha256:${string}`) {
+  return join(
+    operationReceiptDir,
+    `${operationKey.slice("sha256:".length)}.json`,
+  );
+}
+
+const operationStore: IndustryExecutionOperationStore = {
+  begin: async (receipt) => {
+    const path = operationReceiptPath(receipt.operationKey);
+    try {
+      await writeFile(path, `${JSON.stringify(receipt, null, 2)}\n`, {
+        encoding: "utf8",
+        flag: "wx",
+      });
+      return { created: true, receipt };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+      return {
+        created: false,
+        receipt: JSON.parse(
+          await readFile(path, "utf8"),
+        ) as IndustryExecutionOperationReceipt,
+      };
+    }
+  },
+  complete: async (receipt) => {
+    const path = operationReceiptPath(receipt.operationKey);
+    const existing = JSON.parse(
+      await readFile(path, "utf8"),
+    ) as IndustryExecutionOperationReceipt;
+    if (
+      existing.operationKey !== receipt.operationKey ||
+      existing.status !== "started_unconfirmed" ||
+      receipt.status !== "completed"
+    ) {
+      throw new Error("industry_execution_file_receipt_transition_invalid");
+    }
+    const temporaryPath = `${path}.tmp`;
+    await writeFile(
+      temporaryPath,
+      `${JSON.stringify(receipt, null, 2)}\n`,
+      "utf8",
+    );
+    await rename(temporaryPath, path);
+  },
+};
 
 let checkpoint = await loadCheckpoint(checkpointPath);
 if (checkpoint) {
@@ -141,12 +202,15 @@ const fixtureDocument = (stage: IndustryExecutionStage) => ({
   },
 });
 
+let simulatedExternalOperationExecutions = 0;
+
 checkpoint = await runIndustryExecutionStages({
   checkpoint,
   stopAfterStage,
+  operationStore,
   now: () => new Date().toISOString(),
   saveCheckpoint: (next) => saveCheckpointAtomic(checkpointPath, next),
-  handler: async ({ stage }) => {
+  handler: async ({ stage, runOperation }) => {
     switch (stage) {
       case "planning":
         return [
@@ -158,15 +222,33 @@ checkpoint = await runIndustryExecutionStages({
             "application/json",
           ),
         ];
-      case "breadth_scan":
+      case "breadth_scan": {
+        const operationResult = await runOperation({
+          operationId: "contract-source-discovery",
+          kind: "external-request",
+          execute: async ({ idempotencyKey }) => {
+            simulatedExternalOperationExecutions += 1;
+            return {
+              idempotencyKey,
+              contractOnly: true,
+              publicRequests: 0,
+              providerRequests: 0,
+              costYuan: 0,
+            };
+          },
+        });
+        if (failAfterOperationStage === stage) {
+          throw new Error("fixture_failure_after_operation_receipt");
+        }
         return [
           await writeJsonArtifact(
             outputDir,
             "breadth_scan/source-candidates.json",
-            fixtureDocument(stage),
+            { ...fixtureDocument(stage), operationResult },
             "source_candidate_plan",
           ),
         ];
+      }
       case "sampling":
         return [
           await writeJsonArtifact(
@@ -237,6 +319,8 @@ console.log(
         .map((stage) => stage.stage),
       nextStage: checkpoint.nextStage,
       liveProviderCalls: checkpoint.assertions.liveProviderCalls,
+      simulatedExternalOperationExecutions,
+      operationReceiptDir,
       checkpointPath,
     },
     null,

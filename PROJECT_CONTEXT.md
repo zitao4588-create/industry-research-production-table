@@ -18,6 +18,31 @@
 
 ## 当前真实状态
 
+- 2026-07-13 Industry OS Data-to-Report M1 已完成本地 L2：
+  - 新建 M1–M6 顺序 Loop、heartbeat prompt 和独立机器 checkpoint；旧 G2–G12 完成记录保持不变。状态机只允许一个当前小 Goal，并校验顺序推进、权限门和连续失败暂停。
+  - 新增 `industry_acquisition_task.v1` 和 plan contract；Planner 的 11 行 coverage matrix 会稳定编译为 11 个带来源角色、目标 claim、覆盖目标、优先级、预算、合规边界和停止条件的任务。
+  - 洗碗机离线输入通过 `pnpm plan:industry:acquisition` 生成 11 个任务，其中 4 个 critical、4 个 high；live provider/public requests/费用均为 0，external facts 为 0。
+  - 连续两次输出 SHA-256 均为 `da8cc540fcd09314e36b6cad604a2f34b96f5bc8850a73febecb4701c005add4`；`pnpm check` 通过 28 个测试文件、255 条测试，`git diff --check` 通过。
+  - M2.1 已新增统一离线路由契约，覆盖普通公开页、搜索发现、sitemap/RSS、复杂公开页、授权导入和手工输入；登录、cookie、验证码、付费墙、私人数据、内网 URL 与错误来源角色均 fail-closed。
+  - M2.2 已新增不可变原文仓库：SHA-256、规范 URL、内容去重、版本链与采集审计均通过。离线 fixture 为 3 份快照、2 个规范 URL、1 个新版本、1 次重复去重，两次产物 SHA-256 均为 `0a46c18c0ec1fb88a938d3ebd49b75272687cb1cac8562c6aafdc3d2de6e972a`。
+  - M2.3 第一轮真实扫描 `dishwasher-m2-3-wave-1-2026-07-13T11-31-20-563Z` 已在专用预算内完成：18/30 public requests、3/3 Tavily、Firecrawl 保守预留 50/50 credits、0 LLM、费用审计 ¥0.192/¥2、42.374 秒；未写生产或数据库。
+  - 第一轮得到 10 个候选、6 个路由目标和 6 份不可变原文。离线复核后只有 2 份为相关原文候选，2 份串到洗地机/空调，2 份被来源质量拒绝；来源角色只有 `brand_official_site`，11/11 coverage rows 仍有缺口。
+  - M2.3 当时的门禁结论是：`acceptedForReport=true` 不能覆盖强品类相关性复核，raw document 仍不是 evidence；该波当时不能进入 M3，也没有生成行业报告或商业结论。后续 M2.4 已补齐关键覆盖并解锁 M3。
+  - 状态机升级为 `industry_os_data_report_loop.v2`：保留逐 Goal/wave 的硬上限审计，并记录用户对本 M1–M6 Loop 的 standing `live_budget`；后续预算门不再重复询问，但不包含 commit、push、部署、生产/数据库写入或外联。
+  - M2.4 已完成 3 个定向 wave：合并数据集 18 份不可变原文、11 份强相关 raw candidates，4/4 关键 coverage rows 和 4/11 总行达标；2 份串品类、5 份低质量来源及 2 份 PDF 二进制载荷保持拒绝。M2 已完成并解锁 M3，仍未 commit、push 或部署。
+  - M3.1 已完成：新增 `industry_atomic_claims.v1` 契约和 fail-closed 生成器，洗碗机产物含 7 条原子事实，绑定 3 份不可变 raw、3 种 source role、3 种 claim role 和 3 个 coverage row；7 个 M2 拒绝文档不能进入 claim。
+  - M3.2 已完成：新增 `industry_opportunity_hypotheses.v1`，生成安装适配、标准解释、连续研究看板 3 条未验证假设；全部 7 条原子事实进入 fact basis，每条假设包含目标用户、问题、假设、未知项和可判定成功/失败的 L5 验证计划。
+  - M3.3 已完成：新增 `industry_graded_report.v1` 并生成 JSON/Markdown 洗碗机分级草案；确认事实、未验证假设、4/11 coverage、7 个 gap、7 个拒绝来源和证据附录分章展示，决策边界固定为 `no_project_go_or_stop_decision`。
+  - M3.4 已完成：新增 `industry_m3_report_review.v1`，全部 7 条 claim 的不可变 raw、清洗正文 hash、quote offsets、source/claim role 和 M2 强相关绑定通过；市场、标准、产品三类代表性抽查、章节/附录/缺口/拒绝来源、移动可读性和确定性回放均通过。审查证书 SHA-256 为 `598a1d35d2d19334ac5f4d3776a4984cbf037be2bfcfef3776c70dd71f2a7e99`，`pnpm check` 为 36 files / 306 tests。M3 达到本地 C2，但没有独立人工复核或真实用户验证；随后已进入并完成 M4。
+  - M4.1 已完成：新增 `industry_m4_module_acquisition_plan.v1`，原始输入完整保留为“护肤品 / 中国大陆 / 2024–2026 / broad_industry”，没有品牌或 SKU 缩窄；市场 3、监管 1、消费者 1、电商竞品 3、内容流量 1、商业模式/供应链 2，共六模块 11 个离线任务。两次产物 SHA-256 均为 `c1a82ecb592bb6d3147827208b9c5b6e4b4e4f11802952bb9274832e86dd3713`，live/LLM/外部事实均为 0；`pnpm check` 为 37 files / 308 tests。
+  - M4.2 已完成：前三波通用采集曾按停止规则在 2/11 coverage 暂停；随后严格执行“只搜索公开市场、不做人工补充”的新来源策略，增加三波有界恢复。六波合计 130 public、24 Tavily、23 Firecrawl、保守 115 credits、0 LLM、¥1.536；得到 82 份不可变原文、49 份相关 raw candidates、9 个代表样本，最终 coverage 11/11、critical 4/4。manual supplements=0、authorized imports=0。
+  - M4.3 已完成：市场、监管、消费者、电商竞品、内容流量、商业模式/供应链六模块全部通过，共 33 条逐字证据 claim、0 blocked module；本阶段没有新增网络请求、LLM 或商业化判断。
+  - M4.4 已完成本地 C2：复用现有 claim ledger/report bundle，生成 33 条直接事实/信号、1 条跨模块推断、2 条明确未验证的机会假设和 33 组公开来源附录。报告只给出 `validation_ready / requires_real_world_validation`，没有停止商业化结论。洗碗机报告 JSON/Markdown 与原 C2 产物逐字节一致，无跨品类污染；`pnpm check` 通过 37 files / 313 tests。当前 M5.1 ready，仍未 commit、push、部署或写生产。
+  - M5.1 已完成本地 C2：复用原六阶段 checkpoint runner，新增原子 operation receipt 与稳定 idempotency key。三段证明中，breadth_scan 在外部操作完成后故意失败并重试，但模拟外部执行总数保持 1；抽样后暂停再恢复，六阶段最终完成。未知结果禁止自动重发。`pnpm check` 37 files / 315 tests。
+  - M5.2 已完成本地 C2：单一 Industry OS 结果页增加公开安全的运行摘要，展示阶段、coverage、缺口、public/search/crawl/LLM 请求与费用；继续声明复用现有 Supabase/本地交付存储和同源 SSE，contract fixture 不写库、不打开 live stream。生产构建通过。
+  - M5.3 已完成本地兼容验收：73 条专项测试通过；本地 UI/health/公开分享报告为 200，公开字段保持白名单，恶意 Origin 为 403；详情与下载无内部凭据为 401、有本地测试凭据为 200；下载 manifest 仍为 v1 且 8/8 文件完整。replay 未执行，没有新增抓取/费用；临时 3105 服务已停止。
+  - 当前 M5.4 在 L3/L4 权限门等待：需要 commit、push、生产备份、非删除式部署和零 provider contract canary。该范围不含 migration/backfill、付费或 live crawl canary、生产数据扩写或真实用户外联。
+
 - 2026-07-13 分支与报告生成已收束到单一 `main` 工作入口：
   - `main`、原 `codex/g12-benchmark-closeout` 与 GitHub `main` 的已提交基线相同；两个 Claude 分支的提交历史也已合并。当前所有未提交修改完整保留在 `main` 工作区，未 commit、未 push。
   - 第一批后台清理删除废弃 repository、内存 persistence、静态 capability 清单、3 个占位 n8n workflow，并移除未引用的 Firecrawl SDK；真实 Supabase run store、REST provider、zvec 和生产 n8n 保留。
