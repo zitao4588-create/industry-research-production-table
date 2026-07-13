@@ -1,8 +1,16 @@
 # TODO
 
-更新时间：2026-07-13
+更新时间：2026-07-14
 
 ## 已完成
+
+- [x] 2026-07-14 公开失败报告 fail-closed 修复、推送与生产部署：
+  - 公开报告 API 升级为 v3，只展示 reviewed report 中的已确认竞品与机会；技术失败或证据不足时全部公开结果计数归零。
+  - 公开页面新增通俗失败解释，明确不把研究失败写成行业没有机会或停止商业化；技术报告降到折叠记录。
+  - 来源相关性移除宽泛 market/DTC 独立命中，冰箱与跨境物流软件反向测试通过。
+  - `pnpm check` 为 37 files / 317 tests，生产构建通过；提交 `b846f6c` 已推送 `origin/main` 并部署，备份 `pre-b846f6c-20260713T172230Z.tar.gz`。
+  - 线上旧冰箱 run 已验证为 `technical_blocked`、0 confirmed、0 competitors、0 opportunities；health、远端 build、server/Supabase doctor 和 service active 通过。
+  - 未完成项：公开输入仍未正式接入通用 M1–M6 runner；M6.2 外联继续暂停。
 
 - [x] 2026-07-13 Industry OS Data-to-Report M1：Planner 生成可执行采集任务：
   - 建立独立 M1–M6 顺序 Loop、heartbeat 和机器 checkpoint，不覆盖旧 G2–G12 历史。

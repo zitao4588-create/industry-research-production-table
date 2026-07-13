@@ -18,6 +18,16 @@
 
 ## 当前真实状态
 
+- 2026-07-14 公开报告失败态与跨品类门禁已部署生产，完成等级 C3：
+  - 根因已确认：旧公开摘要直接统计数据库候选和原始 evidence；来源相关性又把 `market` 中的“线上电商 / DTC”等宽泛词当作品类信号，导致技术失败的冰箱 run 仍展示无关物流软件竞品。
+  - 公开报告契约升级为 `industry_research_run_report.v3`。只有 reviewed report“已确认发现”章节中的条目可以进入公开竞品和机会；0 confirmed finding 时全部公开计数 fail-closed 为 0。
+  - 报告页新增通俗失败态，明确区分“本次研究失败”和“行业/商业化结论”；技术阻塞或证据不足不得解释为行业没有机会或停止商业化。
+  - 品类相关性不再使用市场词独立通过门禁；新增冰箱与 AMZ123 跨境物流软件反向测试，宽泛电商文本保持 `sourceRelevance=low`、`acceptedForReport=false`。
+  - 本地 `pnpm check` 通过 37 个测试文件、317 条测试，生产构建通过。提交 `b846f6c` 已推送 `origin/main` 并以 HEAD 非删除式部署；备份为 `.deploy-backups/pre-b846f6c-20260713T172230Z.tar.gz`。
+  - 远端 install/build、server doctor、Supabase doctor、service active 和公网 health 通过；重启窗口第一次 health 为 502，3 秒后有限重试恢复 `status=ok`。
+  - 生产回放 `industry-research-2026-07-13T16-48-11-571Z` 已返回 v3：`technical_blocked`、0 confirmed、1 needs review、3 technical failures、0 公开竞品、0 公开机会。
+  - 当前边界不变：公开“开始研究”仍运行旧 `public_web_llm` 单次工作流；M1–M6 的通用线上接通尚未完成，本轮没有 migration、backfill、生产数据扩写、付费抓取、zvec 写入或外联。
+
 - 2026-07-13 Industry OS Data-to-Report M1 已完成本地 L2：
   - 新建 M1–M6 顺序 Loop、heartbeat prompt 和独立机器 checkpoint；旧 G2–G12 完成记录保持不变。状态机只允许一个当前小 Goal，并校验顺序推进、权限门和连续失败暂停。
   - 新增 `industry_acquisition_task.v1` 和 plan contract；Planner 的 11 行 coverage matrix 会稳定编译为 11 个带来源角色、目标 claim、覆盖目标、优先级、预算、合规边界和停止条件的任务。
