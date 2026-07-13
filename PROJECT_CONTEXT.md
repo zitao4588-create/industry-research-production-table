@@ -1,6 +1,6 @@
 # 项目上下文
 
-更新时间：2026-07-13
+更新时间：2026-07-14
 
 ## 当前项目目标
 
@@ -41,10 +41,12 @@
   - M5.1 已完成本地 C2：复用原六阶段 checkpoint runner，新增原子 operation receipt 与稳定 idempotency key。三段证明中，breadth_scan 在外部操作完成后故意失败并重试，但模拟外部执行总数保持 1；抽样后暂停再恢复，六阶段最终完成。未知结果禁止自动重发。`pnpm check` 37 files / 315 tests。
   - M5.2 已完成本地 C2：单一 Industry OS 结果页增加公开安全的运行摘要，展示阶段、coverage、缺口、public/search/crawl/LLM 请求与费用；继续声明复用现有 Supabase/本地交付存储和同源 SSE，contract fixture 不写库、不打开 live stream。生产构建通过。
   - M5.3 已完成本地兼容验收：73 条专项测试通过；本地 UI/health/公开分享报告为 200，公开字段保持白名单，恶意 Origin 为 403；详情与下载无内部凭据为 401、有本地测试凭据为 200；下载 manifest 仍为 v1 且 8/8 文件完整。replay 未执行，没有新增抓取/费用；临时 3105 服务已停止。
-  - 当前 M5.4 在 L3/L4 权限门等待：需要 commit、push、生产备份、非删除式部署和零 provider contract canary。该范围不含 migration/backfill、付费或 live crawl canary、生产数据扩写或真实用户外联。
+  - M5.4 已达到生产 C3：单一提交 `598f628` 已推送 `origin/main`；部署前备份为 `.deploy-backups/pre-598f628-20260713T163242Z.tar.gz`。首次远端构建发现非删除部署遗留的旧源码，44 个残留文件已可逆移动到 `.deploy-backups/stale-598f628-20260713T163242Z/`，没有删除；随后远端 build、server/Supabase doctor、service restart、health、UI、公开报告白名单、Origin、详情/下载/replay 鉴权全部通过。
+  - M5.4 没有执行 migration、backfill、zvec 写入、replay、live crawl、付费 provider 或生产数据扩写。GitHub main 为 `598f628511f1cb7687b162415240fe0b134ec6f9`，三个关键部署文件的本地与生产 SHA-256 一致。
+  - M6.1 已完成本地真实用户验证方案，见 `docs/INDUSTRY_OS_M6_USER_VALIDATION_PLAN.md`。当前 Loop 暂停在 M6.2 L5 权限门；尚未联系或邀请用户，也未把用户反馈作为行业数据。
 
 - 2026-07-13 分支与报告生成已收束到单一 `main` 工作入口：
-  - `main`、原 `codex/g12-benchmark-closeout` 与 GitHub `main` 的已提交基线相同；两个 Claude 分支的提交历史也已合并。当前所有未提交修改完整保留在 `main` 工作区，未 commit、未 push。
+  - `main`、原 `codex/g12-benchmark-closeout` 与 GitHub `main` 的已提交基线相同；两个 Claude 分支的提交历史也已合并。M1–M5.4 修改已由提交 `598f628` 收口并推送 `origin/main`。
   - 第一批后台清理删除废弃 repository、内存 persistence、静态 capability 清单、3 个占位 n8n workflow，并移除未引用的 Firecrawl SDK；真实 Supabase run store、REST provider、zvec 和生产 n8n 保留。
   - 报告新增统一 `research_decision_guidance.v1`：只输出研究就绪度、商业化是否已评估、依据与下一验证动作；证据不足和技术故障不再自动升级为停止项目。
   - 审核队列从仅覆盖 competitor/opportunity 补齐为 competitor、product signal、pain point、content signal、opportunity 五类；`report.md` 与 `reviewed_report.md` 共用同一证据门禁，重复候选 renderer 已删除。

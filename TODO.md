@@ -131,9 +131,11 @@
 - [x] M5.1：复用现有六阶段 runner，新增原子 operation receipt 与稳定幂等键；完成“外部操作后故障→零重复执行恢复→主动暂停→完成剩余阶段”证明，未知结果 fail-closed。
 - [x] M5.2：单一结果页展示阶段、coverage、缺口、请求数和费用；沿用现有 Supabase/本地交付存储与同源 SSE，不新增 migration、数据库或 UI 分支。
 - [x] M5.3：旧 8 文件、公开分享、详情、下载、replay 鉴权和公开字段白名单兼容验收通过；replay 未实际执行。
-- [ ] M5.4（awaiting L3/L4）：审阅当前大工作区后生成一个 commit、push main、备份并非删除式部署，执行零 provider contract canary 和回滚门；不含 migration/backfill、付费/live crawl canary或外联。
+- [x] M5.4：提交 `598f628` 已推送 main；生产备份、残留文件可逆归档、非删除部署、build/doctor/service/health/UI/API/security canary 全部通过，达到 C3。未执行 migration/backfill、付费/live crawl、replay 或外联。
+- [x] M6.1：完成 3–5 名目标用户的本地验证方案，定义独立任务、成功/失败指标、隐私边界、记录字段和停止条件；没有联系用户或人工补充行业数据。
+- [ ] M6.2（awaiting L5）：用户确认参与者与沟通渠道后，邀请 3–5 名目标用户参加独立测试；不公开招募、不群发、不收集私人业务数据。
 
-- [x] 分支工作入口收束到 `main`；所有历史分支提交已合并，未提交 G12、后台清理与报告优化修改完整保留。
+- [x] 分支工作入口收束到 `main`；所有历史分支提交已合并，M1–M5.4 由提交 `598f628` 收口并推送 `origin/main`。
 - [x] 报告决策模型拆分为研究就绪度与商业化评估；证据不足不再自动生成停止项目结论。
 - [x] 五类 finding 全部进入审核队列；`report.md` 与 `reviewed_report.md` 统一使用证据门禁，并删除重复候选 renderer。
 - [x] `pnpm check` 通过 27 files / 259 tests；离线 replay v2 为 0 provider、0 公网请求、¥0。
@@ -142,7 +144,7 @@
 - [x] G12 live benchmark 已在 ¥10、250 Firecrawl credits、160 public requests、15 LLM requests 上限内执行；前三项 0/3 PASS 后触发 kill，后两项未调用。
 - [x] G12 决策范围已纠正：`evidence_pipeline_blocked` 只表示证据流水线受阻，商业化状态为 `not_evaluated`，不再自动生成停止项目结论。
 - [x] 复用洗碗机现有产物，完成 claim、quote、机会假设与报告决策修复；不再新增品类 benchmark。
-- [ ] M5.1 让 Planner 与现有 `ResearchWorkflowInput` / public workflow 以模块化异步阶段衔接，不把大行业重新塞进单次 300 秒同步 run。
+- [x] M5.1 让 Planner 与现有 `ResearchWorkflowInput` / public workflow 以模块化异步阶段衔接，不把大行业重新塞进单次 300 秒同步 run。
 - [ ] G11 已由用户明确跳过；仅在用户主动重新开放真实用户验证并确认联系与隐私边界后，才找目标用户复验。当前维持 C3，不标记 C4。
 - [ ] 根据真实手机阅读反馈决定是否继续压缩完整报告的证据索引章节；当前工程验收已通过，但报告内容本身仍很长。
 

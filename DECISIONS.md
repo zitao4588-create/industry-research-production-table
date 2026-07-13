@@ -714,3 +714,16 @@
 - UI/存储：不新增第二套页面或 migration。Industry OS payload 只增加公开安全 runtime summary；Supabase 继续保存现有 JSON run_log/manifest，本地 8 文件与同源 SSE 契约保持不变。
 - 兼容：M5.3 用既有洗碗机 run 验证公开分享白名单、Origin 拒绝、详情/下载鉴权和 8 文件下载；replay 只验证 401 安全边界，没有为验收触发新的公开抓取。
 - 权限：M5.1–M5.3 结束于本地 C2。M5.4 的 commit、push 和生产部署必须单独获得 L3/L4；standing live_budget 不自动授权这些动作。
+
+## 2026-07-14：M5.4 非删除部署用可逆归档处理历史残留
+
+- 决策：生产目录继续不使用 rsync `--delete`。对 dry-run 明确列出的、已经不属于当前提交但会参与构建的 44 个历史文件，按原相对路径移动到 `.deploy-backups/stale-598f628-20260713T163242Z/`，不直接删除。
+- 原因：首次远端 build 证明旧 `supabase-repository.ts` 与当前 core 契约冲突；只覆盖新文件会形成新旧代码混合。可逆归档同时满足构建一致性、回滚和禁止批量删除的约束。
+- 结果：提交 `598f628` 已推送 main；备份 `pre-598f628-20260713T163242Z.tar.gz`、二次 build、server/Supabase doctor、service、health、UI、分享、下载和鉴权全部通过。关键文件远端 SHA-256 与本地一致。
+- 边界：没有执行 migration、backfill、zvec 写入、replay、live crawl、付费 provider 或生产数据扩写。
+
+## 2026-07-14：M6 用户验证不属于行业数据人工补充
+
+- 决策：M6 只验证目标用户能否独立完成产品核心流程；用户反馈单独保存在匿名可用性记录中，不进入行业事实库、公开报告证据、Supabase 行业事实表或 zvec 行业知识索引。
+- M6.1：本地方案要求 3–5 名目标用户、至少 3 名无指导完成、能区分事实与假设、能找到证据并完成分享/下载，同时设置隐私、重复失败和错误商业结论停止门。
+- 权限：M6.2 招募或联系用户仍需要 L5；当前没有参与者名单或已授权沟通渠道，不自动外联。

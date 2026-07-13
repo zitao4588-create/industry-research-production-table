@@ -491,3 +491,13 @@
 - 已修复：官方标准详情页因导航文本较多被通用规则误杀；新增窄规则，只在 standards/regulator 来源、明确 GB 标准号、洗碗机强相关且至少包含两项发布字段时作为相关 raw candidate，仍不直接成为 evidence。
 - 当前未解：7 个非关键 coverage rows 仍缺用户评论、可信零售、商业模式、供应链和内容渠道等代表性样本；它们必须在后续报告中显示为 coverage gaps，不能被市场关键行的通过掩盖。
 - 已修复：M3.1 独立审计发现不同 wave 的 `public-raw-document-1` 等清洗文档 ID 会重号，单靠 extracted ID 无法唯一证明 quote 版本；atomic claim 现同时绑定 canonical URL、不可变 raw document ID、清洗正文 SHA-256 和 quote offsets，独立审计及 deterministic replay 均通过。
+
+## 2026-07-14：M5.4 非删除部署遇到服务器历史源码残留
+
+- 现象：提交 `598f628` 已推送并完成生产备份、非删除式 rsync；服务器执行 `pnpm build` 时，旧文件 `apps/studio/src/app/api/industry-research/_lib/supabase-repository.ts` 引用 core 已删除导出，TypeScript 构建失败。
+- 分类：部署目录残留，不是本次提交的本地构建回归。同一提交本机 `pnpm check` 37 个测试文件 / 315 项测试通过，`pnpm build` 通过；生产服务未重启，线上仍运行旧进程。
+- 原因：生产目录不是 Git worktree，历史部署长期使用不带 `--delete` 的 rsync；本地已经移除的源码仍留在服务器，构建时形成新旧代码混合。
+- 已确认：`rsync --dry-run --delete` 仅用于列出残留，没有执行删除；残留还包括旧 UI/core 文件、旧 n8n workflow 和 macOS `._*` 元数据。
+- 处理计划：不删除残留文件；按原相对路径移动到 `.deploy-backups/stale-598f628-20260713T163242Z/`，再次构建。若仍失败，停止并从 `pre-598f628-20260713T163242Z.tar.gz` 恢复。
+- 处理结果：44 个残留文件已可逆归档，二次 dry-run 不再显示待清理文件；远端 build、server doctor、Supabase doctor、service restart 和完整零 provider canary 均通过，因此没有执行回滚。
+- 后续注意：`deploy/lightweight-server/deploy.sh` 的非删除策略仍可能再次积累历史源码。后续部署必须先运行只读残留清单；发现会参与构建的旧源码时先归档，禁止直接批量删除。

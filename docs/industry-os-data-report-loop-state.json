@@ -1,10 +1,10 @@
 {
   "schemaVersion": "industry_os_data_report_loop.v2",
   "loopId": "industry-os-data-report-m1-m6",
-  "status": "active",
-  "currentMilestone": "M5",
-  "currentGoal": "M5.4",
-  "currentGoalStatus": "in_progress",
+  "status": "awaiting_permission",
+  "currentMilestone": "M6",
+  "currentGoal": "M6.2",
+  "currentGoalStatus": "awaiting_permission",
   "permissionCeiling": "L2",
   "autoAdvance": true,
   "controllerPath": "docs/INDUSTRY_OS_DATA_REPORT_M1_M6_LOOP.md",
@@ -14,7 +14,12 @@
     "sameFailureCount": 0,
     "lastFailureFingerprint": null
   },
-  "pause": null,
+  "pause": {
+    "reason": "external_user_contact_requires_L5",
+    "requiredPermission": "L5",
+    "requestSummary": "Invite 3-5 target users through a user-confirmed channel to independently test the production flow. Each participant may run public_web at most once under the existing bounded live_budget. No public posting, payment solicitation, account credentials, private customer data or unapproved communication channel is included.",
+    "decisionRequestHash": "81cc69f310cfe9c16aa5f721ddfab5165b9ff92b51661e239a487be77776a3f5"
+  },
   "grantedPermissions": [
     {
       "goal": "M2.3",
@@ -179,19 +184,19 @@
     {
       "id": "M5.4",
       "milestone": "M5",
-      "status": "in_progress",
+      "status": "complete",
       "requiredPermission": "L4"
     },
     {
       "id": "M6.1",
       "milestone": "M6",
-      "status": "planned",
+      "status": "complete",
       "requiredPermission": null
     },
     {
       "id": "M6.2",
       "milestone": "M6",
-      "status": "planned",
+      "status": "awaiting_permission",
       "requiredPermission": "L5"
     },
     {
@@ -477,19 +482,49 @@
       "status": "in_progress",
       "summary": "User explicitly authorized the scoped M5.4 L4 release: one reviewed commit, push main, backup plus non-deleting production deployment, zero-provider contract verification and rollback on a failed production gate. Migration, backfill, paid or live crawl canary, real-user contact and public communication remain excluded.",
       "at": "2026-07-13T16:26:21.000Z"
+    },
+    {
+      "goal": "M5.4",
+      "status": "verifying",
+      "summary": "Commit 598f628 was pushed to origin/main and backed up as pre-598f628-20260713T163242Z.tar.gz. The first production build exposed historical source files retained by prior non-deleting deployments; 44 residual files were moved reversibly into .deploy-backups/stale-598f628-20260713T163242Z and the rebuild passed.",
+      "at": "2026-07-13T16:38:00.000Z"
+    },
+    {
+      "goal": "M5.4",
+      "status": "complete",
+      "summary": "Production C3 verification passed: build, server doctor, Supabase doctor, service restart, health, UI, public report whitelist, Origin rejection, protected detail/download/replay boundaries and authorized existing-report download all passed. No replay, live crawl, provider call, migration, backfill or production data expansion was executed.",
+      "at": "2026-07-13T16:39:30.000Z"
+    },
+    {
+      "goal": "M6.1",
+      "status": "in_progress",
+      "summary": "M6.1 started locally to define participants, independent tasks, success and failure metrics, privacy boundaries, recording fields and stop conditions. No participant contact or research data supplementation is included.",
+      "at": "2026-07-13T16:40:00.000Z"
+    },
+    {
+      "goal": "M6.1",
+      "status": "complete",
+      "summary": "The local M6 user validation plan is complete at docs/INDUSTRY_OS_M6_USER_VALIDATION_PLAN.md. It requires 3-5 target users, at least 3 unassisted completions, fact-versus-hypothesis comprehension, share/download completion, privacy restrictions and explicit P0/P1 stop conditions.",
+      "at": "2026-07-13T16:40:30.000Z"
+    },
+    {
+      "goal": "M6.2",
+      "status": "awaiting_permission",
+      "summary": "M6.2 is paused for scoped L5 permission before inviting or contacting 3-5 target users. No contact list, channel, public recruitment, payment promise or private business data collection is authorized yet.",
+      "at": "2026-07-13T16:40:30.000Z"
     }
   ],
   "lastCheckpoint": {
-    "goal": "M5.4",
-    "summary": "M5.4 L4 release permission is granted and execution has started; M5.1-M5.3 remain locally verified at C2.",
+    "goal": "M6.2",
+    "summary": "M5.4 reached production C3 and M6.1 completed locally; the Loop is paused before any external user contact at the M6.2 L5 gate.",
     "evidence": [
-      "M5.1 atomic receipt runner proof completed; duplicate external executions after resume=0 and unknown outcomes fail closed",
-      "M5.2 single UI shows stages, coverage, gaps and cost while reusing existing storage/SSE contracts; pnpm check 37 files/315 tests and production build passed",
-      "M5.3 targeted compatibility tests 73/73 passed",
-      "local UI/health/public report=200; evil Origin=403; detail/download without key=401 and with key=200",
-      "legacy manifest still has 8 files; replay was auth-checked but not executed; local server stopped; production write false",
-      "M5.4 user authorization hash=72114f00d253a0fb9b620db41ba0a07a3b13ef53a3951aa1113cd88410667602"
+      "commit 598f628 pushed to origin/main; GitHub remote SHA=598f628511f1cb7687b162415240fe0b134ec6f9",
+      "production backup=.deploy-backups/pre-598f628-20260713T163242Z.tar.gz; 44 stale files archived reversibly under stale-598f628-20260713T163242Z",
+      "remote build, server doctor and Supabase doctor passed; industry-research.service active and ready",
+      "health/UI/public report=200; evil Origin=403; list/detail/download/replay without key=401; authorized detail/download=200",
+      "three deployed critical-file SHA-256 values exactly match local; no provider call, live crawl, replay, migration, backfill or production data expansion",
+      "M6.1 plan=docs/INDUSTRY_OS_M6_USER_VALIDATION_PLAN.md; M6.2 request hash=81cc69f310cfe9c16aa5f721ddfab5165b9ff92b51661e239a487be77776a3f5"
     ],
-    "updatedAt": "2026-07-13T16:26:21.000Z"
+    "updatedAt": "2026-07-13T16:40:30.000Z"
   }
 }
