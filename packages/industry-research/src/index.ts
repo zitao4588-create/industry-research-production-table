@@ -26,7 +26,6 @@ export {
   parseAmazonPublicPage,
   supportsAmazonPublicEvidence,
 } from "./amazon-public-evidence";
-export { researchAutomationCapabilityAssessments } from "./capabilities";
 export {
   generateCrawlPlan,
   generateSourceDiscoveryPlan,
@@ -265,13 +264,6 @@ export {
   createResearchReviewItems,
   runMockIndustryResearchWorkflow,
 } from "./mock-workflow";
-export type {
-  IndustryResearchReportRecord,
-  IndustryResearchRepository,
-  IndustryResearchRepositorySnapshot,
-  IndustryResearchRunRecord,
-} from "./persistence";
-export { createIndustryResearchLocalJsonRepository } from "./persistence";
 export type {
   PublicCrawlAdapterOptions,
   PublicCrawlAdapterResult,

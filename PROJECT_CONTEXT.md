@@ -18,11 +18,26 @@
 
 ## 当前真实状态
 
+- 2026-07-13 分支与报告生成已收束到单一 `main` 工作入口：
+  - `main`、原 `codex/g12-benchmark-closeout` 与 GitHub `main` 的已提交基线相同；两个 Claude 分支的提交历史也已合并。当前所有未提交修改完整保留在 `main` 工作区，未 commit、未 push。
+  - 第一批后台清理删除废弃 repository、内存 persistence、静态 capability 清单、3 个占位 n8n workflow，并移除未引用的 Firecrawl SDK；真实 Supabase run store、REST provider、zvec 和生产 n8n 保留。
+  - 报告新增统一 `research_decision_guidance.v1`：只输出研究就绪度、商业化是否已评估、依据与下一验证动作；证据不足和技术故障不再自动升级为停止项目。
+  - 审核队列从仅覆盖 competitor/opportunity 补齐为 competitor、product signal、pain point、content signal、opportunity 五类；`report.md` 与 `reviewed_report.md` 共用同一证据门禁，重复候选 renderer 已删除。
+  - `pnpm check` 通过 27 个测试文件、259 条测试；离线 replay v2 在 38ms 内完成，provider/public network/API cost 均为 0，输出 `evidence_pipeline_blocked` 与 `commercializationAssessment=not_evaluated`。
+
+- 2026-07-13 G12 live benchmark 已触发预注册早停规则，当前进入证据流水线修复：
+  - Run `industry-os-g12-benchmark-v1-2026-07-13T03-26-39-782Z` 按锁定顺序运行前三项：宠物益生菌 0、洗碗机 60、日本小众护肤 15，结果为 0/3 PASS。
+  - 前三项全 FAIL 后已不可能达到至少 3/5 PASS，benchmark 早停规则正常触发；男士电动剃须刀和猫咪自动饮水机未调用，没有 post-kill 混入。
+  - 使用量为 public 64/160、LLM 5/15、Tavily 6/10、Firecrawl 最坏情况预留 140/250 credits；有 usage 的费用为 ¥0.724446，另为 2 个超时无 usage 请求保守预留 ¥4，完整上界 ¥4.724446/¥10。
+  - 三项共同硬伤是完整可证实结论与完全支持的可行动 finding 为 0；宠物品类另有 300 秒超时，日本护肤来源覆盖为 0。证据流水线结论为 `evidence_pipeline_blocked`。
+  - G12 只测试采集、证据、claim 与报告链路，没有测试真实需求、付费意愿、获客、留存或交付毛利；商业化状态为 `not_evaluated`，不能据此停止项目。
+  - 详细结果见 `docs/benchmarks/industry-os-g12-live-result.md`。下一步不再扩品类 benchmark，先用洗碗机产物修复 claim 完整性、quote 绑定和报告决策摘要。
+
 - 2026-07-13 用户明确要求三端全部保持一致并先跳过 G11：
   - 一致范围定义为本地 `main`、GitHub `main` 与轻量服务器生产目录中的全部可部署受版本控制文件；生产 env、运行数据、依赖、缓存和备份继续安全排除。
   - 此前本地保留的 benchmark runner 62/22 历史 diff 纳入版本控制与部署同步，但不执行；其中 `skincare-broad-negative` 只保留历史实验语义，不得用于 G12 新 benchmark。
   - G11 标记为用户明确批准的 `skipped`；本轮不招募、不联系真实用户、不录屏、不收集隐私，也不标记 C4。
-  - Loop 前进到 G12 启动确认门。建议第一步只做离线预注册、runner/scorecard 设计，live API/provider/credits=0、费用 ¥0；任何 3–5 品类 live benchmark、预算或最终商业去留判断仍需单独确认。
+  - G12 离线启动随后已获用户授权并完成；任何 5 品类 live benchmark、预算或最终商业去留判断仍需单独确认。
 
 - 2026-07-13 G10「受控生产 canary」已完成，Industry OS contract-only 新链路达到生产技术 C3，Loop 在 G11 的 L5/产品决定门暂停：
   - 提交并推送 `094c857 feat: add industry research os contract flow`；部署使用 HEAD 模式，明确排除本地保留的 benchmark runner 62/22 diff。

@@ -1,18 +1,20 @@
-# Codex 交接文档：Industry OS G11 已跳过与 G12 启动门
+# Codex 交接文档：Industry OS 报告与证据流水线修复
 
 更新时间：2026-07-13
 
 目标项目：`/Users/qzt/Developer/industry-research-production-table`
 
-当前基线：G2–G10 complete，G11 由用户明确批准 skipped；三端可部署文件保持同一 HEAD
+当前基线：G2–G10 complete，G11 skipped；G12 live benchmark 0/3 PASS 并触发早停，证据流水线为 blocked，商业化未评估
 
-建议权限：先停在 G12 启动门；可先确认 L2 离线预注册，任何 live benchmark/credits/预算继续单独确认
+建议权限：L2 本地修复；不新增品类 benchmark，不调用 provider
 
 ## 1. 一句话交接
 
 Industry Planner 与 G2–G10 已完成：系统能生成校准 plan、来源候选、代表性抽样、六模块结果、claim ledger、12 章报告与知识地图，并在唯一 `/industry-research` 流程完成本地与生产桌面/移动 contract 验收；当前完整模块与报告仍只由 contract-only fixture 证明契约，eligible 外部事实为 0。G11 已按用户明确指令跳过，C4 未验证。
 
-下一阶段是 G12“统一 benchmark 与 C5 去留判断”。Loop 先停在离线启动确认门：可只准备预注册协议、scorecard、kill rule 与 runner 设计，live API/provider/credits=0、费用 ¥0；真实 3–5 品类运行与最终继续/调整/停止判断仍需后续确认。
+G12 live run `industry-os-g12-benchmark-v1-2026-07-13T03-26-39-782Z` 已按预注册运行：宠物益生菌 0、洗碗机 60、日本小众护肤 15，前三项 0/3 PASS 后触发 3/5 不可能达成的早停规则，后两项没有调用。完整费用保守上界 ¥4.724446/¥10，其他请求/credits 上限也未触发。该结果只说明证据流水线受阻；G12 未测试真实商业需求，商业化状态为 `not_evaluated`。
+
+当前本地已完成决策口径和报告 renderer 修复：五类 finding 共用审核队列，`report.md` / `reviewed_report.md` 共用证据门禁，运行产物与业务结论分开；`pnpm check` 27 files / 259 tests 通过，离线 replay v2 为 0 provider、0 公网请求、¥0。
 
 ## 2. 本轮最重要的产品方向修正
 
@@ -197,7 +199,7 @@ G6 已把 `allowedClaimRoles` 等价契约接入 source/raw/evidence/review/repo
 - 本地 `main`、GitHub `main` 和轻量服务器全部可部署受版本控制文件保持同一 HEAD；生产 env、运行数据、依赖、缓存和备份按安全规则排除。
 - benchmark runner 的历史 62/22 diff 已纳入版本控制并同步生产目录，不再是未提交修改；`skincare-broad-negative` 仅作历史标签，G12 不得使用。
 - 当前生产技术状态为 Industry OS contract C3；eligible 外部事实仍为 0，C4/C5 均未达到。
-- 当前商业化结论仍冻结；方向修正不等于质量已经通过。
+- 当前证据流水线尚未达到稳定付费交付标准；商业化本身未被 G12 评估。
 - 当前没有项目 benchmark 进程运行，不需要接管或终止后台执行。
 
 ## 11. 新会话启动顺序
@@ -205,5 +207,5 @@ G6 已把 `allowedClaimRoles` 等价契约接入 source/raw/evidence/review/repo
 1. 阅读 `AGENTS.md`、`README.md`、`PROJECT_CONTEXT.md`、`TODO.md`、`DECISIONS.md`、`BUG_NOTES.md`。
 2. 阅读本文档和 `docs/prds/industry-research-os-prd.md`；`docs/CODEX_INDUSTRY_OS_GOAL_PROMPT.md` 只作已完成历史审计，不重复执行。
 3. 核对当前 Git、`docs/industry-os-loop-state.json`、G2–G10 记录、G11 skipped 记录与 `docs/INDUSTRY_OS_G10_PRODUCTION_CANARY.md`。
-4. 当前 checkpoint 必须是 `G12_start_gate`；不要重跑 G2–G10，也不要恢复已跳过的 G11。
+4. 当前 checkpoint 是 `report_decision_separation_and_pipeline_repair`；不要重跑 G2–G12，也不要恢复已跳过的 G11。
 5. 未获 G12 启动确认前不创建 G12 Goal；即使确认离线准备，也不得调用 live API/provider/credits、执行真实 benchmark 或作最终商业去留决定。

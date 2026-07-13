@@ -8,7 +8,6 @@ import {
   callDeepSeekChatCompletion,
   canUsePublicCrawlerTarget,
   createIndustryResearchDeliveryArtifacts,
-  createIndustryResearchLocalJsonRepository,
   discoverPublicSources,
   ecommerceCompetitorResearchTemplate,
   generateResearchMarkdownReport,
@@ -72,6 +71,15 @@ describe("industry research mock workflow", () => {
     expect(result.content_database.length).toBeGreaterThan(0);
     expect(result.opportunity_database.length).toBeGreaterThan(0);
     expect(result.weekly_intelligence_reports.length).toBeGreaterThan(0);
+    expect(new Set(result.reviewItems.map((item) => item.targetType))).toEqual(
+      new Set([
+        "competitor",
+        "product_signal",
+        "pain_point",
+        "content_signal",
+        "opportunity",
+      ]),
+    );
   });
 
   it("marks every MVP workflow step as done in mock mode", () => {
@@ -137,7 +145,10 @@ describe("industry research mock workflow", () => {
     );
     expect(artifacts.reportMarkdown).toContain("## 已确认发现");
     expect(artifacts.reportMarkdown).toContain("## 候选发现");
+    expect(artifacts.reportMarkdown).toContain("## 运行产物摘要");
     expect(artifacts.reportMarkdown).toContain("## 不确定 / 阻塞项");
+    expect(artifacts.reportMarkdown).toContain("## 决策摘要");
+    expect(artifacts.reportMarkdown).toContain("商业化判断：");
     expect(artifacts.reportMarkdown).toContain("## 剩余不确定性");
     expect(artifacts.reportMarkdown).toContain("## 证据索引");
     expect(artifacts.reportMarkdown).toContain("URL：");
@@ -414,7 +425,6 @@ describe("industry research mock workflow", () => {
     const confirmedSection = artifacts.reviewedReportMarkdown
       .split("## 已确认发现")[1]
       ?.split("## 候选发现")[0];
-
     expect(artifacts.run_log.credibility.confirmedFindings).toBe(0);
     expect(artifacts.run_log.credibility.needsReviewFindings).toBe(4);
     expect(confirmedSection).not.toContain("缺失 validation 的候选");
@@ -498,65 +508,15 @@ describe("industry research mock workflow", () => {
     const confirmedSection = artifacts.reviewedReportMarkdown
       .split("## 已确认发现")[1]
       ?.split("## 候选发现")[0];
+    const deliveryConfirmedSection = artifacts.reportMarkdown
+      .split("## 已确认发现")[1]
+      ?.split("## 候选发现")[0];
 
     expect(artifacts.run_log.credibility.confirmedFindings).toBe(1);
     expect(confirmedSection).toContain("可确认品牌");
+    expect(deliveryConfirmedSection).toContain("可确认品牌");
     expect(confirmedSection).toContain(`rawDocumentId：${rawDocument.id}`);
     expect(confirmedSection).toContain(`URL：${rawDocument.url}`);
-  });
-
-  it("stores the minimum v0.3 persistence boundary in a local JSON repository", async () => {
-    const result = runMockIndustryResearchWorkflow(input);
-    const artifacts = createIndustryResearchDeliveryArtifacts({
-      input,
-      result,
-      runId: "repository-test-run",
-      startedAt: "2026-06-17T00:00:00.000Z",
-      finishedAt: "2026-06-17T00:00:02.000Z",
-    });
-    const repository = createIndustryResearchLocalJsonRepository();
-
-    await repository.upsertRun({
-      runId: artifacts.run_log.runId,
-      status: "ready_for_review",
-      createdAt: artifacts.run_log.startedAt,
-      updatedAt: artifacts.run_log.finishedAt,
-      input,
-      manifest: artifacts.manifest,
-    });
-    await repository.saveRawDocuments(
-      artifacts.run_log.runId,
-      artifacts.raw_documents,
-    );
-    await repository.saveReviewItems(
-      artifacts.run_log.runId,
-      artifacts.review_items.items,
-    );
-    await repository.saveReports({
-      runId: artifacts.run_log.runId,
-      reportMarkdown: artifacts.reportMarkdown,
-      reviewedReportMarkdown: artifacts.reviewedReportMarkdown,
-      updatedAt: artifacts.run_log.finishedAt,
-    });
-    await repository.saveRunLog(artifacts.run_log.runId, artifacts.run_log);
-
-    const snapshot = await repository.snapshot();
-
-    expect(await repository.getRun("repository-test-run")).toMatchObject({
-      runId: "repository-test-run",
-      status: "ready_for_review",
-    });
-    expect(snapshot.runs).toHaveLength(1);
-    expect(snapshot.rawDocuments[0]?.documents.length).toBe(
-      artifacts.raw_documents.length,
-    );
-    expect(snapshot.reviewItems[0]?.items.length).toBe(
-      artifacts.review_items.items.length,
-    );
-    expect(snapshot.reports[0]?.reviewedReportMarkdown).toContain(
-      "已审核版行业竞品研究轻量版报告",
-    );
-    expect(snapshot.runLogs[0]?.runLog.runId).toBe("repository-test-run");
   });
 });
 
@@ -1013,6 +973,9 @@ describe("industry research OpenAI-compatible workflow", () => {
     expect(result.pain_points[0]?.theme).toBe("肠胃敏感");
     expect(result.opportunities[0]?.title).toBe("敏感肠胃入门套装");
     expect(result.reviewItems[0]?.targetId).toBe("deepseek-competitor-1");
+    expect(result.reviewItems.map((item) => item.targetType)).toContain(
+      "product_signal",
+    );
     expect(result.research_reports[0]?.content).toContain(
       "DeepSeek 公开采集结构化报告",
     );

@@ -108,12 +108,19 @@
 
 ## 下一步
 
-- [ ] `G12 awaiting_user_confirmation`：是否先启动纯离线预注册与 scorecard/runner 设计；该阶段 live API/provider/credits=0、费用 ¥0。任何真实 3–5 品类 benchmark、预算或最终继续/停止判断另设确认门。
+- [x] 分支工作入口收束到 `main`；所有历史分支提交已合并，未提交 G12、后台清理与报告优化修改完整保留。
+- [x] 报告决策模型拆分为研究就绪度与商业化评估；证据不足不再自动生成停止项目结论。
+- [x] 五类 finding 全部进入审核队列；`report.md` 与 `reviewed_report.md` 统一使用证据门禁，并删除重复候选 renderer。
+- [x] `pnpm check` 通过 27 files / 259 tests；离线 replay v2 为 0 provider、0 公网请求、¥0。
+
+- [x] G12 纯离线预注册与统一 scorecard/runner 已完成：锁定 5 品类、3/5 kill rule、pre/post-kill 隔离、8 类失败原因和 C5 fail-closed；live API/provider/credits=0、费用 ¥0。
+- [x] G12 live benchmark 已在 ¥10、250 Firecrawl credits、160 public requests、15 LLM requests 上限内执行；前三项 0/3 PASS 后触发 kill，后两项未调用。
+- [x] G12 决策范围已纠正：`evidence_pipeline_blocked` 只表示证据流水线受阻，商业化状态为 `not_evaluated`，不再自动生成停止项目结论。
+- [ ] 复用洗碗机现有产物，先修复 claim 完整性、quote 绑定和机会假设生成；不再新增品类 benchmark。
 - [ ] 设计 Planner 与现有 `ResearchWorkflowInput` / public workflow 的阶段边界：应以模块化异步/分阶段执行为主，不把大行业重新塞进单次 300 秒同步 run。
-- [ ] 找 1 名真实目标用户用手机自行完成输入、等待、报告阅读和分享，记录是否能独立走完；完成前维持 C3，不标记 C4。
+- [ ] G11 已由用户明确跳过；仅在用户主动重新开放真实用户验证并确认联系与隐私边界后，才找目标用户复验。当前维持 C3，不标记 C4。
 - [ ] 根据真实手机阅读反馈决定是否继续压缩完整报告的证据索引章节；当前工程验收已通过，但报告内容本身仍很长。
 
-- [ ] 用相同评分口径再跑剩余核心品类，形成统一 3–5 品类 benchmark；任何非免费调用仍需单独确认费用。
 - [ ] 将目标生成数与单轮 crawl cap 对齐，避免 11 个目标中最后 3 个被记为 `TARGET_CAP_EXCEEDED`。
 - [ ] 修正 health 中仍偏历史的 provider 展示文案，使其明确显示阿里云 MaaS 免费模型池，而不是泛化的 `9router_or_openai_compatible`。
 - [ ] 当前仅 C3；在真实用户能自行完成核心流程前，不标记 C4，在出现实际使用/收益证据前不标记 C5。
@@ -126,7 +133,7 @@
   - E 报告隔离：provider 原始自由文本始终与正式 `report.md` 隔离，不再只在 `acceptedForReport=0` 时阻断。
   - F/G 离线回归：三品类保存样例 replay 完成；三个品类 accepted 残余已知噪音中位数均为 `0%`、实体串线 0、确认区无无效结论；宠物/洗碗机 product 与护肤 collection 深页 fixtures 3/3 通过。
   - 输出：`outputs/industry-research-benchmarks/evidence-repair-replay-v1/evidence-repair-replay-v1-2026-07-10T13-47-38-314Z/`；36ms、0 provider、0 公网请求、增量成本 ¥0，未改写原样例。
-  - 商业 benchmark 仍为 0/3 PASS：旧样例实际深页为 0、声明完整性元数据不可追溯，所以继续冻结商业化扩建。
+  - 证据流水线 benchmark 仍为 0/3 PASS：旧样例实际深页为 0、声明完整性元数据不可追溯，因此自动报告交付就绪度为 blocked；商业化未评估。
 - [x] 2026-07-10 已按用户决定取消真实卖家反馈和付费试单板块；不再外联、不再作为当前 Goal 验收或解冻依据。
 - [x] 2026-07-07 洗碗机固定官网来源和零可信来源报告阻断已完成本地代码侧收口：
   - 默认 `source_registry` 新增 FOTILE、美的、海尔、西门子家电中国、老板电器、Panasonic China 6 个洗碗机官网入口。

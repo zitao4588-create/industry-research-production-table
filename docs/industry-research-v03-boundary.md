@@ -45,8 +45,8 @@ v0.3 增强点：
 
 当前实现分两层：
 
-- TypeScript repository contract：`IndustryResearchRepository`
-- 本地 JSON 兼容 adapter：`createIndustryResearchLocalJsonRepository`
+- Studio 本地 JSON/Markdown 交付包与历史记录 fallback
+- `supabase-run-store.ts` 负责生产持久化与读取
 - 最小对象：research runs、raw documents、review items、reports、run logs
 - Supabase service-role-only 基础设施表：`industry_research_runs`、`industry_research_artifacts`、`industry_research_n8n_events`、`industry_research_zvec_chunks`
 

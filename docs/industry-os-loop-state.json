@@ -1,10 +1,10 @@
 {
   "schemaVersion": "industry_os_execution_loop.v1",
   "loopId": "industry-os-g2-g12",
-  "status": "awaiting_user_confirmation",
+  "status": "complete",
   "currentGoal": "G12",
-  "currentGoalStatus": "awaiting_user_confirmation",
-  "currentCheckpoint": "G12_start_gate",
+  "currentGoalStatus": "complete",
+  "currentCheckpoint": "report_decision_separation_and_pipeline_repair",
   "permissionCeiling": "L4",
   "autoAdvance": true,
   "controllerPath": "docs/INDUSTRY_OS_G2_G12_LOOP.md",
@@ -13,7 +13,7 @@
     "automationId": "industry-os-g2-g12-loop",
     "name": "Industry OS G2-G12 Loop",
     "cadence": "hourly",
-    "status": "active"
+    "status": "paused"
   },
   "retryPolicy": {
     "maxSameFailureWithoutNewEvidence": 2,
@@ -21,11 +21,11 @@
     "lastFailureFingerprint": null
   },
   "pause": {
-    "reason": "G11 was explicitly skipped by the user; G12 now requires a start decision, with offline preparation separated from any live benchmark, provider credits, budget or final business decision",
-    "requiredPermission": "G12_start_decision",
-    "requestSummary": "Authorize G12 offline preregistration and scorecard/runner preparation only, with 0 live API/provider/credits calls and CNY 0; any live 3-5 category benchmark budget and final continue/adjust/stop decision remain separate confirmations.",
-    "decisionRequestHash": "8540667cb110964a96ba385d7e82d135a38e91470e75600df6044d3ce0536cdf",
-    "notifiedDecisionRequestHash": "8540667cb110964a96ba385d7e82d135a38e91470e75600df6044d3ce0536cdf"
+    "reason": "The G2-G12 loop is complete. G12 only assessed the evidence pipeline; commercialization remains not_evaluated.",
+    "requiredPermission": "none",
+    "requestSummary": "Do not auto-create another benchmark Goal. Continue as ordinary local maintenance by repairing claim completeness, quote binding and report decision guidance without provider calls.",
+    "decisionRequestHash": null,
+    "notifiedDecisionRequestHash": null
   },
   "quota": {
     "status": "available",
@@ -217,12 +217,36 @@
     },
     {
       "id": "G12",
-      "status": "awaiting_user_confirmation",
-      "requiresConfirmationBeforeStart": true,
-      "completionEvidence": []
+      "status": "complete",
+      "requiresConfirmationBeforeStart": false,
+      "completionEvidence": [
+        "docs/benchmarks/industry-os-g12-benchmark-preregistration.md locks five ordered categories and prohibits skincare-broad-negative",
+        "industry_os_g12_benchmark.v1 implements hard gates, 100-point scorecard, 3/5 kill rule, pre/post-kill isolation and eight failure classes",
+        "offline runner prints a zero-network/provider/credits/CNY plan and rejects live execution flags before any call",
+        "targeted G12 tests: 7/7 passed; pnpm check: 26 files / 257 tests passed; TypeScript and Biome passed",
+        "git diff --check and changed-file secret pattern audit passed",
+        "live API/provider/credits calls=0, public requests=0 and cost CNY 0",
+        "G11 remains skipped and C4 unverified; benchmark evidence alone cannot mark C5",
+        "G12 live run industry-os-g12-benchmark-v1-2026-07-13T03-26-39-782Z executed the first three locked categories in order",
+        "Scores were pet-probiotics 0, dishwasher 60 and japan-niche-skincare 15; all three failed and 0/3 triggered the preregistered 3/5 impossibility kill rule",
+        "The two post-kill categories were not called; no post-kill result was mixed into the unified score",
+        "Usage stayed within 64/160 public requests, 5/15 LLM requests, 6/10 Tavily searches and a conservative 140/250 Firecrawl credits",
+        "Priced usage was CNY 0.724446; two timed-out LLM responses lacked usage, so a CNY 4 reserve yields a conservative total upper bound of CNY 4.724446/10 and the affected category cost gate fails closed",
+        "docs/benchmarks/industry-os-g12-live-result.md records the result and artifact hashes; decisionCandidate=evidence_pipeline_blocked and commercializationAssessment=not_evaluated"
+      ]
     }
   ],
   "history": [
+    {
+      "id": "G12",
+      "status": "complete",
+      "summary": "The live benchmark reached 0/3 PASS and triggered the preregistered early-stop within all approved caps; the evidence pipeline is blocked, while commercialization remains not_evaluated."
+    },
+    {
+      "id": "G12",
+      "status": "awaiting_user_confirmation",
+      "summary": "Offline preregistration and scorecard/runner preparation passed local verification; the loop now pauses before any live provider, credits or budget use."
+    },
     {
       "id": "G11",
       "status": "skipped",
@@ -281,13 +305,13 @@
   ],
   "lastCheckpoint": {
     "goal": "G12",
-    "summary": "User explicitly skipped G11 and requested full deployable-file consistency across local main, GitHub main and production; loop now pauses before G12 offline preparation",
+    "summary": "G12 live benchmark completed by preregistered early-stop at 0/3 PASS; evidence_pipeline_blocked applies only to the research pipeline",
     "evidence": [
-      "G11 is skipped by explicit user approval; no outreach or privacy-impacting action occurred and C4 remains unverified",
-      "The historical benchmark runner 62/22 worktree diff is included in the consistency sync but is not executed",
-      "All deployable version-controlled files must share one HEAD across local main, origin/main and the lightweight server; env/runtime data/dependencies/cache/backups remain excluded",
-      "G12 first decision is offline-only preparation with 0 live calls and CNY 0; live benchmark budget and final C5 decision remain separate gates",
-      "skincare-broad-negative remains historical only and is prohibited from the new G12 benchmark"
+      "Run industry-os-g12-benchmark-v1-2026-07-13T03-26-39-782Z executed the first three categories in locked order",
+      "Scores 0, 60 and 15 produced 0/3 PASS; the 3/5 impossibility kill rule prevented the final two calls",
+      "Usage was public 64/160, LLM 5/15, Tavily 6/10 and conservative Firecrawl 140/250 credits",
+      "Conservative cash upper bound is CNY 4.724446/10; no approved cap was exceeded",
+      "decisionCandidate=evidence_pipeline_blocked; commercializationAssessment=not_evaluated; C4 remains unverified"
     ]
   }
 }

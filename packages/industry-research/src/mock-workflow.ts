@@ -141,14 +141,67 @@ export function createResearchReviewItems(
         claimRole: claimRoleForEvidence(competitor.evidenceIds),
       };
     }),
-    ...dataset.opportunities.map((opportunity) => ({
-      id: `review-${opportunity.id}`,
-      targetType: "opportunity" as const,
-      targetId: opportunity.id,
-      status: opportunity.reviewStatus,
-      note: opportunity.reviewNote,
-      claimRole: claimRoleForEvidence(opportunity.evidenceIds),
-    })),
+    ...dataset.product_signals.map((signal) => {
+      const evidenceComplete = hasCompleteEvidence(signal.evidenceIds);
+      return {
+        id: `review-${signal.id}`,
+        targetType: "product_signal" as const,
+        targetId: signal.id,
+        status: evidenceComplete
+          ? ("approved" as const)
+          : ("needs_review" as const),
+        note: evidenceComplete
+          ? "产品信号已由完整、唯一绑定的 acceptedForReport 原文支持。"
+          : "确认产品信号的完整表述，并补齐唯一证据引用。",
+        claimRole: claimRoleForEvidence(signal.evidenceIds),
+      };
+    }),
+    ...dataset.pain_points.map((point) => {
+      const evidenceComplete = hasCompleteEvidence(point.evidenceIds);
+      return {
+        id: `review-${point.id}`,
+        targetType: "pain_point" as const,
+        targetId: point.id,
+        status: evidenceComplete
+          ? ("approved" as const)
+          : ("needs_review" as const),
+        note: evidenceComplete
+          ? "用户痛点已由完整、唯一绑定的直接用户证据支持。"
+          : "用户需求推断必须补充评论、访谈或其他直接用户证据。",
+        claimRole: claimRoleForEvidence(point.evidenceIds),
+      };
+    }),
+    ...dataset.content_signals.map((signal) => {
+      const evidenceComplete = hasCompleteEvidence(signal.evidenceIds);
+      return {
+        id: `review-${signal.id}`,
+        targetType: "content_signal" as const,
+        targetId: signal.id,
+        status: evidenceComplete
+          ? ("approved" as const)
+          : ("needs_review" as const),
+        note: evidenceComplete
+          ? "内容信号已由完整、唯一绑定的 acceptedForReport 原文支持。"
+          : "确认内容信号与价值判断均由同一实体的直接证据支持。",
+        claimRole: claimRoleForEvidence(signal.evidenceIds),
+      };
+    }),
+    ...dataset.opportunities.map((opportunity) => {
+      const evidenceComplete = hasCompleteEvidence(opportunity.evidenceIds);
+      return {
+        id: `review-${opportunity.id}`,
+        targetType: "opportunity" as const,
+        targetId: opportunity.id,
+        status:
+          opportunity.reviewStatus === "rejected"
+            ? ("rejected" as const)
+            : opportunity.reviewStatus === "approved" && evidenceComplete
+              ? ("approved" as const)
+              : ("needs_review" as const),
+        note: opportunity.reviewNote,
+        claimRole: claimRoleForEvidence(opportunity.evidenceIds),
+      };
+    }),
   ];
 }
 

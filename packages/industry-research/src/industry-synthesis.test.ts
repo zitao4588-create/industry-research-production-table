@@ -148,6 +148,11 @@ describe("G8 12-chapter report and knowledge map", () => {
     expect(bundle.reportMarkdown).toContain("CONTRACT_ONLY / 非行业事实");
     expect(bundle.reportMarkdown).toContain("可执行机会假设");
     expect(bundle.reportMarkdown).toContain("知识地图与持续监控计划");
+    expect(bundle.reportMarkdown).toContain("## 决策摘要");
+    expect(bundle.decisionGuidance).toMatchObject({
+      researchReadiness: "contract_only",
+      commercializationAssessment: "not_evaluated",
+    });
     expect(bundle.claimLedger.counts.eligible).toBe(0);
   });
 
@@ -164,6 +169,9 @@ describe("G8 12-chapter report and knowledge map", () => {
     expect(regulationChapter?.status).toBe("blocked");
     expect(bundle.reportMarkdown).toContain(
       "BLOCKED：证据或覆盖不足，本章不生成完整结论性正文。",
+    );
+    expect(bundle.decisionGuidance.commercializationAssessment).toBe(
+      "not_evaluated",
     );
     expect(regulationChapter?.gaps.length).toBeGreaterThan(0);
   });

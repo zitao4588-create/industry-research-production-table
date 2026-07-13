@@ -4,6 +4,10 @@ import {
   highRiskClaimHasDirectQuote,
 } from "./extraction-validator";
 import {
+  createResearchDecisionGuidance,
+  renderResearchDecisionGuidance,
+} from "./research-decision";
+import {
   coerceRunDiffDatabases,
   createBaselineWeeklyIntelligenceReport,
   createWeeklyIntelligenceReportFromDiff,
@@ -490,7 +494,7 @@ function formatSourceQualityList(result: ResearchWorkflowResult) {
   ].join("\n");
 }
 
-function formatConfirmedFindings(result: ResearchWorkflowResult) {
+function formatRunHighlights(result: ResearchWorkflowResult) {
   const findings: string[] = [];
   const crawlMode = result.crawl_plans[0]?.mode ?? "unknown";
   const allDatabasesHaveRows = databaseCounts(result).every(
@@ -514,83 +518,6 @@ function formatConfirmedFindings(result: ResearchWorkflowResult) {
   return findings.length > 0
     ? findings.map((item) => `- ${item}`).join("\n")
     : "- 暂无可直接确认为事实的业务发现；当前业务结论均需人工复核。";
-}
-
-function formatLikelyFindings(result: ResearchWorkflowResult) {
-  const formatEvidence = createEvidenceFormatter(result);
-  const sections: string[] = [];
-
-  for (const competitor of result.competitors) {
-    sections.push(
-      [
-        `### 竞品候选：${competitor.name}`,
-        "",
-        `- 状态：needs_review`,
-        `- 定位：${competitor.positioning}`,
-        "- 证据：",
-        formatEvidence(competitor.evidenceIds),
-      ].join("\n"),
-    );
-  }
-
-  for (const signal of result.product_signals) {
-    sections.push(
-      [
-        `### 产品信号候选：${signal.signal}`,
-        "",
-        `- 状态：needs_review`,
-        `- 标签：${signal.tags.join(", ") || "待补充"}`,
-        "- 证据：",
-        formatEvidence(signal.evidenceIds),
-      ].join("\n"),
-    );
-  }
-
-  for (const point of result.pain_points) {
-    sections.push(
-      [
-        `### 痛点候选：${point.theme}`,
-        "",
-        `- 状态：needs_review`,
-        `- 用户需求：${point.userNeed}`,
-        `- 频次：${point.frequency}`,
-        "- 证据：",
-        formatEvidence(point.evidenceIds),
-      ].join("\n"),
-    );
-  }
-
-  for (const signal of result.content_signals) {
-    sections.push(
-      [
-        `### 内容信号候选：${signal.topic}`,
-        "",
-        `- 状态：needs_review`,
-        `- 平台：${signal.platform}`,
-        `- 类型：${signal.contentType}`,
-        `- 价值判断：${signal.whyItWorks}`,
-        "- 证据：",
-        formatEvidence(signal.evidenceIds),
-      ].join("\n"),
-    );
-  }
-
-  for (const opportunity of result.opportunities) {
-    sections.push(
-      [
-        `### 机会候选：${opportunity.title}`,
-        "",
-        `- 状态：${opportunity.reviewStatus}（交付前仍需人工复核）`,
-        `- 总分：${opportunity.totalScore}`,
-        `- 摘要：${opportunity.summary}`,
-        `- 审核备注：${opportunity.reviewNote}`,
-        "- 证据：",
-        formatEvidence(opportunity.evidenceIds),
-      ].join("\n"),
-    );
-  }
-
-  return sections.length > 0 ? sections.join("\n\n") : "暂无候选发现。";
 }
 
 function formatBlockedClaims(result: ResearchWorkflowResult) {
@@ -645,6 +572,28 @@ function formatRemainingUncertainty(result: ResearchWorkflowResult) {
   }
 
   return notes.map((item) => `- ${item}`).join("\n");
+}
+
+function formatDecisionGuidance(
+  result: ResearchWorkflowResult,
+  reviewItems: ResearchReviewItem[] = result.reviewItems,
+) {
+  const credibility = createCredibilityMetrics(result, reviewItems);
+  const sourceQuality = summarizeSourceQuality(result.raw_documents);
+  return renderResearchDecisionGuidance(
+    createResearchDecisionGuidance({
+      evidenceMode:
+        result.crawl_plans[0]?.mode === "mock"
+          ? "contract_only"
+          : "verified_external_evidence",
+      acceptedEvidenceCount: credibility.effectiveEvidence,
+      confirmedFindingCount: credibility.confirmedFindings,
+      actionableHypothesisCount: result.opportunities.length,
+      technicalFailureCount:
+        credibility.crawlFailures + (credibility.llmFallback ? 1 : 0),
+      coverageGapCount: sourceQuality.rejectedForReport,
+    }),
+  );
 }
 
 function formatEvidenceIndex(result: ResearchWorkflowResult) {
@@ -939,6 +888,10 @@ export function createReviewedIndustryResearchReport(
     "",
     formatReviewedItems(result, reviewItems, "rejected"),
     "",
+    "## 决策摘要",
+    "",
+    formatDecisionGuidance(result, reviewItems),
+    "",
     "## 数据源质量评分",
     "",
     formatSourceQualityList(result),
@@ -1014,13 +967,21 @@ export function createIndustryResearchDeliveryReport(
     "",
     formatSourceQualityList(result),
     "",
+    "## 运行产物摘要",
+    "",
+    formatRunHighlights(result),
+    "",
     "## 已确认发现",
     "",
-    formatConfirmedFindings(result),
+    formatReviewedItems(result, result.reviewItems, "approved"),
     "",
     "## 候选发现",
     "",
-    formatLikelyFindings(result),
+    formatReviewedItems(result, result.reviewItems, "needs_review"),
+    "",
+    "## 决策摘要",
+    "",
+    formatDecisionGuidance(result),
     "",
     "## 不确定 / 阻塞项",
     "",

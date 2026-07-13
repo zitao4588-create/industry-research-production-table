@@ -4,6 +4,11 @@ import type {
   IndustryModuleResultsArtifact,
 } from "./industry-module-results";
 import type { IndustryResearchModule } from "./industry-planner";
+import {
+  createResearchDecisionGuidance,
+  type ResearchDecisionGuidance,
+  renderResearchDecisionGuidance,
+} from "./research-decision";
 
 export const industryClaimLedgerSchemaVersion =
   "industry_claim_ledger.v1" as const;
@@ -129,6 +134,7 @@ export type IndustryReportBundle = {
   schemaVersion: typeof industryReportBundleSchemaVersion;
   artifactType: "industry-report-bundle";
   claimLedger: IndustryClaimLedger;
+  decisionGuidance: ResearchDecisionGuidance;
   chapters: IndustryReportChapter[];
   reportMarkdown: string;
   knowledgeMap: IndustryKnowledgeMap;
@@ -675,6 +681,27 @@ export function createIndustryReportBundle(input: {
     moduleResults: input.moduleResults,
     ledger: claimLedger,
   });
+  const decisionGuidance = createResearchDecisionGuidance({
+    evidenceMode:
+      input.evidenceMode === "contract_fixture"
+        ? "contract_only"
+        : "verified_external_evidence",
+    acceptedEvidenceCount: new Set(
+      claimLedger.entries
+        .filter((entry) => entry.status === "eligible")
+        .flatMap((entry) => entry.evidenceIds),
+    ).size,
+    confirmedFindingCount: claimLedger.entries.filter(
+      (entry) =>
+        entry.status === "eligible" &&
+        (entry.kind === "fact" || entry.kind === "signal"),
+    ).length,
+    actionableHypothesisCount: claimLedger.entries.filter(
+      (entry) => entry.opportunity && entry.status !== "blocked",
+    ).length,
+    technicalFailureCount: claimLedger.blockedModuleIds.length,
+    coverageGapCount: claimLedger.gaps.length,
+  });
   const moduleById = new Map(
     input.moduleResults.moduleResults.map((module) => [
       module.moduleId,
@@ -687,6 +714,10 @@ export function createIndustryReportBundle(input: {
     input.evidenceMode === "contract_fixture"
       ? "> **CONTRACT_ONLY：本报告只验证 G8 契约，不包含真实行业事实、规模、增速、需求强度或机会确定性。**"
       : "> 本报告只将 confirmed、coverage pass 且证据可追溯的声明列为 eligible；其余内容保持 blocked。",
+    "",
+    "## 决策摘要",
+    "",
+    renderResearchDecisionGuidance(decisionGuidance),
     "",
     ...chapters.flatMap((chapter) => {
       const entries = chapter.claimIds
@@ -728,6 +759,7 @@ export function createIndustryReportBundle(input: {
     schemaVersion: industryReportBundleSchemaVersion,
     artifactType: "industry-report-bundle",
     claimLedger,
+    decisionGuidance,
     chapters,
     reportMarkdown: `${markdown.trimEnd()}\n`,
     knowledgeMap,

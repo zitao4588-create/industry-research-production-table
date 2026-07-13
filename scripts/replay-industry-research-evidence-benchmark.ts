@@ -26,7 +26,7 @@ import type {
   WebsiteStructureDatabaseEntry,
 } from "../packages/industry-research/src/types.ts";
 
-const replayVersion = "evidence-repair-replay-v1";
+const replayVersion = "evidence-repair-replay-v2";
 const maxDocumentLength = 12_000;
 const minimumTrustedDocuments = 3;
 const minimumTrustedDomains = 2;
@@ -680,7 +680,7 @@ async function replaySample(
       totalScore,
     },
     hardGates,
-    commercialBenchmarkPass: Object.values(hardGates).every(Boolean),
+    evidencePipelinePass: Object.values(hardGates).every(Boolean),
   };
 
   const categoryOutputDir = join(outputDir, sample.id);
@@ -706,7 +706,11 @@ function scorecardMarkdown(summary: {
     ReturnType<typeof verifyAllDeepPageDiscoveryFixtures>
   >;
   internalRepairAcceptance: Record<string, boolean>;
-  commercializationConclusion: string;
+  evidencePipelineConclusion: string;
+  commercializationAssessment: {
+    status: "not_evaluated";
+    reason: string;
+  };
 }) {
   const lines = [
     "# 行业研究生产台证据修复离线 Replay",
@@ -718,7 +722,7 @@ function scorecardMarkdown(summary: {
     "",
     "## 统一评分表",
     "",
-    "| 品类 | 分数 | 可信文档 / 域名 | 深页 | 噪音中位 / 最大 | quote 可复核 | full 可证实 | 原耗时 | 实体串线 | 商业门槛 |",
+    "| 品类 | 分数 | 可信文档 / 域名 | 深页 | 噪音中位 / 最大 | quote 可复核 | full 可证实 | 原耗时 | 实体串线 | 证据流水线门槛 |",
     "|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
     ...summary.categories.map((category) =>
       [
@@ -731,7 +735,7 @@ function scorecardMarkdown(summary: {
         `${category.reportClaims.fullFindingCount}/${category.reportClaims.totalFindingCount} = ${formatPercent(category.reportClaims.verifiableFindingRatio)}`,
         `${((category.execution.originalRunDurationMs ?? 0) / 1000).toFixed(3)} 秒`,
         `${category.entityBinding.entityCrossingCount}`,
-        category.commercialBenchmarkPass ? "PASS |" : "FAIL |",
+        category.evidencePipelinePass ? "PASS |" : "FAIL |",
       ].join(" | "),
     ),
     "",
@@ -750,9 +754,14 @@ function scorecardMarkdown(summary: {
       ([key, passed]) => `- ${key}：${passed ? "PASS" : "FAIL"}`,
     ),
     "",
-    "## 商业化结论",
+    "## 证据流水线结论",
     "",
-    summary.commercializationConclusion,
+    summary.evidencePipelineConclusion,
+    "",
+    "## 商业化判断",
+    "",
+    `- 状态：${summary.commercializationAssessment.status}`,
+    `- 原因：${summary.commercializationAssessment.reason}`,
     "",
     "说明：深页 fixture 证明发现逻辑能在三品类离线场景保留证据型深页，不等于旧保存 run 已经实际抓到深页；重新跑真实核心 benchmark 仍需新的预算确认。",
   ];
@@ -809,16 +818,20 @@ async function main() {
           category.execution.publicNetworkRequests === 0,
       ),
     };
-    const commercialPassCount = categories.filter(
-      (category) => category.commercialBenchmarkPass,
+    const evidencePipelinePassCount = categories.filter(
+      (category) => category.evidencePipelinePass,
     ).length;
-    const commercializationConclusion =
-      commercialPassCount >= 2
-        ? "离线结果仅支持申请一次受控真实复跑；在真实 benchmark 通过前仍不能宣布可商业化。"
-        : "继续冻结商业化扩建。内部清洗、绑定与门禁已进入可验证状态，但旧样例仍缺真实深页和完整声明元数据，0–1 个品类通过不足以解冻；不得扩 provider、数据库、n8n 或基础设施。";
+    const evidencePipelineConclusion =
+      evidencePipelinePassCount >= 2
+        ? "离线证据流水线已具备申请一次受控真实复跑的条件。"
+        : "证据流水线尚未达到稳定交付标准；下一步只修复来源深度、声明完整性和证据绑定，不据此判断市场或项目应停止。";
+    const commercializationAssessment = {
+      status: "not_evaluated" as const,
+      reason: "离线 replay 不测真实用户需求、付费意愿、获客、留存或交付毛利。",
+    };
     const finished = new Date();
     const summary = {
-      schemaVersion: "industry_research_evidence_repair_replay.v1",
+      schemaVersion: "industry_research_evidence_repair_replay.v2",
       replayVersion,
       runId,
       outputDir,
@@ -848,8 +861,9 @@ async function main() {
       internalRepairPass: Object.values(internalRepairAcceptance).every(
         Boolean,
       ),
-      commercialPassCount,
-      commercializationConclusion,
+      evidencePipelinePassCount,
+      evidencePipelineConclusion,
+      commercializationAssessment,
     };
 
     await Promise.all([
