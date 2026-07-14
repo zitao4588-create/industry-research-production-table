@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { buildSafeReportInput, buildSafeReportSummary } from "./report-summary";
+import {
+  buildSafePublicReportMarkdown,
+  buildSafeReportInput,
+  buildSafeReportSummary,
+} from "./report-summary";
 
 describe("buildSafeReportSummary", () => {
   it("only returns findings listed in the reviewed report's confirmed section", () => {
@@ -171,5 +175,152 @@ describe("buildSafeReportSummary", () => {
       market: "DTC",
     });
     expect(buildSafeReportInput(null)).toBeNull();
+  });
+
+  it("replaces an unusable internal report with a safe public failure report", () => {
+    const input = buildSafeReportInput({
+      projectName: "冰箱研究",
+      industry: "家电",
+      category: "冰箱",
+      market: "中国大陆",
+    });
+    const reportMarkdown = [
+      "# 内部报告",
+      "",
+      "## 已确认发现",
+      "",
+      "- 暂无。",
+      "",
+      "## 候选发现",
+      "",
+      "### 四方小仓科技",
+      "",
+      "- 类型：competitor",
+      "- 渠道：AMZ123",
+      "- URL：https://www.amz123.com/private-candidate",
+      "",
+      "## 证据索引",
+      "",
+      "- /opt/playgamelab/internal/evidence.json",
+    ].join("\n");
+    const summary = buildSafeReportSummary({
+      databases: null,
+      runLog: {
+        credibility: {
+          effectiveEvidence: 4,
+          confirmedFindings: 0,
+          needsReviewFindings: 1,
+          crawlFailures: 3,
+        },
+      },
+      reportMarkdown,
+    });
+
+    const publicMarkdown = buildSafePublicReportMarkdown({
+      input,
+      reportMarkdown,
+      summary,
+    });
+
+    expect(publicMarkdown).toContain("状态：技术失败");
+    expect(publicMarkdown).toContain("已确认发现：0");
+    expect(publicMarkdown).toContain("不代表行业没有机会");
+    expect(publicMarkdown).not.toMatch(
+      /四方小仓科技|AMZ123|amz123\.com|\/opt\/playgamelab|证据索引/,
+    );
+  });
+
+  it("keeps confirmed evidence, relabels opportunities, and removes internal sections", () => {
+    const reportMarkdown = [
+      "# 内部已审核报告",
+      "",
+      "## 审核摘要",
+      "",
+      "- needs_review：2",
+      "",
+      "## 已确认发现",
+      "",
+      "### 品牌官网公开规格",
+      "",
+      "- 类型：competitor",
+      "- 状态：confirmed",
+      "- 可进入已确认发现：true",
+      "- 证据：",
+      "  - URL：https://brand.example/spec",
+      "  - quote：公开规格原文",
+      "",
+      "### 安装适配服务",
+      "",
+      "- 类型：opportunity",
+      "- 状态：confirmed",
+      "- 可进入已确认发现：true",
+      "- 证据：",
+      "  - URL：https://source.example/install",
+      "  - quote：安装条件原文",
+      "",
+      "## 候选发现",
+      "",
+      "### 跨品类候选",
+      "",
+      "## 不确定 / 阻塞项",
+      "",
+      "- provider-secret-marker",
+      "",
+      "## 证据索引",
+      "",
+      "- https://unreviewed.example",
+    ].join("\n");
+    const summary = buildSafeReportSummary({
+      databases: {
+        competitor_database: [{ name: "品牌官网公开规格" }],
+        opportunity_database: [{ title: "安装适配服务" }],
+      },
+      runLog: {
+        credibility: {
+          effectiveEvidence: 2,
+          confirmedFindings: 2,
+          needsReviewFindings: 2,
+          crawlFailures: 0,
+        },
+      },
+      reportMarkdown,
+    });
+
+    const publicMarkdown = buildSafePublicReportMarkdown({
+      input: buildSafeReportInput({ category: "家用洗碗机" }),
+      reportMarkdown,
+      summary,
+    });
+
+    expect(publicMarkdown).toContain("### 品牌官网公开规格");
+    expect(publicMarkdown).toContain("https://brand.example/spec");
+    expect(publicMarkdown).toContain("### 安装适配服务");
+    expect(publicMarkdown).toContain("- 状态：待验证假设");
+    expect(publicMarkdown).toContain("只证明事实基础");
+    expect(publicMarkdown).not.toMatch(
+      /跨品类候选|provider-secret-marker|unreviewed\.example|## 证据索引|needs_review：2/,
+    );
+  });
+
+  it("fails closed when credibility claims confirmed findings without a confirmed section", () => {
+    const summary = buildSafeReportSummary({
+      databases: null,
+      runLog: {
+        credibility: {
+          effectiveEvidence: 3,
+          confirmedFindings: 2,
+          crawlFailures: 0,
+        },
+      },
+      reportMarkdown: "## 候选发现\n\n### 未审核候选",
+    });
+
+    expect(summary.quality.status).toBe("insufficient_evidence");
+    expect(summary.quality.confirmedFindings).toBe(0);
+    expect(summary.counts).toEqual({
+      evidence: 0,
+      competitors: 0,
+      opportunities: 0,
+    });
   });
 });

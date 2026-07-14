@@ -4,6 +4,7 @@ import {
   LocalRunNotFoundError,
 } from "../../../_lib/local-runs";
 import {
+  buildSafePublicReportMarkdown,
   buildSafeReportInput,
   buildSafeReportSummary,
 } from "../../../_lib/report-summary";
@@ -55,16 +56,23 @@ export async function GET(request: Request, context: RouteContext) {
       );
     }
 
+    const input = buildSafeReportInput(run.input);
+    const summary = buildSafeReportSummary({
+      databases: run.databases,
+      runLog: run.run_log,
+      reportMarkdown,
+    });
+
     return NextResponse.json({
       schemaVersion: "industry_research_run_report.v3",
       runId: run.runId,
-      input: buildSafeReportInput(run.input),
-      reportMarkdown,
-      summary: buildSafeReportSummary({
-        databases: run.databases,
-        runLog: run.run_log,
+      input,
+      reportMarkdown: buildSafePublicReportMarkdown({
+        input,
         reportMarkdown,
+        summary,
       }),
+      summary,
     });
   } catch (error) {
     if (error instanceof LocalRunNotFoundError) {
